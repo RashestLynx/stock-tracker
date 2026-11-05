@@ -52,6 +52,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -90,7 +93,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 /** Increments whenever stored data changes (including from the background worker). */
@@ -119,6 +124,7 @@ fun StockTrackerApp(store: Store) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val status = remember(tick) { store.lastStatus }
+    var stock by remember { mutableStateOf<StockTarget?>(null) }
 
     fun message(text: String) {
         scope.launch { snackbar.showSnackbar(text) }
@@ -201,8 +207,9 @@ fun StockTrackerApp(store: Store) {
         Box(Modifier.padding(padding)) {
             when (tab) {
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
-                    onSetup = { tab = TAB_SETTINGS })
-                TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() })
+                    onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },
+                    onOpen = { stock = it })
                 else -> SettingsScreen(store, onMessage = { message(it) }, onReady = {
                     tab = TAB_FEED
                     checkNow()
@@ -210,6 +217,8 @@ fun StockTrackerApp(store: Store) {
             }
         }
     }
+
+    stock?.let { StockSheet(it, store, onDismiss = { stock = null }) }
 }
 
 // ============================================================ Category colors
@@ -247,8 +256,10 @@ private fun FeedScreen(
     refreshing: Boolean,
     onRefresh: () -> Unit,
     onSetup: () -> Unit,
+    onOpen: (StockTarget) -> Unit,
 ) {
     val alerts = remember(tick) { store.alerts() }
+    val moves = remember(tick) { store.moves() }
     val highlights = remember(tick) { Highlights.compute(store.moves(), store.picks()) }
     var section by rememberSaveable { mutableIntStateOf(0) }
     var filter by rememberSaveable { mutableStateOf("All") }
@@ -282,7 +293,7 @@ private fun FeedScreen(
             ) {
                 // First thing on screen: today's top buy and sale (or setup, before that).
                 if (!store.isSetUp) item { SetupCard(onSetup) }
-                else item(key = "today") { TodayCard(highlights) }
+                else item(key = "today") { TodayCard(highlights, onOpen) }
                 // Section tabs stay pinned at the top while scrolling.
                 stickyHeader(key = "tabs") {
                     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
@@ -326,7 +337,12 @@ private fun FeedScreen(
                         )
                     }
                 }
-                items(shown, key = { it.key }) { AlertCard(it) }
+                items(shown, key = { it.key }) { a ->
+                    AlertCard(a, onOpen = {
+                        val price = moves.firstOrNull { it.key == a.key || it.key.startsWith(a.key + "|") }?.price ?: 0.0
+                        onOpen(StockTarget(a.ticker, a.company, "This filing", a.headline, a.lines, a.link, price))
+                    })
+                }
                 if (category == Category.SENATE || category == Category.HOUSE) {
                     item { BargoCredit() }
                 }
@@ -339,7 +355,7 @@ private fun FeedScreen(
 // ============================================================ Today's buy & sale
 
 @Composable
-private fun TodayCard(h: DailyHighlights) {
+private fun TodayCard(h: DailyHighlights, onOpen: (StockTarget) -> Unit) {
     var showInfo by rememberSaveable { mutableStateOf(false) }
     ElevatedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -364,21 +380,28 @@ private fun TodayCard(h: DailyHighlights) {
                 )
             }
             HighlightTile("Top buy", h.buy, TradeColors.buy(), TradeColors.buyContainer(),
-                "No open-market buys yet. Insider and Congress buys will appear here.")
+                "No open-market buys yet. Insider and Congress buys will appear here.", onOpen)
             HighlightTile("Top sale", h.sale, TradeColors.sell(), TradeColors.sellContainer(),
-                "No open-market sales yet.")
+                "No open-market sales yet.", onOpen)
         }
     }
 }
 
 @Composable
-private fun HighlightTile(title: String, h: Highlight?, accent: Color, container: Color, emptyText: String) {
-    val context = LocalContext.current
+private fun HighlightTile(
+    title: String, h: Highlight?, accent: Color, container: Color, emptyText: String,
+    onOpen: (StockTarget) -> Unit,
+) {
     Surface(
         color = container,
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth().clickable(enabled = h != null) {
-            h?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.move.link))) }
+            h?.let {
+                val m = it.move
+                val who = m.who + if (m.category == Category.INSIDER && m.role.isNotEmpty()) " · ${m.role}" else ""
+                onOpen(StockTarget(m.ticker, m.company, "This trade", who, it.reasons, m.link, m.price,
+                    if (m.side == "buy") "Bought" else "Sold"))
+            }
         },
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -411,6 +434,8 @@ private fun HighlightTile(title: String, h: Highlight?, accent: Color, container
                     Text(r, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            Text("Tap for a summary of ${m.ticker}", style = MaterialTheme.typography.labelSmall,
+                color = accent, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -509,7 +534,7 @@ private fun TickerBadge(text: String, bg: Color, fg: Color) {
 }
 
 @Composable
-private fun AlertCard(a: Alert) {
+private fun AlertCard(a: Alert, onOpen: () -> Unit) {
     val context = LocalContext.current
     val isFund = a.category == Category.FUND
     val (badgeBg, badgeFg) = when {
@@ -520,7 +545,11 @@ private fun AlertCard(a: Alert) {
     }
 
     ElevatedCard(
-        onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.link))) },
+        onClick = {
+            // Stocks open a summary; fund reports (no single stock) open the filing.
+            if (a.ticker.isNotEmpty() && !isFund) onOpen()
+            else context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.link)))
+        },
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -614,7 +643,10 @@ private val PICK_FILTERS = listOf("Across groups", "All", "Congress", "Insiders"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PicksScreen(store: Store, tick: Int, refreshing: Boolean, onRefresh: () -> Unit) {
+private fun PicksScreen(
+    store: Store, tick: Int, refreshing: Boolean, onRefresh: () -> Unit,
+    onOpen: (StockTarget) -> Unit,
+) {
     val overlaps = remember(tick) { computeOverlaps(store.picks()) }
     var filter by rememberSaveable { mutableStateOf(PICK_FILTERS[0]) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -668,7 +700,11 @@ private fun PicksScreen(store: Store, tick: Int, refreshing: Boolean, onRefresh:
                     )
                 }
             }
-            itemsIndexed(shown) { i, o -> PickCard(rank = i + 1, o = o) }
+            itemsIndexed(shown) { i, o ->
+                PickCard(rank = i + 1, o = o, onSummary = {
+                    onOpen(StockTarget(o.ticker, o.company, "", "", emptyList(), "", 0.0))
+                })
+            }
             item { Spacer(Modifier.height(8.dp)) }
         }
     }
@@ -676,7 +712,7 @@ private fun PicksScreen(store: Store, tick: Int, refreshing: Boolean, onRefresh:
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PickCard(rank: Int, o: Overlap) {
+private fun PickCard(rank: Int, o: Overlap, onSummary: () -> Unit) {
     var expanded by rememberSaveable(o.ticker) { mutableStateOf(false) }
     val buyers = o.people.count { it.action == "buy" }
     val holders = o.people.size - buyers
@@ -718,6 +754,7 @@ private fun PickCard(rank: Int, o: Overlap) {
                 }
             }
             if (expanded) {
+                OutlinedButton(onClick = onSummary) { Text("Summary of ${o.ticker}") }
                 Category.entries.forEach { c ->
                     val people = o.people.filter { it.category == c }
                     if (people.isNotEmpty()) {
@@ -977,5 +1014,179 @@ private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChang
         }
         Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+// ============================================================ Stock summary sheet
+
+/** What was tapped: a stock, plus (optionally) the trade or filing it came from. */
+data class StockTarget(
+    val ticker: String,
+    val company: String,
+    val heading: String,          // "This trade" / "This filing", or "" for none
+    val who: String,
+    val lines: List<String>,
+    val link: String,
+    val tradePrice: Double,
+    val side: String = "",        // "Bought" / "Sold" when known
+)
+
+private data class Activity(val bought: List<Pick>, val held: List<Pick>, val sold: List<Move>)
+
+private fun activityFor(ticker: String, store: Store): Activity {
+    val picks = store.picks().filter { it.ticker == ticker }
+    return Activity(
+        bought = picks.filter { it.action == "buy" }.distinctBy { it.who },
+        held = picks.filter { it.action == "hold" }.distinctBy { it.who },
+        sold = store.moves().filter { it.ticker == ticker && it.side == "sell" }.distinctBy { it.who },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var summary by remember(t.ticker) { mutableStateOf<StockSummary?>(null) }
+    var loading by remember(t.ticker) { mutableStateOf(true) }
+    val activity = remember(t.ticker) { activityFor(t.ticker, store) }
+
+    LaunchedEffect(t.ticker) {
+        summary = withContext(Dispatchers.IO) {
+            runCatching { StockInfo.load(t.ticker, t.company, store) }.getOrNull()
+        }
+        loading = false
+    }
+
+    fun open(url: String) {
+        if (url.isNotEmpty()) context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            // ---- header ----
+            val s = summary
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TickerBadge(t.ticker, TradeColors.buyContainer(), TradeColors.buy())
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(s?.name?.ifBlank { null } ?: t.company.ifBlank { t.ticker },
+                        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    val sub = listOfNotNull(t.ticker, s?.exchange?.ifBlank { null }, s?.industry?.ifBlank { null })
+                    Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+            // ---- price ----
+            s?.price?.let { price ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(String.format(java.util.Locale.US, "\$%,.2f", price),
+                            style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (s.priceDate.isNotEmpty()) "close ${s.priceDate}" else "latest",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp))
+                    }
+                    if (t.tradePrice > 0) {
+                        val pct = (price - t.tradePrice) / t.tradePrice * 100
+                        val up = pct >= 0
+                        Text(
+                            String.format(java.util.Locale.US, "%s %.1f%% since this trade at \$%,.2f",
+                                if (up) "▲" else "▼", kotlin.math.abs(pct), t.tradePrice),
+                            color = if (up) TradeColors.buy() else TradeColors.sell(),
+                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+
+            // ---- about ----
+            if (!loading) {
+                SheetBlock("About") {
+                    Text(
+                        s?.about?.ifBlank { null } ?: "No company description found.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    s?.location?.takeIf { it.isNotBlank() }?.let {
+                        Text("Headquarters: $it", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!s?.aboutUrl.isNullOrBlank()) {
+                        TextButton(onClick = { open(s!!.aboutUrl) }) { Text("Read more on Wikipedia") }
+                    }
+                }
+            }
+
+            // ---- the trade that was tapped ----
+            if (t.heading.isNotEmpty()) {
+                SheetBlock(t.heading) {
+                    if (t.who.isNotBlank()) {
+                        Text(t.who, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    }
+                    t.lines.forEach { TradeLine(it) }
+                    if (t.link.isNotEmpty()) {
+                        OutlinedButton(onClick = { open(t.link) }) { Text("View official filing") }
+                    }
+                }
+            }
+
+            // ---- others tracking it ----
+            SheetBlock("Who else is in it") {
+                if (activity.bought.isEmpty() && activity.held.isEmpty() && activity.sold.isEmpty()) {
+                    Text("No one else you track has bought, sold or held it recently.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                PeopleLine("Bought (90 days)", activity.bought.map { "${it.who} (${it.category.label})" },
+                    TradeColors.buy())
+                PeopleLine("Funds holding it", activity.held.map { it.who },
+                    MaterialTheme.colorScheme.onSurface)
+                PeopleLine("Sold (7 days)", activity.sold.map { "${it.who} (${it.category.label})" },
+                    TradeColors.sell())
+            }
+
+            Text(
+                "Company info from the SEC and Wikipedia; price is delayed. This is a summary of public " +
+                    "information, not financial advice.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetBlock(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        content()
+    }
+}
+
+@Composable
+private fun PeopleLine(label: String, people: List<String>, color: Color) {
+    if (people.isEmpty()) return
+    Column {
+        Text("$label · ${people.size}", style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold, color = color)
+        val shown = people.take(8)
+        Text(
+            shown.joinToString("\n") { "• $it" } +
+                if (people.size > shown.size) "\n• and ${people.size - shown.size} more" else "",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

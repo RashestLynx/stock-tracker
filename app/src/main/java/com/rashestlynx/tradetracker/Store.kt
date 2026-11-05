@@ -13,6 +13,25 @@ enum class Category(val id: String, val label: String) {
     INSIDER("insider", "Insiders"),
     FUND("fund", "Funds");
 
+    // ---------------- ticker -> SEC CIK number (for company profiles) ----------------
+    private val cikFile = File(appContext.filesDir, "ticker_cik.json")
+
+    fun cachedCikMap(): Map<String, Long>? {
+        if (!cikFile.exists() || System.currentTimeMillis() - cikFile.lastModified() > 7 * DAY_MS) return null
+        return try {
+            val o = JSONObject(cikFile.readText())
+            val map = HashMap<String, Long>()
+            o.keys().forEach { map[it] = o.getLong(it) }
+            map
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun saveCikMap(map: Map<String, Long>) {
+        cikFile.writeText(JSONObject(map).toString())
+    }
+
     companion object {
         fun of(id: String): Category = entries.firstOrNull { it.id == id } ?: INSIDER
     }
@@ -81,6 +100,7 @@ data class Move(
     val valueLabel: String,   // e.g. "$2.1M" or "$1,001 - $15,000"
     val link: String,
     val key: String,
+    val price: Double = 0.0,  // price per share at the trade, when known
 )
 
 /** Settings, seen filings, alerts and picks, kept in SharedPreferences. */
@@ -225,7 +245,7 @@ class Store(context: Context) {
             Move(o.optLong("t"), Category.of(o.optString("cat")), o.optString("ticker"),
                 o.optString("company"), o.optString("who"), o.optString("role"),
                 o.optString("side"), o.optDouble("value", 0.0), o.optString("label"),
-                o.optString("link"), o.optString("key"))
+                o.optString("link"), o.optString("key"), o.optDouble("price", 0.0))
         }
     }
 
@@ -239,7 +259,7 @@ class Store(context: Context) {
             arr.put(JSONObject().put("t", it.time).put("cat", it.category.id).put("ticker", it.ticker)
                 .put("company", it.company).put("who", it.who).put("role", it.role)
                 .put("side", it.side).put("value", it.value).put("label", it.valueLabel)
-                .put("link", it.link).put("key", it.key))
+                .put("link", it.link).put("key", it.key).put("price", it.price))
         }
         prefs.edit().putString("moves", arr.toString()).apply()
     }
@@ -262,6 +282,25 @@ class Store(context: Context) {
 
     fun saveTickerMap(map: Map<String, String>) {
         tickerFile.writeText(JSONObject(map).toString())
+    }
+
+    // ---------------- ticker -> SEC CIK number (for company profiles) ----------------
+    private val cikFile = File(appContext.filesDir, "ticker_cik.json")
+
+    fun cachedCikMap(): Map<String, Long>? {
+        if (!cikFile.exists() || System.currentTimeMillis() - cikFile.lastModified() > 7 * DAY_MS) return null
+        return try {
+            val o = JSONObject(cikFile.readText())
+            val map = HashMap<String, Long>()
+            o.keys().forEach { map[it] = o.getLong(it) }
+            map
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun saveCikMap(map: Map<String, Long>) {
+        cikFile.writeText(JSONObject(map).toString())
     }
 
     companion object {

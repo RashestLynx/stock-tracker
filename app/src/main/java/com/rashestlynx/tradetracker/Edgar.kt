@@ -201,6 +201,19 @@ object Edgar {
         return map
     }
 
+    /** Ticker -> SEC CIK number, from the SEC's official company list. */
+    fun tickerCiks(userAgent: String): Map<String, Long> {
+        val json = JSONObject(get("https://www.sec.gov/files/company_tickers.json", userAgent))
+        val map = HashMap<String, Long>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val o = json.getJSONObject(keys.next())
+            val t = o.optString("ticker").uppercase(Locale.US)
+            if (t.isNotEmpty() && t !in map) map[t] = o.optLong("cik_str")
+        }
+        return map
+    }
+
     private val NAME_NOISE = setOf(
         "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "LTD", "LIMITED",
         "PLC", "LLC", "LP", "NV", "SA", "AG", "SE", "THE", "CL", "CLASS", "NEW", "DEL", "COM",

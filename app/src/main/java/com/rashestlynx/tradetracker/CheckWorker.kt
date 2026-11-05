@@ -105,6 +105,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     side = if (t.isBuy) "buy" else "sell", value = t.estValue,
                     valueLabel = t.amountRange.ifEmpty { money(t.estValue) },
                     link = t.portal.ifEmpty { Congress.SOURCE_URL }, key = t.key,
+                    price = t.estPrice,
                 ))
             }
             if (!store.watching(cat)) continue
@@ -159,12 +160,15 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             if (info.ticker.isNotEmpty()) {
                 val roleText = info.roles.joinToString(", ")
                 for ((code, side) in listOf("P" to "buy", "S" to "sell")) {
-                    val v = info.trades.filter { it.code == code }.sumOf { it.value }
+                    val these = info.trades.filter { it.code == code }
+                    val v = these.sumOf { it.value }
+                    val shares = these.sumOf { it.shares }
                     if (v > 0) newMoves.add(Move(
                         time = System.currentTimeMillis(), category = Category.INSIDER,
                         ticker = info.ticker, company = company, who = who, role = roleText,
                         side = side, value = v, valueLabel = money(v), link = f.link,
                         key = "${f.accession}|$side",
+                        price = if (shares > 0) v / shares else 0.0,
                     ))
                 }
             }
