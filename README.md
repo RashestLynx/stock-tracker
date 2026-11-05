@@ -6,6 +6,8 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **House**: U.S. representatives' stock trades (STOCK Act)
 - **Insiders**: trades by company executives, directors and 10% owners (SEC Form 4)
 - **Funds**: quarterly holdings of big investment managers (SEC 13F)
+- **SEC charges**: SEC enforcement cases for illegal insider trading, from the SEC's official litigation and press release feeds
+- **WSB**: the most-discussed and fastest-spiking stocks on r/wallstreetbets and other stock subreddits (via ApeWisdom), flagged when people you track are in the same stock
 - **Today's buy & sale**: the first thing on the home screen, the day's most notable open-market buy and sale, ranked by size, who made it, and how many others also bought the stock
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
