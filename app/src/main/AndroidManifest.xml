@@ -8,8 +8,8 @@
     <application
         android:allowBackup="true"
         android:icon="@android:drawable/ic_menu_info_details"
-        android:label="Trade Tracker"
-        android:theme="@style/Theme.AppCompat.DayNight.DarkActionBar">
+        android:label="Stock Tracker"
+        android:theme="@android:style/Theme.Material.NoActionBar">
 
         <activity
             android:name=".MainActivity"

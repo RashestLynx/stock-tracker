@@ -162,13 +162,67 @@ object Edgar {
         }
     }
 
+    /** A 13F's largest stock positions: (issuer name, value in dollars), biggest first. */
+    fun parse13FHoldings(filing: Filing, userAgent: String, top: Int = 20): List<Pair<String, Double>> {
+        val folder = filing.link.substringBeforeLast("/") + "/"
+        val items = JSONObject(get(folder + "index.json", userAgent))
+            .getJSONObject("directory").getJSONArray("item")
+        var tableName: String? = null
+        for (i in 0 until items.length()) {
+            val name = items.getJSONObject(i).getString("name")
+            val lower = name.lowercase(Locale.US)
+            if (lower.endsWith(".xml") && lower != "primary_doc.xml") { tableName = name; break }
+        }
+        if (tableName == null) return emptyList()
+
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(get(folder + tableName, userAgent).byteInputStream())
+        val totals = LinkedHashMap<String, Double>()
+        for (row in doc.documentElement.children("infoTable")) {
+            if (row.child("putCall") != null) continue // skip options
+            val name = row.text("nameOfIssuer") ?: continue
+            val value = row.text("value")?.toDoubleOrNull() ?: 0.0
+            totals[name] = (totals[name] ?: 0.0) + value
+        }
+        return totals.entries.sortedByDescending { it.value }.take(top).map { it.key to it.value }
+    }
+
+    /** SEC's official list of company names -> tickers, keyed by [normalizeName]. */
+    fun companyTickers(userAgent: String): Map<String, String> {
+        val json = JSONObject(get("https://www.sec.gov/files/company_tickers.json", userAgent))
+        val map = LinkedHashMap<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val o = json.getJSONObject(keys.next())
+            val norm = normalizeName(o.optString("title"))
+            // The file is ordered by size, so the first ticker for a name is the main one.
+            if (norm.isNotEmpty() && norm !in map) map[norm] = o.optString("ticker").uppercase(Locale.US)
+        }
+        return map
+    }
+
+    private val NAME_NOISE = setOf(
+        "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "LTD", "LIMITED",
+        "PLC", "LLC", "LP", "NV", "SA", "AG", "SE", "THE", "CL", "CLASS", "NEW", "DEL", "COM",
+        "SHS", "ORD", "ADR", "SPONSORED", "REIT",
+    )
+
+    /** "Meta Platforms, Inc." and "META PLATFORMS INC CL A" both become "META PLATFORMS". */
+    fun normalizeName(name: String): String {
+        val words = name.uppercase(Locale.US).replace(Regex("[^A-Z0-9 ]"), " ")
+            .split(" ").filter { it.isNotEmpty() && it !in NAME_NOISE }.toMutableList()
+        while (words.size > 1 && words.last().length == 1) words.removeAt(words.size - 1)
+        return words.joinToString(" ")
+    }
+
     // ---- small XML helpers ----
     private fun Element.children(name: String): List<Element> {
         val list = mutableListOf<Element>()
         val nodes = childNodes
         for (i in 0 until nodes.length) {
             val n = nodes.item(i)
-            if (n is Element && n.tagName == name) list.add(n)
+            // Compare without any namespace prefix (13F tables use e.g. "ns1:infoTable").
+            if (n is Element && n.tagName.substringAfter(':') == name) list.add(n)
         }
         return list
     }

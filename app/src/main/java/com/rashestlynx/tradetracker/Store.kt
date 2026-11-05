@@ -1,18 +1,85 @@
 package com.rashestlynx.tradetracker
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
-data class Alert(val time: Long, val title: String, val body: String, val link: String)
+/** The sections of the feed. */
+enum class Category(val id: String, val label: String) {
+    SENATE("senate", "Senate"),
+    HOUSE("house", "House"),
+    INSIDER("insider", "Insiders"),
+    FUND("fund", "Funds");
 
-/** Settings, seen filings and recent alerts, kept in SharedPreferences. */
+    companion object {
+        fun of(id: String): Category = entries.firstOrNull { it.id == id } ?: INSIDER
+    }
+}
+
+/** One alert shown in the feed and as a notification. */
+data class Alert(
+    val time: Long,
+    val category: Category,
+    val ticker: String,
+    val company: String,
+    val headline: String,      // who traded, or the fund's name
+    val lines: List<String>,   // summary lines; "Bought…"/"Sold…" lines are colored
+    val link: String,
+    val key: String,           // unique id used to avoid duplicates
+) {
+    val buy: Boolean get() = lines.any { it.startsWith("Bought") }
+    val sell: Boolean get() = lines.any { it.startsWith("Sold") }
+
+    val notificationTitle: String
+        get() = when (category) {
+            Category.FUND -> "New 13F: $headline"
+            else -> {
+                val who = when (category) {
+                    Category.SENATE -> "Senator"
+                    Category.HOUSE -> "Representative"
+                    else -> "Insider"
+                }
+                val action = when {
+                    buy && sell -> "bought and sold"
+                    buy -> "bought"
+                    sell -> "sold"
+                    else -> "filed"
+                }
+                "${ticker.ifEmpty { company }}: $who $action"
+            }
+        }
+
+    val notificationBody: String
+        get() = (listOf(headline, company) + lines).filter { it.isNotBlank() }.joinToString("\n")
+}
+
+/**
+ * A record that one person bought or holds one stock. Used for "Common picks".
+ * action = "buy" or "hold" (13F holdings).
+ */
+data class Pick(
+    val time: Long,
+    val ticker: String,
+    val company: String,
+    val who: String,
+    val category: Category,
+    val action: String,
+)
+
+/** Settings, seen filings, alerts and picks, kept in SharedPreferences. */
 class Store(context: Context) {
-    private val prefs = context.getSharedPreferences("tracker", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    val prefs: SharedPreferences =
+        appContext.getSharedPreferences("tracker", Context.MODE_PRIVATE)
 
+    // ---------------- settings ----------------
     var userAgent: String
         get() = prefs.getString("user_agent", "") ?: ""
         set(v) = prefs.edit().putString("user_agent", v.trim()).apply()
+
+    val isSetUp: Boolean get() = userAgent.contains("@")
 
     var tickers: Set<String>
         get() = (prefs.getString("tickers", "") ?: "").split(",")
@@ -27,19 +94,26 @@ class Store(context: Context) {
         get() = prefs.getFloat("min_value", 0f).toDouble()
         set(v) = prefs.edit().putFloat("min_value", v.toFloat()).apply()
 
-    var watchForm4: Boolean
-        get() = prefs.getBoolean("watch_4", true)
-        set(v) = prefs.edit().putBoolean("watch_4", v).apply()
+    fun watching(c: Category): Boolean = prefs.getBoolean("watch_${c.id}", true)
+    fun setWatching(c: Category, on: Boolean) = prefs.edit().putBoolean("watch_${c.id}", on).apply()
 
-    var watch13F: Boolean
-        get() = prefs.getBoolean("watch_13f", true)
-        set(v) = prefs.edit().putBoolean("watch_13f", v).apply()
+    var backgroundOn: Boolean
+        get() = prefs.getBoolean("background_on", true)
+        set(v) = prefs.edit().putBoolean("background_on", v).apply()
+
+    var bargoKey: String
+        get() = prefs.getString("bargo_key", "") ?: ""
+        set(v) = prefs.edit().putString("bargo_key", v.trim()).apply()
+
+    var lastCongressCheck: Long
+        get() = prefs.getLong("last_congress", 0L)
+        set(v) = prefs.edit().putLong("last_congress", v).apply()
 
     var lastStatus: String
         get() = prefs.getString("last_status", "Not checked yet") ?: ""
         set(v) = prefs.edit().putString("last_status", v).apply()
 
-    // ---- seen filings (ordered, capped so it doesn't grow forever) ----
+    // ---------------- seen items ----------------
     private fun seenList(): MutableList<String> {
         val arr = JSONArray(prefs.getString("seen", "[]"))
         return MutableList(arr.length()) { arr.getString(it) }
@@ -47,34 +121,109 @@ class Store(context: Context) {
 
     fun hasSeenAnything(): Boolean = seenList().isNotEmpty()
 
-    fun isSeen(acc: String): Boolean = acc in seenList()
+    fun seenSet(): Set<String> = seenList().toHashSet()
 
-    fun markSeen(accs: Collection<String>) {
-        if (accs.isEmpty()) return
+    fun markSeen(keys: Collection<String>) {
+        if (keys.isEmpty()) return
         val list = seenList()
-        list.addAll(accs.filter { it !in list })
-        val trimmed = list.takeLast(3000)
-        prefs.edit().putString("seen", JSONArray(trimmed).toString()).apply()
+        val existing = list.toHashSet()
+        keys.forEach { if (existing.add(it)) list.add(it) }
+        prefs.edit().putString("seen", JSONArray(list.takeLast(5000)).toString()).apply()
     }
 
-    // ---- recent alerts shown in the app ----
+    // ---------------- alerts ----------------
     fun alerts(): List<Alert> {
         val arr = JSONArray(prefs.getString("alerts", "[]"))
-        return List(arr.length()) {
-            val o = arr.getJSONObject(it)
-            Alert(o.getLong("t"), o.getString("title"), o.getString("body"), o.getString("link"))
+        val out = ArrayList<Alert>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val linesArr = o.optJSONArray("lines") ?: JSONArray()
+            out.add(
+                Alert(
+                    time = o.optLong("t"),
+                    category = Category.of(o.optString("cat")),
+                    ticker = o.optString("ticker"),
+                    company = o.optString("company"),
+                    headline = o.optString("headline"),
+                    lines = List(linesArr.length()) { linesArr.getString(it) },
+                    link = o.optString("link"),
+                    key = o.optString("key", o.optString("link")),
+                )
+            )
         }
+        return out
     }
 
-    fun addAlert(a: Alert) {
-        val list = listOf(a) + alerts()
+    fun addAlerts(new: List<Alert>) {
+        if (new.isEmpty()) return
+        val newKeys = new.map { it.key }.toHashSet()
+        val list = new.sortedByDescending { it.time } + alerts().filter { it.key !in newKeys }
         val arr = JSONArray()
-        list.take(200).forEach {
-            arr.put(JSONObject().put("t", it.time).put("title", it.title)
-                .put("body", it.body).put("link", it.link))
+        list.take(600).forEach {
+            arr.put(
+                JSONObject()
+                    .put("t", it.time).put("cat", it.category.id).put("ticker", it.ticker)
+                    .put("company", it.company).put("headline", it.headline)
+                    .put("lines", JSONArray(it.lines)).put("link", it.link).put("key", it.key)
+            )
         }
         prefs.edit().putString("alerts", arr.toString()).apply()
     }
 
     fun clearAlerts() = prefs.edit().putString("alerts", "[]").apply()
+
+    // ---------------- picks (for Common picks) ----------------
+    fun picks(): List<Pick> {
+        val arr = JSONArray(prefs.getString("picks", "[]"))
+        return List(arr.length()) {
+            val o = arr.getJSONObject(it)
+            Pick(o.optLong("t"), o.optString("ticker"), o.optString("company"),
+                o.optString("who"), Category.of(o.optString("cat")), o.optString("action"))
+        }
+    }
+
+    fun addPicks(new: List<Pick>) {
+        if (new.isEmpty()) return
+        val cutoff = System.currentTimeMillis() - PICK_WINDOW_MS
+        // One record per person + ticker + action; newest wins.
+        val merged = LinkedHashMap<String, Pick>()
+        (new + picks()).filter { it.time >= cutoff && it.ticker.isNotEmpty() }.forEach { p ->
+            val k = "${p.who}|${p.ticker}|${p.action}"
+            val old = merged[k]
+            if (old == null || p.time > old.time) merged[k] = p
+        }
+        val arr = JSONArray()
+        merged.values.sortedByDescending { it.time }.take(6000).forEach {
+            arr.put(
+                JSONObject().put("t", it.time).put("ticker", it.ticker).put("company", it.company)
+                    .put("who", it.who).put("cat", it.category.id).put("action", it.action)
+            )
+        }
+        prefs.edit().putString("picks", arr.toString()).apply()
+    }
+
+    // ---------------- SEC name -> ticker map (cached in a file, refreshed weekly) ----------------
+    private val tickerFile = File(appContext.filesDir, "company_tickers.json")
+
+    fun cachedTickerMap(): Map<String, String>? {
+        if (!tickerFile.exists()) return null
+        if (System.currentTimeMillis() - tickerFile.lastModified() > 7 * DAY_MS) return null
+        return try {
+            val o = JSONObject(tickerFile.readText())
+            val map = HashMap<String, String>()
+            o.keys().forEach { map[it] = o.getString(it) }
+            map
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun saveTickerMap(map: Map<String, String>) {
+        tickerFile.writeText(JSONObject(map).toString())
+    }
+
+    companion object {
+        const val DAY_MS = 24L * 60 * 60 * 1000
+        const val PICK_WINDOW_MS = 90 * DAY_MS
+    }
 }
