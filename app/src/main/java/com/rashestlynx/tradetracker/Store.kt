@@ -126,6 +126,11 @@ class Store(context: Context) {
         get() = prefs.getString("bargo_key", "") ?: ""
         set(v) = prefs.edit().putString("bargo_key", v.trim()).apply()
 
+    /** Background notifications for news and SEC filings about watchlist stocks. */
+    var newsAlerts: Boolean
+        get() = prefs.getBoolean("news_alerts", true)
+        set(v) = prefs.edit().putBoolean("news_alerts", v).apply()
+
     var massiveKey: String
         get() = prefs.getString("massive_key", "") ?: ""
         set(v) = prefs.edit().putString("massive_key", v.trim()).apply()

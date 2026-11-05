@@ -12,7 +12,10 @@ import java.net.URLEncoder
 import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 
-data class Filing(val accession: String, val form: String, val title: String, val link: String)
+data class Filing(
+    val accession: String, val form: String, val title: String, val link: String,
+    val updated: String = "", val summary: String = "",
+)
 
 data class Trade(val code: String, val shares: Double, val price: Double) {
     val value: Double get() = shares * price
@@ -71,12 +74,14 @@ object Edgar {
 
         val out = LinkedHashMap<String, Filing>()
         var inEntry = false
-        var title = ""; var link = ""; var term = ""; var id = ""
+        var title = ""; var link = ""; var term = ""; var id = ""; var updated = ""; var summary = ""
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             if (event == XmlPullParser.START_TAG) {
                 when (parser.name) {
-                    "entry" -> { inEntry = true; title = ""; link = ""; term = ""; id = "" }
+                    "entry" -> { inEntry = true; title = ""; link = ""; term = ""; id = ""; updated = ""; summary = "" }
+                    "updated" -> if (inEntry) updated = parser.nextText()
+                    "summary" -> if (inEntry) summary = parser.nextText()
                     "title" -> if (inEntry) title = parser.nextText()
                     "id" -> if (inEntry) id = parser.nextText()
                     "link" -> if (inEntry) link = parser.getAttributeValue(null, "href") ?: ""
@@ -87,7 +92,7 @@ object Edgar {
                 val acc = Regex("accession-number=([\\d-]+)").find(id)?.groupValues?.get(1)
                 // Each Form 4 is listed twice (reporting person + company); keep the first.
                 if (acc != null && term == form && acc !in out) {
-                    out[acc] = Filing(acc, term, title, link)
+                    out[acc] = Filing(acc, term, title, link, updated, summary)
                 }
             }
             event = parser.next()

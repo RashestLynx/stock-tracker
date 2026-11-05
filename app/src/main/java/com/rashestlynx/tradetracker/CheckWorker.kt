@@ -53,6 +53,8 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (store.watching(Category.FUND)) check13F(ua, seen, if (firstRun) 12 else 40)
         if (store.watching(Category.CHARGES)) checkCharges(ua, seen)
 
+        if (store.newsAlerts && store.tickers.isNotEmpty()) checkNews(seen, firstRun)
+
         store.addMoves(newMoves)
         store.addPicks(newPicks)
         store.addAlerts(newAlerts)
@@ -315,6 +317,37 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         v >= 1e9 -> String.format(Locale.US, "\$%.1fB", v / 1e9)
         v >= 1e6 -> String.format(Locale.US, "\$%.1fM", v / 1e6)
         else -> String.format(Locale.US, "\$%,.0f", v)
+    }
+
+    // ------------------------------------------------------------ News about watchlist stocks
+    private fun checkNews(seen: Set<String>, firstRun: Boolean) {
+        val watch = store.tickers.toList()
+        val items = mutableListOf<NewsItem>()
+        try { items += News.filings(store).filter { it.ticker in watch } } catch (_: Exception) {}
+        try { items += News.forTickers(watch).filter { it.ticker.isNotEmpty() } } catch (_: Exception) {}
+        val fresh = items.filter { it.key !in seen && System.currentTimeMillis() - it.time < 6 * 3600_000L }
+        newSeen.addAll(fresh.map { it.key })
+        if (firstRun || fresh.isEmpty()) return
+        val ctx = applicationContext
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) return
+        val nm = NotificationManagerCompat.from(ctx)
+        for (n in fresh.take(3)) {
+            val open = PendingIntent.getActivity(ctx, n.key.hashCode(),
+                Intent(Intent.ACTION_VIEW, Uri.parse(n.url)),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            nm.notify(n.key.hashCode(), NotificationCompat.Builder(ctx, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle((if (n.isFiling) "${n.ticker} filed with the SEC" else "${n.ticker} in the news"))
+                .setContentText(if (n.isFiling) n.detail else n.title)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(
+                    if (n.isFiling) "${n.title}\n${n.detail}" else "${n.title}\n${n.source}"))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build())
+        }
     }
 
     private fun notifyAll(alerts: List<Alert>) {

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -119,6 +120,7 @@ private fun rememberStoreTick(store: Store): Int {
 
 private const val TAB_FEED = 0
 private const val TAB_WSB = 4
+private const val TAB_NEWS = 5
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
@@ -168,6 +170,7 @@ fun StockTrackerApp(store: Store) {
                                 TAB_FEED -> "Stock Tracker"
                                 TAB_MOVERS -> "This week's movers"
                                 TAB_WSB -> "WallStreetBets"
+                                TAB_NEWS -> "Live news"
                                 TAB_PICKS -> "Common picks"
                                 else -> "Settings"
                             },
@@ -190,6 +193,13 @@ fun StockTrackerApp(store: Store) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Check now")
                         }
                     }
+                    if (tab != TAB_SETTINGS) {
+                        IconButton(onClick = { tab = TAB_SETTINGS }) {
+                            Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                        }
+                    } else {
+                        TextButton(onClick = { tab = TAB_FEED }) { Text("Done") }
+                    }
                 },
             )
         },
@@ -200,6 +210,12 @@ fun StockTrackerApp(store: Store) {
                     onClick = { tab = TAB_FEED },
                     icon = { Icon(Icons.Filled.Notifications, contentDescription = null) },
                     label = { Text("Feed") },
+                )
+                NavigationBarItem(
+                    selected = tab == TAB_NEWS,
+                    onClick = { tab = TAB_NEWS },
+                    icon = { Icon(Icons.Filled.Info, contentDescription = null) },
+                    label = { Text("News") },
                 )
                 NavigationBarItem(
                     selected = tab == TAB_WSB,
@@ -219,12 +235,6 @@ fun StockTrackerApp(store: Store) {
                     icon = { Icon(Icons.Filled.Star, contentDescription = null) },
                     label = { Text("Picks") },
                 )
-                NavigationBarItem(
-                    selected = tab == TAB_SETTINGS,
-                    onClick = { tab = TAB_SETTINGS },
-                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                    label = { Text("Settings") },
-                )
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -233,6 +243,7 @@ fun StockTrackerApp(store: Store) {
             when (tab) {
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_NEWS -> NewsScreen(store, onOpen = { stock = it })
                 TAB_WSB -> WsbScreen(store, onOpen = { stock = it })
                 TAB_MOVERS -> MoversScreen(store, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },
@@ -1017,6 +1028,14 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
             }
         }
 
+        var newsAlerts by remember { mutableStateOf(store.newsAlerts) }
+        Section("News alerts") {
+            SwitchRow("Watchlist news",
+                "Get notified about headlines and SEC filings for the tickers in your watchlist.", newsAlerts) {
+                newsAlerts = it; store.newsAlerts = it
+            }
+        }
+
         Section("Background checks") {
             SwitchRow("Check automatically",
                 "About every 15 minutes when you're online. Battery saver can delay this.",
@@ -1694,3 +1713,111 @@ private fun initials(name: String): String =
     name.split(" ").filter { it.isNotBlank() && it[0].isLetter() }.let { w ->
         ((w.firstOrNull()?.take(1) ?: "") + (if (w.size > 1) w.last().take(1) else "")).uppercase()
     }.ifEmpty { "?" }
+
+
+// ============================================================ Live news
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    var view by rememberSaveable { mutableIntStateOf(0) } // 0 market, 1 your stocks, 2 company filings
+    var items by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var updated by remember { mutableStateOf(0L) }
+
+    val yourTickers = remember {
+        (store.tickers.toList() + store.picks().groupingBy { it.ticker }.eachCount()
+            .entries.sortedByDescending { it.value }.map { it.key }).distinct().take(8)
+    }
+
+    // Refresh now, then every minute while this tab is open.
+    LaunchedEffect(view, reload) {
+        while (true) {
+            loading = true
+            error = null
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    when (view) {
+                        0 -> News.market()
+                        1 -> News.forTickers(yourTickers)
+                        else -> News.filings(store)
+                    }
+                }
+            }.onSuccess { items = it; updated = System.currentTimeMillis() }
+                .onFailure { error = it.message ?: "Couldn't load news" }
+            loading = false
+            delay(60_000)
+        }
+    }
+
+    PullToRefreshBox(isRefreshing = loading && items.isEmpty(), onRefresh = { reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("Market", "Your stocks", "Filings").forEachIndexed { i, label ->
+                        SegmentedButton(selected = view == i, onClick = { view = i; items = emptyList() },
+                            shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label) }
+                    }
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(TradeColors.sell(), CircleShape))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "LIVE · refreshes every minute" + if (updated > 0) " · updated ${timeAgo(updated)}" else "",
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(
+                    when (view) {
+                        0 -> "Latest market headlines from Google News."
+                        1 -> if (yourTickers.isEmpty()) "Add tickers to your watchlist in Settings to follow them here."
+                             else "Headlines about ${yourTickers.joinToString(", ")}."
+                        else -> "Official company announcements (SEC 8-K), posted the moment they're filed: earnings, CEO changes, deals and more."
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error) } }
+            if (loading && items.isEmpty()) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            items(items.take(60), key = { it.key }) { n ->
+                ElevatedCard(
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.url))) },
+                    shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(n.source.ifEmpty { "News" }, style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(timeAgo(n.time), style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(n.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        if (n.detail.isNotEmpty()) {
+                            Text(n.detail, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (n.ticker.isNotEmpty()) {
+                            TextButton(onClick = { onOpen(StockTarget(n.ticker, if (n.isFiling) n.title else "", "", "", emptyList(), "", 0.0)) }) {
+                                Text("Summary of ${n.ticker}")
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Headlines from Google News; filings from SEC EDGAR. Tap a story to read it at the source.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
