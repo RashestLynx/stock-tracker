@@ -11,7 +11,8 @@ enum class Category(val id: String, val label: String) {
     SENATE("senate", "Senate"),
     HOUSE("house", "House"),
     INSIDER("insider", "Insiders"),
-    FUND("fund", "Funds");
+    FUND("fund", "Funds"),
+    CHARGES("sec", "SEC charges");
 
     companion object {
         fun of(id: String): Category = entries.firstOrNull { it.id == id } ?: INSIDER
@@ -35,6 +36,7 @@ data class Alert(
     val notificationTitle: String
         get() = when (category) {
             Category.FUND -> "New 13F: $headline"
+            Category.CHARGES -> "SEC insider trading case"
             else -> {
                 val who = when (category) {
                     Category.SENATE -> "Senator"

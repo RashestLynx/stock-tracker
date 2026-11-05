@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -115,6 +116,7 @@ private fun rememberStoreTick(store: Store): Int {
 }
 
 private const val TAB_FEED = 0
+private const val TAB_WSB = 4
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
@@ -161,6 +163,7 @@ fun StockTrackerApp(store: Store) {
                             when (tab) {
                                 TAB_FEED -> "Stock Tracker"
                                 TAB_MOVERS -> "This week's movers"
+                                TAB_WSB -> "WallStreetBets"
                                 TAB_PICKS -> "Common picks"
                                 else -> "Settings"
                             },
@@ -195,6 +198,12 @@ fun StockTrackerApp(store: Store) {
                     label = { Text("Feed") },
                 )
                 NavigationBarItem(
+                    selected = tab == TAB_WSB,
+                    onClick = { tab = TAB_WSB },
+                    icon = { Icon(Icons.Filled.Face, contentDescription = null) },
+                    label = { Text("WSB") },
+                )
+                NavigationBarItem(
                     selected = tab == TAB_MOVERS,
                     onClick = { tab = TAB_MOVERS },
                     icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
@@ -220,6 +229,7 @@ fun StockTrackerApp(store: Store) {
             when (tab) {
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_WSB -> WsbScreen(store, onOpen = { stock = it })
                 TAB_MOVERS -> MoversScreen(store, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onOpen = { stock = it })
@@ -242,6 +252,7 @@ private fun categoryColors(c: Category): Pair<Color, Color> = when (c) {
     Category.HOUSE -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
     Category.INSIDER -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     Category.FUND -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    Category.CHARGES -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
 }
 
 @Composable
@@ -286,7 +297,7 @@ private fun FeedScreen(
             "Buys" -> a.buy
             "Sells" -> a.sell
             else -> true
-        } || category == Category.FUND
+        } || category == Category.FUND || category == Category.CHARGES
         val matchesQuery = q.isEmpty() ||
             listOf(a.ticker, a.company, a.headline).any { it.contains(q, ignoreCase = true) } ||
             a.lines.any { it.contains(q, ignoreCase = true) }
@@ -324,7 +335,7 @@ private fun FeedScreen(
                     }
                 }
                 item { SearchField(query, { query = it }, "Search ${category.label.lowercase()}") }
-                if (category != Category.FUND) {
+                if (category != Category.FUND && category != Category.CHARGES) {
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TRADE_FILTERS.forEach { f ->
@@ -458,6 +469,7 @@ private fun sectionHint(c: Category) = when (c) {
         "Congress members have up to 45 days to disclose trades. New ones are checked every few hours. Pull down to check now."
     Category.INSIDER -> "Insider trades usually show up within 2 business days. Pull down to check now."
     Category.FUND -> "Big funds file holdings every quarter, mostly near mid-Feb, May, Aug and Nov."
+    Category.CHARGES -> "When the SEC charges someone with illegal insider trading, the case shows up here. Pull down to check now."
 }
 
 @Composable
@@ -549,9 +561,9 @@ private fun TickerBadge(text: String, bg: Color, fg: Color) {
 @Composable
 private fun AlertCard(a: Alert, onOpen: () -> Unit) {
     val context = LocalContext.current
-    val isFund = a.category == Category.FUND
+    val isFund = a.category == Category.FUND || a.category == Category.CHARGES
     val (badgeBg, badgeFg) = when {
-        isFund -> categoryColors(Category.FUND)
+        isFund -> categoryColors(a.category)
         a.buy && !a.sell -> TradeColors.buyContainer() to TradeColors.buy()
         a.sell && !a.buy -> TradeColors.sellContainer() to TradeColors.sell()
         else -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
@@ -568,7 +580,12 @@ private fun AlertCard(a: Alert, onOpen: () -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TickerBadge(if (isFund) "13F" else a.ticker.ifEmpty { "—" }, badgeBg, badgeFg)
+                TickerBadge(
+                    when {
+                        a.category == Category.CHARGES -> "SEC"
+                        isFund -> "13F"
+                        else -> a.ticker.ifEmpty { "—" }
+                    }, badgeBg, badgeFg)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -861,6 +878,7 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
                 Category.SENATE to "U.S. senators' stock trades (STOCK Act)",
                 Category.HOUSE to "U.S. representatives' stock trades (STOCK Act)",
                 Category.INSIDER to "Executives, directors and 10% owners (SEC Form 4)",
+                Category.CHARGES to "SEC enforcement cases for illegal insider trading",
                 Category.FUND to "Big investment funds' quarterly holdings (SEC 13F)",
             )
             Category.entries.forEach { c ->
@@ -1386,5 +1404,139 @@ private fun MoversList(title: String, list: List<Mover>, up: Boolean, onOpen: (S
                 }
             }
         }
+    }
+}
+
+
+// ============================================================ WallStreetBets
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WsbScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    var source by rememberSaveable { mutableIntStateOf(0) } // 0 = r/wallstreetbets, 1 = all stock subs
+    var sort by rememberSaveable { mutableIntStateOf(0) }   // 0 = most talked about, 1 = spiking
+    var list by remember { mutableStateOf<List<WsbStock>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var force by remember { mutableStateOf(false) }
+    val picks = remember { store.picks() }
+
+    LaunchedEffect(source, reload) {
+        loading = true
+        error = null
+        val filter = if (source == 0) "wallstreetbets" else "all-stocks"
+        withContext(Dispatchers.IO) { runCatching { Wsb.trending(filter, force) } }
+            .onSuccess { list = it }
+            .onFailure { error = it.message ?: "Couldn't load Reddit data" }
+        force = false
+        loading = false
+    }
+
+    val shown = if (sort == 0) list.take(25)
+    else list.filter { it.mentions >= 10 && it.mentionChange != null }
+        .sortedByDescending { it.mentionChange }.take(25)
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { force = true; reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("r/wallstreetbets", "All stock subs").forEachIndexed { i, label ->
+                        SegmentedButton(selected = source == i, onClick = { source = i },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                    }
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = sort == 0, onClick = { sort = 0 }, label = { Text("Most talked about") })
+                    FilterChip(selected = sort == 1, onClick = { sort = 1 }, label = { Text("Spiking") })
+                }
+            }
+            item {
+                Text(
+                    if (sort == 0) "Most-mentioned stocks on Reddit in the last 24 hours."
+                    else "Stocks whose mentions jumped the most vs the day before.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error) } }
+            if (!loading && error == null && shown.isEmpty()) {
+                item { EmptyState("Nothing trending right now", "Pull down to refresh.") }
+            }
+            items(shown, key = { it.ticker }) { w ->
+                val trackedBy = picks.filter { it.ticker == w.ticker }.map { it.category }.distinct()
+                WsbRow(w, trackedBy) { onOpen(StockTarget(w.ticker, w.name, "", "", emptyList(), "", 0.0)) }
+            }
+            item {
+                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Wsb.SOURCE_URL))) },
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text("Reddit data from ApeWisdom. Hype isn't a recommendation; trending stocks often swing hard both ways.",
+                        style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WsbRow(w: WsbStock, trackedBy: List<Category>, onClick: () -> Unit) {
+    ElevatedCard(onClick = onClick, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("#${w.rank}", style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(40.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(w.ticker, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(w.name, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                w.mentionChange?.let { ch ->
+                    val up = ch >= 0
+                    Surface(color = if (up) TradeColors.buyContainer() else TradeColors.sellContainer(),
+                        shape = RoundedCornerShape(50)) {
+                        Text(String.format(java.util.Locale.US, "%+.0f%%", ch),
+                            color = if (up) TradeColors.buy() else TradeColors.sell(),
+                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                } ?: CategoryPillText("New")
+            }
+            Text(
+                buildString {
+                    append(String.format(java.util.Locale.US, "%,d mentions", w.mentions))
+                    append(String.format(java.util.Locale.US, " · %,d upvotes", w.upvotes))
+                    if (w.rankChange > 0) append(" · ▲${w.rankChange} spots")
+                    if (w.rankChange < 0) append(" · ▼${-w.rankChange} spots")
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (trackedBy.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Also in:", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterVertically))
+                    trackedBy.forEach { CategoryPill(it) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryPillText(text: String) {
+    Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(50)) {
+        Text(text, color = MaterialTheme.colorScheme.onTertiaryContainer,
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
     }
 }

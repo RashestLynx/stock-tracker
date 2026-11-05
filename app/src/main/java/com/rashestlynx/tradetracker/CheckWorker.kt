@@ -51,6 +51,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (store.watching(Category.SENATE) || store.watching(Category.HOUSE)) checkCongress(seen)
         if (store.watching(Category.INSIDER)) checkForm4(ua, seen, if (firstRun) 40 else 100)
         if (store.watching(Category.FUND)) check13F(ua, seen, if (firstRun) 12 else 40)
+        if (store.watching(Category.CHARGES)) checkCharges(ua, seen)
 
         store.addMoves(newMoves)
         store.addPicks(newPicks)
@@ -129,6 +130,33 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     ),
                     link = t.portal.ifEmpty { Congress.SOURCE_URL },
                     key = t.key,
+                )
+            )
+        }
+    }
+
+    // ------------------------------------------------------------ SEC insider trading cases
+    private fun checkCharges(ua: String, seen: Set<String>) {
+        val cases = try {
+            Enforcement.insiderTradingCases(ua)
+        } catch (e: Exception) {
+            errors.add("SEC charges: ${e.message}")
+            return
+        }
+        for (c in cases) {
+            if (c.key in seen) continue
+            newSeen.add(c.key)
+            val summary = c.summary.split(Regex("(?<=[.!?])\\s+")).take(2).joinToString(" ")
+            newAlerts.add(
+                Alert(
+                    time = System.currentTimeMillis(),
+                    category = Category.CHARGES,
+                    ticker = "",
+                    company = "SEC enforcement action" + if (c.date.isNotEmpty()) " · ${c.date}" else "",
+                    headline = c.title,
+                    lines = listOfNotNull(summary.ifBlank { null }),
+                    link = c.link.ifEmpty { "https://www.sec.gov/enforcement-litigation/litigation-releases" },
+                    key = c.key,
                 )
             )
         }
