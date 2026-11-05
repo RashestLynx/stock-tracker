@@ -6,6 +6,9 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **House**: U.S. representatives' stock trades (STOCK Act)
 - **Insiders**: trades by company executives, directors and 10% owners (SEC Form 4)
 - **Funds**: quarterly holdings of big investment managers (SEC 13F)
+- **Today's buy & sale**: the first thing on the home screen, the day's most notable open-market buy and sale, ranked by size, who made it, and how many others also bought the stock
+- **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
+- **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
 - **Common picks**: stocks that two or more of these people bought or hold in the last 90 days, with ones shared across different groups (say, a senator and a hedge fund) ranked first
 
 Every push to `main` rebuilds the apps automatically (see the **Actions** tab) and posts them to **Releases → Latest build**.
@@ -40,6 +43,8 @@ The first check loads recent filings into the app without sending notifications.
 
 - **Insiders and funds**: SEC EDGAR. Form 4s are filed within 2 business days of a trade; 13Fs up to 45 days after each quarter ends.
 - **Congress**: the free [Bargo Congress Trades API](https://www.bargo.ai/free-apis/congress), built from official House Clerk and Senate eFD filings. Members have up to 45 days to disclose. Without a key, the app checks Congress about every 5 hours to stay inside the free limit (100 rows a day); a free Bargo key, entered in Settings, allows hourly checks.
+- **Movers**: end-of-day prices from Massive (formerly Polygon.io). Their free Basic plan is enough; paste the free API key into the app once.
+- **Stock summaries**: company profiles from the SEC and Wikipedia; latest delayed price from Stooq.
 - **Common picks** matches 13F holdings to tickers by company name using the SEC's official company list, so a few holdings may not match.
 - Senior federal officials and state legislators aren't included: their disclosures are PDFs with no live public feed.
 
