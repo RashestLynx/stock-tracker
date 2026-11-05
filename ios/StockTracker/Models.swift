@@ -2,7 +2,7 @@ import Foundation
 
 /// The sections of the feed.
 enum Category: String, CaseIterable, Codable, Identifiable {
-    case senate, house, insider, fund
+    case senate, house, insider, fund, charges
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum Category: String, CaseIterable, Codable, Identifiable {
         case .house: return "House"
         case .insider: return "Insiders"
         case .fund: return "Funds"
+        case .charges: return "SEC charges"
         }
     }
 
@@ -21,6 +22,7 @@ enum Category: String, CaseIterable, Codable, Identifiable {
         case .house: return "U.S. representatives' stock trades (STOCK Act)"
         case .insider: return "Executives, directors and 10% owners (SEC Form 4)"
         case .fund: return "Big investment funds' quarterly holdings (SEC 13F)"
+        case .charges: return "SEC enforcement cases for illegal insider trading"
         }
     }
 }
@@ -42,6 +44,7 @@ struct Alert: Codable, Identifiable, Hashable {
 
     var notificationTitle: String {
         if category == .fund { return "New 13F: \(headline)" }
+        if category == .charges { return "SEC insider trading case" }
         let who: String
         switch category {
         case .senate: who = "Senator"

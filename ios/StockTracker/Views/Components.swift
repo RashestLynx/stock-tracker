@@ -7,6 +7,7 @@ extension Category {
         case .house: return .teal
         case .insider: return .green
         case .fund: return .orange
+        case .charges: return .red
         }
     }
 }
@@ -77,7 +78,7 @@ struct AlertRow: View {
     @EnvironmentObject var model: AppModel
 
     private var badgeColor: Color {
-        if alert.category == .fund { return Category.fund.color }
+        if alert.category == .fund || alert.category == .charges { return alert.category.color }
         if alert.buy && !alert.sell { return .green }
         if alert.sell && !alert.buy { return .red }
         return .gray
@@ -96,17 +97,18 @@ struct AlertRow: View {
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
-                    TickerBadge(text: alert.category == .fund ? "13F" : (alert.ticker.isEmpty ? "—" : alert.ticker),
+                    TickerBadge(text: alert.category == .charges ? "SEC" : alert.category == .fund ? "13F" : (alert.ticker.isEmpty ? "—" : alert.ticker),
                                 color: badgeColor)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(alert.category == .fund ? alert.headline : (alert.ticker.isEmpty ? alert.company : alert.ticker))
-                            .font(.headline).lineLimit(1)
+                        Text(alert.category == .fund || alert.category == .charges ? alert.headline
+                             : (alert.ticker.isEmpty ? alert.company : alert.ticker))
+                            .font(.headline).lineLimit(alert.category == .charges ? 3 : 1)
                         Text(alert.company).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     Text(Format.ago(alert.time)).font(.caption2).foregroundStyle(.secondary)
                 }
-                if alert.category != .fund {
+                if alert.category != .fund && alert.category != .charges {
                     Text(alert.headline).font(.subheadline.weight(.medium))
                 }
                 ForEach(alert.lines, id: \.self) { TradeLine(line: $0) }

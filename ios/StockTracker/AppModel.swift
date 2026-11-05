@@ -208,6 +208,23 @@ final class AppModel: ObservableObject {
             }
         }
 
+        // ----- SEC insider trading cases -----
+        if isWatching(.charges) {
+            do {
+                for c in try await Enforcement.insiderTradingCases(ua: ua) where !seenSet.contains(c.key) {
+                    markSeen(c.key)
+                    newAlerts.append(Alert(
+                        time: Date(), category: .charges, ticker: "",
+                        company: "SEC enforcement action" + (c.date.isEmpty ? "" : " · \(c.date)"),
+                        headline: c.title, lines: c.summary.isEmpty ? [] : [c.summary],
+                        link: c.link.isEmpty ? "https://www.sec.gov/enforcement-litigation/litigation-releases" : c.link,
+                        key: c.key))
+                }
+            } catch {
+                errors.append("SEC charges: \(error.localizedDescription)")
+            }
+        }
+
         // ----- save -----
         addMoves(newMoves)
         addPicks(newPicks)

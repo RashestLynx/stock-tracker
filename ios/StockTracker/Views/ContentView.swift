@@ -9,6 +9,9 @@ struct ContentView: View {
             FeedView(goToSettings: { tab = 2 })
                 .tabItem { Label("Feed", systemImage: "bell.fill") }
                 .tag(0)
+            WsbView()
+                .tabItem { Label("WSB", systemImage: "flame.fill") }
+                .tag(4)
             MoversView()
                 .tabItem { Label("Movers", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(3)

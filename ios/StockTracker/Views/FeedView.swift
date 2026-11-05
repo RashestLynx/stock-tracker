@@ -16,8 +16,8 @@ struct FeedView: View {
         return inSection.filter { a in
             let f: Bool
             switch filter {
-            case "Buys": f = a.buy || section == .fund
-            case "Sells": f = a.sell || section == .fund
+            case "Buys": f = a.buy || section == .fund || section == .charges
+            case "Sells": f = a.sell || section == .fund || section == .charges
             default: f = true
             }
             let m = q.isEmpty || [a.ticker, a.company, a.headline].contains { $0.localizedCaseInsensitiveContains(q) }
@@ -41,15 +41,14 @@ struct FeedView: View {
                 Section {
                     Picker("Section", selection: $section) {
                         ForEach(Category.allCases) { c in
-                            let n = model.alerts.filter { $0.category == c }.count
-                            Text(n > 0 ? "\(c.label) \(n)" : c.label).tag(c)
+                            Text(c == .charges ? "SEC" : c.label).tag(c)
                         }
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
 
-                    if section != .fund {
+                    if section != .fund && section != .charges {
                         Picker("Show", selection: $filter) {
                             ForEach(["All", "Buys", "Sells"], id: \.self) { Text($0).tag($0) }
                         }
@@ -124,6 +123,8 @@ struct FeedView: View {
             return "Insider trades usually show up within 2 business days. Pull down to check now."
         case .fund:
             return "Big funds file holdings every quarter, mostly near mid-Feb, May, Aug and Nov."
+        case .charges:
+            return "When the SEC charges someone with illegal insider trading, the case shows up here. Pull down to check now."
         }
     }
 }
