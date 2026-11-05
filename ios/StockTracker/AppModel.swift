@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     // ---------------- data ----------------
     @Published private(set) var alerts: [Alert]
     @Published private(set) var picks: [Pick]
+    @Published private(set) var moves: [Move]
     @Published private(set) var isChecking = false
     private var seen: [String]
 
@@ -41,6 +42,7 @@ final class AppModel: ObservableObject {
         lastCongressCheck = d.object(forKey: "lastCongress") as? Date ?? .distantPast
         alerts = Self.load("alerts.json") ?? []
         picks = Self.load("picks.json") ?? []
+        moves = Self.load("moves.json") ?? []
         seen = Self.load("seen.json") ?? []
     }
 
@@ -65,6 +67,7 @@ final class AppModel: ObservableObject {
         var seenSet = Set(seen)
         var newAlerts: [Alert] = []
         var newPicks: [Pick] = []
+        var newMoves: [Move] = []
         var newSeen: [String] = []
         var errors: [String] = []
         let watch = Set(tickers)
@@ -92,6 +95,17 @@ final class AppModel: ObservableObject {
                             newPicks.append(Pick(time: Format.day(t.transactionDate), ticker: t.ticker,
                                                  company: t.asset, who: t.member, category: cat, action: "buy"))
                         }
+                        if (t.isBuy || t.isSell) && !t.ticker.isEmpty && t.estValue > 0 {
+                            newMoves.append(Move(
+                                // Use the disclosure day so it counts as "today" when it's made public.
+                                time: t.disclosureDate.isEmpty ? Date() : Format.day(t.disclosureDate),
+                                category: cat, ticker: t.ticker, company: t.asset,
+                                who: (cat == .senate ? "Sen. " : "Rep. ") + t.member,
+                                role: cat == .senate ? "Senator" : "Representative",
+                                side: t.isBuy ? "buy" : "sell", value: t.estValue,
+                                valueLabel: t.amountRange.isEmpty ? Format.money(t.estValue) : t.amountRange,
+                                link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key))
+                        }
                         guard isWatching(cat), passes(t.ticker, isBuy: t.isBuy, amount: t.amountLow) else { continue }
                         let action = t.isBuy ? "Bought" : t.isSell ? "Sold" : (t.type.isEmpty ? "Traded" : t.type.capitalized)
                         let who = (cat == .senate ? "Sen. " : "Rep. ") + t.member + (t.state.isEmpty ? "" : " · \(t.state)")
@@ -118,6 +132,17 @@ final class AppModel: ObservableObject {
                     if info.trades.contains(where: { $0.code == "P" }) && !info.ticker.isEmpty {
                         newPicks.append(Pick(time: Date(), ticker: info.ticker, company: info.issuer,
                                              who: who, category: .insider, action: "buy"))
+                    }
+                    if !info.ticker.isEmpty {
+                        for (code, side) in [("P", "buy"), ("S", "sell")] {
+                            let v = info.trades.filter { $0.code == code }.reduce(0) { $0 + $1.value }
+                            if v > 0 {
+                                newMoves.append(Move(
+                                    time: Date(), category: .insider, ticker: info.ticker, company: info.issuer,
+                                    who: who, role: info.roles.joined(separator: ", "), side: side, value: v,
+                                    valueLabel: Format.money(v), link: f.link, key: "\(f.accession)|\(side)"))
+                            }
+                        }
                     }
                     if !watch.isEmpty && !watch.contains(info.ticker) { continue }
                     var trades = info.trades
@@ -174,6 +199,7 @@ final class AppModel: ObservableObject {
         }
 
         // ----- save -----
+        addMoves(newMoves)
         addPicks(newPicks)
         let newKeys = Set(newAlerts.map(\.key))
         alerts = Array((newAlerts + alerts.filter { !newKeys.contains($0.key) }).prefix(600))
@@ -200,6 +226,19 @@ final class AppModel: ObservableObject {
         }
         picks = Array(merged.values.sorted { $0.time > $1.time }.prefix(6000))
         Self.save(picks, "picks.json")
+    }
+
+    private func addMoves(_ new: [Move]) {
+        guard !new.isEmpty else { return }
+        let cutoff = Date().addingTimeInterval(-7 * 86_400)
+        var seenKeys = Set<String>()
+        moves = (new + moves).filter { m in
+            guard m.time >= cutoff, !seenKeys.contains(m.key) else { return false }
+            seenKeys.insert(m.key)
+            return true
+        }
+        moves = Array(moves.sorted { $0.time > $1.time }.prefix(3000))
+        Self.save(moves, "moves.json")
     }
 
     /// SEC name -> ticker map, cached for a week.

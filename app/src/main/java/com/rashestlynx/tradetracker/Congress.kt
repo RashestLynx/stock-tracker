@@ -14,6 +14,7 @@ data class CongressTrade(
     val asset: String,
     val type: String,
     val amountLow: Double,
+    val amountHigh: Double,
     val amountRange: String,
     val transactionDate: String,
     val disclosureDate: String,
@@ -21,6 +22,8 @@ data class CongressTrade(
 ) {
     val isBuy: Boolean get() = type.lowercase().let { "buy" in it || "purchase" in it }
     val isSell: Boolean get() = type.lowercase().let { "sell" in it || "sale" in it }
+    /** Midpoint of the disclosed range (members report ranges, not exact amounts). */
+    val estValue: Double get() = if (amountHigh > amountLow) (amountLow + amountHigh) / 2 else amountLow
     val key: String get() = "cg:$memberSlug|$ticker|$transactionDate|$type|$amountRange"
 }
 
@@ -57,6 +60,7 @@ object Congress {
                     asset = o.str("asset"),
                     type = o.str("type"),
                     amountLow = if (o.isNull("amount_low")) 0.0 else o.optDouble("amount_low", 0.0),
+                    amountHigh = if (o.isNull("amount_high")) 0.0 else o.optDouble("amount_high", 0.0),
                     amountRange = o.str("amount_range"),
                     transactionDate = o.str("transaction_date"),
                     disclosureDate = o.str("disclosure_date"),

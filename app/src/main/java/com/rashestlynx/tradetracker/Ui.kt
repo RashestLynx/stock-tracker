@@ -239,7 +239,7 @@ private fun CategoryPill(c: Category, count: Int? = null) {
 
 private val TRADE_FILTERS = listOf("All", "Buys", "Sells")
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun FeedScreen(
     store: Store,
@@ -249,6 +249,7 @@ private fun FeedScreen(
     onSetup: () -> Unit,
 ) {
     val alerts = remember(tick) { store.alerts() }
+    val highlights = remember(tick) { Highlights.compute(store.moves(), store.picks()) }
     var section by rememberSaveable { mutableIntStateOf(0) }
     var filter by rememberSaveable { mutableStateOf("All") }
     var query by rememberSaveable { mutableStateOf("") }
@@ -269,17 +270,6 @@ private fun FeedScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = section, edgePadding = 16.dp) {
-            Category.entries.forEachIndexed { i, c ->
-                val count = alerts.count { it.category == c }
-                Tab(
-                    selected = section == i,
-                    onClick = { section = i; filter = "All" },
-                    text = { Text(if (count > 0) "${c.label}  $count" else c.label) },
-                )
-            }
-        }
-
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = onRefresh,
@@ -290,7 +280,25 @@ private fun FeedScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // First thing on screen: today's top buy and sale (or setup, before that).
                 if (!store.isSetUp) item { SetupCard(onSetup) }
+                else item(key = "today") { TodayCard(highlights) }
+                // Section tabs stay pinned at the top while scrolling.
+                stickyHeader(key = "tabs") {
+                    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
+                        ScrollableTabRow(selectedTabIndex = section, edgePadding = 0.dp,
+                            containerColor = MaterialTheme.colorScheme.background) {
+                            Category.entries.forEachIndexed { i, c ->
+                                val count = alerts.count { it.category == c }
+                                Tab(
+                                    selected = section == i,
+                                    onClick = { section = i; filter = "All" },
+                                    text = { Text(if (count > 0) "${c.label}  $count" else c.label) },
+                                )
+                            }
+                        }
+                    }
+                }
                 item { SearchField(query, { query = it }, "Search ${category.label.lowercase()}") }
                 if (category != Category.FUND) {
                     item {
@@ -323,6 +331,85 @@ private fun FeedScreen(
                     item { BargoCredit() }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
+            }
+        }
+    }
+}
+
+// ============================================================ Today's buy & sale
+
+@Composable
+private fun TodayCard(h: DailyHighlights) {
+    var showInfo by rememberSaveable { mutableStateOf(false) }
+    ElevatedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Today's buy & sale", style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold)
+                    Text(if (h.label == "Today") "Biggest signals so far today" else "Nothing yet today · showing the last 3 days",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = { showInfo = !showInfo }) { Text(if (showInfo) "Hide" else "How?") }
+            }
+            if (showInfo) {
+                Text(
+                    "Ranked by trade size, who made it (CEOs and CFOs count most, then other executives, " +
+                        "directors and members of Congress), and for buys, how many other tracked people also " +
+                        "bought or hold the stock. Only open-market trades count. This shows notable activity, " +
+                        "not a prediction, and isn't financial advice.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            HighlightTile("Top buy", h.buy, TradeColors.buy(), TradeColors.buyContainer(),
+                "No open-market buys yet. Insider and Congress buys will appear here.")
+            HighlightTile("Top sale", h.sale, TradeColors.sell(), TradeColors.sellContainer(),
+                "No open-market sales yet.")
+        }
+    }
+}
+
+@Composable
+private fun HighlightTile(title: String, h: Highlight?, accent: Color, container: Color, emptyText: String) {
+    val context = LocalContext.current
+    Surface(
+        color = container,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = h != null) {
+            h?.let { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.move.link))) }
+        },
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title.uppercase(), style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold, color = accent)
+            if (h == null) {
+                Text(emptyText, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                return@Column
+            }
+            val m = h.move
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(m.ticker, style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold, color = accent)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(m.company, style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(m.who + if (m.role.isNotEmpty() && m.category == Category.INSIDER) " · ${m.role}" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                CategoryPill(m.category)
+            }
+            h.reasons.forEach { r ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(6.dp).background(accent, CircleShape))
+                    Spacer(Modifier.width(8.dp))
+                    Text(r, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }

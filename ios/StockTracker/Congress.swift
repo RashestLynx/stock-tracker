@@ -9,6 +9,7 @@ struct CongressTrade {
     let asset: String
     let type: String
     let amountLow: Double
+    let amountHigh: Double
     let amountRange: String
     let transactionDate: String
     let disclosureDate: String
@@ -16,6 +17,8 @@ struct CongressTrade {
 
     var isBuy: Bool { let t = type.lowercased(); return t.contains("buy") || t.contains("purchase") }
     var isSell: Bool { let t = type.lowercased(); return t.contains("sell") || t.contains("sale") }
+    /// Midpoint of the disclosed range (members report ranges, not exact amounts).
+    var estValue: Double { amountHigh > amountLow ? (amountLow + amountHigh) / 2 : amountLow }
     var key: String { "cg:\(memberSlug)|\(ticker)|\(transactionDate)|\(type)|\(amountRange)" }
 }
 
@@ -54,6 +57,7 @@ enum Congress {
                 asset: s(o, "asset"),
                 type: s(o, "type"),
                 amountLow: (o["amount_low"] as? NSNumber)?.doubleValue ?? 0,
+                amountHigh: (o["amount_high"] as? NSNumber)?.doubleValue ?? 0,
                 amountRange: s(o, "amount_range"),
                 transactionDate: s(o, "transaction_date"),
                 disclosureDate: s(o, "disclosure_date"),

@@ -68,6 +68,21 @@ data class Pick(
     val action: String,
 )
 
+/** One buy or sale with a dollar size, used for "Today's buy & sale". side = "buy" or "sell". */
+data class Move(
+    val time: Long,
+    val category: Category,
+    val ticker: String,
+    val company: String,
+    val who: String,
+    val role: String,
+    val side: String,
+    val value: Double,
+    val valueLabel: String,   // e.g. "$2.1M" or "$1,001 - $15,000"
+    val link: String,
+    val key: String,
+)
+
 /** Settings, seen filings, alerts and picks, kept in SharedPreferences. */
 class Store(context: Context) {
     private val appContext = context.applicationContext
@@ -200,6 +215,33 @@ class Store(context: Context) {
             )
         }
         prefs.edit().putString("picks", arr.toString()).apply()
+    }
+
+    // ---------------- moves (for Today's buy & sale), kept 7 days ----------------
+    fun moves(): List<Move> {
+        val arr = JSONArray(prefs.getString("moves", "[]"))
+        return List(arr.length()) {
+            val o = arr.getJSONObject(it)
+            Move(o.optLong("t"), Category.of(o.optString("cat")), o.optString("ticker"),
+                o.optString("company"), o.optString("who"), o.optString("role"),
+                o.optString("side"), o.optDouble("value", 0.0), o.optString("label"),
+                o.optString("link"), o.optString("key"))
+        }
+    }
+
+    fun addMoves(new: List<Move>) {
+        if (new.isEmpty()) return
+        val cutoff = System.currentTimeMillis() - 7 * DAY_MS
+        val merged = LinkedHashMap<String, Move>()
+        (new + moves()).filter { it.time >= cutoff }.forEach { if (it.key !in merged) merged[it.key] = it }
+        val arr = JSONArray()
+        merged.values.sortedByDescending { it.time }.take(3000).forEach {
+            arr.put(JSONObject().put("t", it.time).put("cat", it.category.id).put("ticker", it.ticker)
+                .put("company", it.company).put("who", it.who).put("role", it.role)
+                .put("side", it.side).put("value", it.value).put("label", it.valueLabel)
+                .put("link", it.link).put("key", it.key))
+        }
+        prefs.edit().putString("moves", arr.toString()).apply()
     }
 
     // ---------------- SEC name -> ticker map (cached in a file, refreshed weekly) ----------------

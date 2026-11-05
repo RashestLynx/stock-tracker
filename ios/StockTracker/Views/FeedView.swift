@@ -29,6 +29,15 @@ struct FeedView: View {
     var body: some View {
         NavigationStack {
             List {
+                // First thing on screen: today's top buy and sale.
+                if model.isSetUp && query.isEmpty {
+                    Section {
+                        TodayCard(highlights: Highlights.compute(moves: model.moves, picks: model.picks))
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
                 Section {
                     Picker("Section", selection: $section) {
                         ForEach(Category.allCases) { c in

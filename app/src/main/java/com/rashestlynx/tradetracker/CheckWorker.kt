@@ -33,6 +33,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
     private val newAlerts = mutableListOf<Alert>()
     private val newPicks = mutableListOf<Pick>()
     private val newSeen = mutableListOf<String>()
+    private val newMoves = mutableListOf<Move>()
     private val errors = mutableListOf<String>()
 
     override fun doWork(): Result {
@@ -51,6 +52,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (store.watching(Category.INSIDER)) checkForm4(ua, seen, if (firstRun) 40 else 100)
         if (store.watching(Category.FUND)) check13F(ua, seen, if (firstRun) 12 else 40)
 
+        store.addMoves(newMoves)
         store.addPicks(newPicks)
         store.addAlerts(newAlerts)
         store.markSeen(newSeen)
@@ -92,6 +94,18 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
 
             if (t.isBuy && t.ticker.isNotEmpty()) {
                 newPicks.add(Pick(when_, t.ticker, t.asset, t.member, cat, "buy"))
+            }
+            if ((t.isBuy || t.isSell) && t.ticker.isNotEmpty() && t.estValue > 0) {
+                newMoves.add(Move(
+                    // Use the disclosure day so it shows up as "today" when it's made public.
+                    time = if (t.disclosureDate.isNotEmpty()) parseDate(t.disclosureDate)
+                    else System.currentTimeMillis(),
+                    category = cat, ticker = t.ticker, company = t.asset,
+                    who = "$title ${t.member}", role = if (cat == Category.SENATE) "Senator" else "Representative",
+                    side = if (t.isBuy) "buy" else "sell", value = t.estValue,
+                    valueLabel = t.amountRange.ifEmpty { money(t.estValue) },
+                    link = t.portal.ifEmpty { Congress.SOURCE_URL }, key = t.key,
+                ))
             }
             if (!store.watching(cat)) continue
             if (!passesFilters(t.ticker, t.isBuy, t.amountLow)) continue
@@ -141,6 +155,18 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             if (info.trades.any { it.code == "P" } && info.ticker.isNotEmpty()) {
                 newPicks.add(Pick(System.currentTimeMillis(), info.ticker, company, who,
                     Category.INSIDER, "buy"))
+            }
+            if (info.ticker.isNotEmpty()) {
+                val roleText = info.roles.joinToString(", ")
+                for ((code, side) in listOf("P" to "buy", "S" to "sell")) {
+                    val v = info.trades.filter { it.code == code }.sumOf { it.value }
+                    if (v > 0) newMoves.add(Move(
+                        time = System.currentTimeMillis(), category = Category.INSIDER,
+                        ticker = info.ticker, company = company, who = who, role = roleText,
+                        side = side, value = v, valueLabel = money(v), link = f.link,
+                        key = "${f.accession}|$side",
+                    ))
+                }
             }
 
             if (store.tickers.isNotEmpty() && info.ticker !in store.tickers) continue
