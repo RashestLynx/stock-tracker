@@ -92,9 +92,10 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             val title = if (cat == Category.SENATE) "Sen." else "Rep."
             val who = "$title ${t.member}" + if (t.state.isNotEmpty()) " · ${t.state}" else ""
             val when_ = parseDate(t.transactionDate)
+            val pk = People.congressKey(t.memberSlug, t.chamber, t.state, t.member)
 
             if (t.isBuy && t.ticker.isNotEmpty()) {
-                newPicks.add(Pick(when_, t.ticker, t.asset, t.member, cat, "buy"))
+                newPicks.add(Pick(when_, t.ticker, t.asset, t.member, cat, "buy", person = pk))
             }
             if ((t.isBuy || t.isSell) && t.ticker.isNotEmpty() && t.estValue > 0) {
                 newMoves.add(Move(
@@ -106,7 +107,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     side = if (t.isBuy) "buy" else "sell", value = t.estValue,
                     valueLabel = t.amountRange.ifEmpty { money(t.estValue) },
                     link = t.portal.ifEmpty { Congress.SOURCE_URL }, key = t.key,
-                    price = t.estPrice,
+                    price = t.estPrice, person = pk,
                 ))
             }
             if (!store.watching(cat)) continue
@@ -130,6 +131,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     ),
                     link = t.portal.ifEmpty { Congress.SOURCE_URL },
                     key = t.key,
+                    person = pk,
                 )
             )
         }
@@ -180,10 +182,11 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
 
             val who = info.owners.joinToString(", ").ifEmpty { "Unknown" }
             val company = info.issuer
+            val pk = info.ownerCiks.firstOrNull()?.let { "ins:$it" } ?: ""
 
             if (info.trades.any { it.code == "P" } && info.ticker.isNotEmpty()) {
                 newPicks.add(Pick(System.currentTimeMillis(), info.ticker, company, who,
-                    Category.INSIDER, "buy"))
+                    Category.INSIDER, "buy", person = pk))
             }
             if (info.ticker.isNotEmpty()) {
                 val roleText = info.roles.joinToString(", ")
@@ -196,7 +199,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                         ticker = info.ticker, company = company, who = who, role = roleText,
                         side = side, value = v, valueLabel = money(v), link = f.link,
                         key = "${f.accession}|$side",
-                        price = if (shares > 0) v / shares else 0.0,
+                        price = if (shares > 0) v / shares else 0.0, person = pk,
                     ))
                 }
             }
@@ -218,6 +221,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     lines = Edgar.summarize(trades).ifEmpty { listOf("Options/derivatives only") },
                     link = f.link,
                     key = f.accession,
+                    person = pk,
                 )
             )
         }
@@ -239,6 +243,8 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             newSeen.add(f.accession)
             val fund = f.title.replace(Regex("^13F-HR\\s*-\\s*"), "")
                 .replace(Regex("\\s*\\(\\d+\\)\\s*\\(Filer\\)\\s*$"), "")
+            val pk = Regex("\\((\\d+)\\)").find(f.title)?.groupValues?.get(1)?.trimStart('0')
+                ?.let { "fund:$it" } ?: ""
             val holdings = try {
                 Edgar.parse13FHoldings(f, ua)
             } catch (e: Exception) {
@@ -250,7 +256,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             }
             mapped.forEach { (ticker, name, _) ->
                 newPicks.add(Pick(System.currentTimeMillis(), ticker, titleCase(name), fund,
-                    Category.FUND, "hold"))
+                    Category.FUND, "hold", person = pk))
             }
 
             val watch = store.tickers
@@ -271,6 +277,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     lines = lines,
                     link = f.link,
                     key = f.accession,
+                    person = pk,
                 )
             )
         }

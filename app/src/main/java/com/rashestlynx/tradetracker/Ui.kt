@@ -77,7 +77,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -132,6 +134,7 @@ fun StockTrackerApp(store: Store) {
     val scope = rememberCoroutineScope()
     val status = remember(tick) { store.lastStatus }
     var stock by remember { mutableStateOf<StockTarget?>(null) }
+    var person by remember { mutableStateOf<PersonTarget?>(null) }
 
     fun message(text: String) {
         scope.launch { snackbar.showSnackbar(text) }
@@ -154,6 +157,7 @@ fun StockTrackerApp(store: Store) {
         if (refreshing) { delay(120_000); refreshing = false } // don't spin forever offline
     }
 
+    CompositionLocalProvider(LocalOpenPerson provides { person = it }) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -242,6 +246,8 @@ fun StockTrackerApp(store: Store) {
     }
 
     stock?.let { StockSheet(it, store, onDismiss = { stock = null }) }
+    person?.let { PersonSheet(it, store, onDismiss = { person = null }) }
+    }
 }
 
 // ============================================================ Category colors
@@ -458,8 +464,12 @@ private fun HighlightTile(
                     Text(r, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("Tap for a summary of ${m.ticker}", style = MaterialTheme.typography.labelSmall,
-                color = accent, fontWeight = FontWeight.Medium)
+            val openPerson = LocalOpenPerson.current
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Tap for a summary of ${m.ticker}", style = MaterialTheme.typography.labelSmall,
+                    color = accent, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { openPerson(personOf(m)) }) { Text("Investor profile") }
+            }
         }
     }
 }
@@ -614,6 +624,12 @@ private fun AlertCard(a: Alert, onOpen: () -> Unit) {
                 Spacer(Modifier.height(6.dp))
             }
             a.lines.forEach { TradeLine(it) }
+            if (a.category != Category.CHARGES) {
+                val openPerson = LocalOpenPerson.current
+                TextButton(onClick = { openPerson(personOf(a)) }) {
+                    Text(if (a.category == Category.FUND) "Fund profile" else "Investor profile")
+                }
+            }
         }
     }
 }
@@ -791,11 +807,13 @@ private fun PickCard(rank: Int, o: Overlap, onSummary: () -> Unit) {
                         Column {
                             Text(c.label, style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold)
+                            val openPerson = LocalOpenPerson.current
                             people.forEach { p ->
                                 Text(
-                                    "• ${p.who}" + if (p.action == "hold") " (holds)" else " (bought)",
+                                    "• ${p.who}" + (if (p.action == "hold") " (holds)" else " (bought)") + "  ›",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable { openPerson(personOf(p)) }.padding(vertical = 3.dp),
                                 )
                             }
                         }
@@ -1202,11 +1220,11 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                PeopleLine("Bought (90 days)", activity.bought.map { "${it.who} (${it.category.label})" },
+                PeopleLine("Bought (90 days)", activity.bought.map { "${it.who} (${it.category.label})" to personOf(it) },
                     TradeColors.buy())
-                PeopleLine("Funds holding it", activity.held.map { it.who },
+                PeopleLine("Funds holding it", activity.held.map { it.who to personOf(it) },
                     MaterialTheme.colorScheme.onSurface)
-                PeopleLine("Sold (7 days)", activity.sold.map { "${it.who} (${it.category.label})" },
+                PeopleLine("Sold (7 days)", activity.sold.map { "${it.who} (${it.category.label})" to personOf(it) },
                     TradeColors.sell())
             }
 
@@ -1229,18 +1247,19 @@ private fun SheetBlock(title: String, content: @Composable ColumnScope.() -> Uni
 }
 
 @Composable
-private fun PeopleLine(label: String, people: List<String>, color: Color) {
+private fun PeopleLine(label: String, people: List<Pair<String, PersonTarget>>, color: Color) {
     if (people.isEmpty()) return
+    val openPerson = LocalOpenPerson.current
     Column {
         Text("$label · ${people.size}", style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold, color = color)
-        val shown = people.take(8)
-        Text(
-            shown.joinToString("\n") { "• $it" } +
-                if (people.size > shown.size) "\n• and ${people.size - shown.size} more" else "",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        people.take(10).forEach { (label2, target) ->
+            Text("• $label2  ›", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { openPerson(target) }.padding(vertical = 3.dp))
+        }
+        if (people.size > 10) Text("• and ${people.size - 10} more", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -1540,3 +1559,138 @@ private fun CategoryPillText(text: String) {
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
     }
 }
+
+
+// ============================================================ Investor profiles
+
+val LocalOpenPerson = staticCompositionLocalOf<(PersonTarget) -> Unit> { {} }
+
+private fun cleanName(who: String) = who.removePrefix("Sen. ").removePrefix("Rep. ").substringBefore(" · ")
+
+fun personOf(m: Move) = PersonTarget(m.person, cleanName(m.who), m.category, m.role)
+fun personOf(p: Pick) = PersonTarget(p.person, cleanName(p.who), p.category)
+fun personOf(a: Alert) = PersonTarget(a.person, cleanName(a.headline).substringBefore(", "), a.category,
+    a.headline.substringAfter(" · ", "").takeIf { a.category == Category.INSIDER } ?: "")
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun PersonSheet(t: PersonTarget, store: Store, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var profile by remember(t.key, t.name) { mutableStateOf<PersonProfile?>(null) }
+    var loading by remember(t.key, t.name) { mutableStateOf(true) }
+
+    // Their activity captured by this app.
+    val activity = remember(t.key, t.name) {
+        fun mine(person: String, who: String) =
+            if (t.key.isNotEmpty() && person.isNotEmpty()) person == t.key else cleanName(who).equals(t.name, true)
+        val moves = store.moves().filter { mine(it.person, it.who) }.sortedByDescending { it.time }
+        val holds = store.picks().filter { it.action == "hold" && mine(it.person, it.who) }
+        moves to holds
+    }
+
+    LaunchedEffect(t.key, t.name) {
+        profile = withContext(Dispatchers.IO) { runCatching { People.load(t, store) }.getOrNull() }
+        loading = false
+    }
+
+    fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            val p = profile
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val (bg, fg) = categoryColors(t.category)
+                TickerBadge(initials(p?.name ?: t.name), bg, fg)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(p?.name ?: t.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(p?.subtitle ?: t.category.label, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+            if (p != null && p.note.isNotEmpty()) {
+                Text(p.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (p != null && p.facts.isNotEmpty()) {
+                SheetBlock("Profile") {
+                    p.facts.forEach { (k, v) ->
+                        Row {
+                            Text(k, style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            Text(v, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+            if (p != null && p.committees.isNotEmpty()) {
+                SheetBlock("Committees") {
+                    Text("Committees oversee specific industries, which can matter when a member trades stocks in them.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    p.committees.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
+            if (p != null && p.record.isNotEmpty()) {
+                SheetBlock("Recent disclosed trades") {
+                    p.record.take(15).forEach { r ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${r.ticker.ifEmpty { "—" }} · ${r.type}", style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium)
+                                Text(listOf(r.amount, r.date).filter { it.isNotBlank() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            r.perfPct?.let { pct ->
+                                Text(String.format(java.util.Locale.US, "%+.1f%%", pct),
+                                    color = if (pct >= 0) TradeColors.buy() else TradeColors.sell(),
+                                    fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
+                    Text("% = how the stock has moved since the trade date.", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            val (moves, holds) = activity
+            SheetBlock("In this app") {
+                if (moves.isEmpty() && holds.isEmpty()) {
+                    Text("No trades from them have been captured yet.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (moves.isNotEmpty()) {
+                    Text("Buys ${moves.count { it.side == "buy" }} · Sales ${moves.count { it.side == "sell" }} (last 7 days)",
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    moves.take(12).forEach { m -> TradeLine("${if (m.side == "buy") "Bought" else "Sold"} ${m.ticker} · ${m.valueLabel}") }
+                }
+                if (holds.isNotEmpty()) {
+                    Text("Top holdings", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        holds.map { it.ticker }.distinct().take(20).forEach { CategoryPillText(it) }
+                    }
+                }
+            }
+
+            if (p != null && p.links.isNotEmpty()) {
+                SheetBlock("Official sources") {
+                    p.links.forEach { (label, url) -> TextButton(onClick = { open(url) }) { Text(label) } }
+                }
+            }
+            Text("Only public information about their public role is shown. Personal details such as home " +
+                "addresses are left out on purpose.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private fun initials(name: String): String =
+    name.split(" ").filter { it.isNotBlank() && it[0].isLetter() }.let { w ->
+        ((w.firstOrNull()?.take(1) ?: "") + (if (w.size > 1) w.last().take(1) else "")).uppercase()
+    }.ifEmpty { "?" }

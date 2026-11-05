@@ -29,6 +29,7 @@ data class Alert(
     val lines: List<String>,   // summary lines; "Bought…"/"Sold…" lines are colored
     val link: String,
     val key: String,           // unique id used to avoid duplicates
+    val person: String = "",   // person id for investor profiles (see People.kt)
 ) {
     val buy: Boolean get() = lines.any { it.startsWith("Bought") }
     val sell: Boolean get() = lines.any { it.startsWith("Sold") }
@@ -68,6 +69,7 @@ data class Pick(
     val who: String,
     val category: Category,
     val action: String,
+    val person: String = "",
 )
 
 /** One buy or sale with a dollar size, used for "Today's buy & sale". side = "buy" or "sell". */
@@ -84,6 +86,7 @@ data class Move(
     val link: String,
     val key: String,
     val price: Double = 0.0,  // price per share at the trade, when known
+    val person: String = "",
 )
 
 /** Settings, seen filings, alerts and picks, kept in SharedPreferences. */
@@ -174,6 +177,7 @@ class Store(context: Context) {
                     lines = List(linesArr.length()) { linesArr.getString(it) },
                     link = o.optString("link"),
                     key = o.optString("key", o.optString("link")),
+                    person = o.optString("person"),
                 )
             )
         }
@@ -191,6 +195,7 @@ class Store(context: Context) {
                     .put("t", it.time).put("cat", it.category.id).put("ticker", it.ticker)
                     .put("company", it.company).put("headline", it.headline)
                     .put("lines", JSONArray(it.lines)).put("link", it.link).put("key", it.key)
+                    .put("person", it.person)
             )
         }
         prefs.edit().putString("alerts", arr.toString()).apply()
@@ -204,7 +209,8 @@ class Store(context: Context) {
         return List(arr.length()) {
             val o = arr.getJSONObject(it)
             Pick(o.optLong("t"), o.optString("ticker"), o.optString("company"),
-                o.optString("who"), Category.of(o.optString("cat")), o.optString("action"))
+                o.optString("who"), Category.of(o.optString("cat")), o.optString("action"),
+                o.optString("person"))
         }
     }
 
@@ -223,6 +229,7 @@ class Store(context: Context) {
             arr.put(
                 JSONObject().put("t", it.time).put("ticker", it.ticker).put("company", it.company)
                     .put("who", it.who).put("cat", it.category.id).put("action", it.action)
+                    .put("person", it.person)
             )
         }
         prefs.edit().putString("picks", arr.toString()).apply()
@@ -236,7 +243,8 @@ class Store(context: Context) {
             Move(o.optLong("t"), Category.of(o.optString("cat")), o.optString("ticker"),
                 o.optString("company"), o.optString("who"), o.optString("role"),
                 o.optString("side"), o.optDouble("value", 0.0), o.optString("label"),
-                o.optString("link"), o.optString("key"), o.optDouble("price", 0.0))
+                o.optString("link"), o.optString("key"), o.optDouble("price", 0.0),
+                o.optString("person"))
         }
     }
 
@@ -250,7 +258,8 @@ class Store(context: Context) {
             arr.put(JSONObject().put("t", it.time).put("cat", it.category.id).put("ticker", it.ticker)
                 .put("company", it.company).put("who", it.who).put("role", it.role)
                 .put("side", it.side).put("value", it.value).put("label", it.valueLabel)
-                .put("link", it.link).put("key", it.key).put("price", it.price))
+                .put("link", it.link).put("key", it.key).put("price", it.price)
+                .put("person", it.person))
         }
         prefs.edit().putString("moves", arr.toString()).apply()
     }
@@ -310,6 +319,17 @@ class Store(context: Context) {
 
     fun saveNameMap(map: Map<String, String>) {
         nameFile.writeText(JSONObject(map).toString())
+    }
+
+    // ---------------- generic cached text files (investor profile data) ----------------
+    fun cachedText(name: String, maxAgeMs: Long): String? {
+        val f = File(appContext.filesDir, name)
+        if (!f.exists() || System.currentTimeMillis() - f.lastModified() > maxAgeMs) return null
+        return try { f.readText() } catch (e: Exception) { null }
+    }
+
+    fun saveText(name: String, text: String) {
+        try { File(appContext.filesDir, name).writeText(text) } catch (_: Exception) {}
     }
 
     companion object {

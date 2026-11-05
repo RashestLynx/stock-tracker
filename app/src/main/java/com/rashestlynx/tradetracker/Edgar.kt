@@ -22,6 +22,7 @@ data class Form4(
     val ticker: String,
     val issuer: String,
     val owners: List<String>,
+    val ownerCiks: List<String>,
     val roles: List<String>,
     val trades: List<Trade>,
 )
@@ -112,9 +113,11 @@ object Edgar {
         val root = doc.documentElement
 
         val owners = mutableListOf<String>()
+        val ownerCiks = mutableListOf<String>()
         val roles = mutableListOf<String>()
         for (owner in root.children("reportingOwner")) {
             owner.text("reportingOwnerId/rptOwnerName")?.let { owners.add(it) }
+            owner.text("reportingOwnerId/rptOwnerCik")?.let { ownerCiks.add(it.trimStart('0')) }
             val rel = owner.child("reportingOwnerRelationship") ?: continue
             val title = rel.text("officerTitle")
             when {
@@ -138,7 +141,7 @@ object Edgar {
         return Form4(
             ticker = (root.text("issuer/issuerTradingSymbol") ?: "").uppercase(Locale.US),
             issuer = root.text("issuer/issuerName") ?: "",
-            owners = owners, roles = roles, trades = trades,
+            owners = owners, ownerCiks = ownerCiks, roles = roles, trades = trades,
         )
     }
 
