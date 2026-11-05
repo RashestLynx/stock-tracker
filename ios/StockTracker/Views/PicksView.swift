@@ -75,6 +75,7 @@ struct PickRow: View {
     let rank: Int
     let overlap: Overlap
     @State private var expanded = false
+    @EnvironmentObject var model: AppModel
 
     private var summary: String {
         var s = "\(overlap.people.count) people"
@@ -88,6 +89,9 @@ struct PickRow: View {
     var body: some View {
         Section {
             DisclosureGroup(isExpanded: $expanded) {
+                Button("Summary of \(overlap.ticker)") {
+                    model.openStock = StockTarget(ticker: overlap.ticker, company: overlap.company)
+                }
                 ForEach(Category.allCases) { c in
                     let people = overlap.people.filter { $0.category == c }
                     if !people.isEmpty {

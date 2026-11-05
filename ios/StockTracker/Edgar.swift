@@ -164,6 +164,18 @@ enum Edgar {
         return map
     }
 
+    /// Ticker -> SEC CIK number, from the SEC's official company list.
+    static func tickerCiks(ua: String) async throws -> [String: Int] {
+        let data = try await get("https://www.sec.gov/files/company_tickers.json", ua: ua)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] ?? [:]
+        var map: [String: Int] = [:]
+        for o in json.values {
+            let t = (o["ticker"] as? String ?? "").uppercased()
+            if !t.isEmpty, map[t] == nil, let cik = (o["cik_str"] as? NSNumber)?.intValue { map[t] = cik }
+        }
+        return map
+    }
+
     private static let noise: Set<String> = [
         "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "LTD", "LIMITED",
         "PLC", "LLC", "LP", "NV", "SA", "AG", "SE", "THE", "CL", "CLASS", "NEW", "DEL", "COM",

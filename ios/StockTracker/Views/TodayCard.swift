@@ -36,11 +36,16 @@ struct HighlightTile: View {
     let highlight: Highlight?
     let accent: Color
     let emptyText: String
-    @Environment(\.openURL) private var openURL
+    @EnvironmentObject var model: AppModel
 
     var body: some View {
         Button {
-            if let h = highlight, let url = URL(string: h.move.link) { openURL(url) }
+            guard let h = highlight else { return }
+            let m = h.move
+            model.openStock = StockTarget(
+                ticker: m.ticker, company: m.company, heading: "This trade",
+                who: m.who + (m.category == .insider && !m.role.isEmpty ? " · \(m.role)" : ""),
+                lines: h.reasons, link: m.link, tradePrice: m.price)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased()).font(.caption.weight(.bold)).foregroundStyle(accent)
@@ -62,6 +67,7 @@ struct HighlightTile: View {
                             Text(r).font(.caption).foregroundStyle(.primary)
                         }
                     }
+                    Text("Tap for a summary of \(m.ticker)").font(.caption2.weight(.medium)).foregroundStyle(accent)
                 } else {
                     Text(emptyText).font(.subheadline).foregroundStyle(.secondary)
                 }

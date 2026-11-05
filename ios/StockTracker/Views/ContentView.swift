@@ -20,5 +20,8 @@ struct ContentView: View {
                 .tag(2)
         }
         .onAppear { if !model.isSetUp { tab = 2 } }
+        .sheet(item: $model.openStock) { target in
+            StockSheet(target: target).environmentObject(model)
+        }
     }
 }

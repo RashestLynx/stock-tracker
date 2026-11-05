@@ -13,25 +13,6 @@ enum class Category(val id: String, val label: String) {
     INSIDER("insider", "Insiders"),
     FUND("fund", "Funds");
 
-    // ---------------- ticker -> SEC CIK number (for company profiles) ----------------
-    private val cikFile = File(appContext.filesDir, "ticker_cik.json")
-
-    fun cachedCikMap(): Map<String, Long>? {
-        if (!cikFile.exists() || System.currentTimeMillis() - cikFile.lastModified() > 7 * DAY_MS) return null
-        return try {
-            val o = JSONObject(cikFile.readText())
-            val map = HashMap<String, Long>()
-            o.keys().forEach { map[it] = o.getLong(it) }
-            map
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun saveCikMap(map: Map<String, Long>) {
-        cikFile.writeText(JSONObject(map).toString())
-    }
-
     companion object {
         fun of(id: String): Category = entries.firstOrNull { it.id == id } ?: INSIDER
     }

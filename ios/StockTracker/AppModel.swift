@@ -24,6 +24,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var picks: [Pick]
     @Published private(set) var moves: [Move]
     @Published private(set) var isChecking = false
+    /// The stock whose summary sheet is open.
+    @Published var openStock: StockTarget?
     private var seen: [String]
 
     var isSetUp: Bool { userAgent.contains("@") }
@@ -104,7 +106,8 @@ final class AppModel: ObservableObject {
                                 role: cat == .senate ? "Senator" : "Representative",
                                 side: t.isBuy ? "buy" : "sell", value: t.estValue,
                                 valueLabel: t.amountRange.isEmpty ? Format.money(t.estValue) : t.amountRange,
-                                link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key))
+                                link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key,
+                                price: t.estPrice > 0 ? t.estPrice : nil))
                         }
                         guard isWatching(cat), passes(t.ticker, isBuy: t.isBuy, amount: t.amountLow) else { continue }
                         let action = t.isBuy ? "Bought" : t.isSell ? "Sold" : (t.type.isEmpty ? "Traded" : t.type.capitalized)
@@ -135,12 +138,15 @@ final class AppModel: ObservableObject {
                     }
                     if !info.ticker.isEmpty {
                         for (code, side) in [("P", "buy"), ("S", "sell")] {
-                            let v = info.trades.filter { $0.code == code }.reduce(0) { $0 + $1.value }
+                            let these = info.trades.filter { $0.code == code }
+                            let v = these.reduce(0) { $0 + $1.value }
+                            let shares = these.reduce(0) { $0 + $1.shares }
                             if v > 0 {
                                 newMoves.append(Move(
                                     time: Date(), category: .insider, ticker: info.ticker, company: info.issuer,
                                     who: who, role: info.roles.joined(separator: ", "), side: side, value: v,
-                                    valueLabel: Format.money(v), link: f.link, key: "\(f.accession)|\(side)"))
+                                    valueLabel: Format.money(v), link: f.link, key: "\(f.accession)|\(side)",
+                                    price: shares > 0 ? v / shares : nil))
                             }
                         }
                     }
@@ -239,6 +245,20 @@ final class AppModel: ObservableObject {
         }
         moves = Array(moves.sorted { $0.time > $1.time }.prefix(3000))
         Self.save(moves, "moves.json")
+    }
+
+    /// Ticker -> SEC CIK number, cached for a week.
+    func cik(for ticker: String) async -> Int? {
+        let url = Self.dir.appendingPathComponent("ciks.json")
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let modified = attrs[.modificationDate] as? Date,
+           Date().timeIntervalSince(modified) < 7 * 86_400,
+           let cached: [String: Int] = Self.load("ciks.json") {
+            return cached[ticker.uppercased()]
+        }
+        guard let map = try? await Edgar.tickerCiks(ua: userAgent) else { return nil }
+        Self.save(map, "ciks.json")
+        return map[ticker.uppercased()]
     }
 
     /// SEC name -> ticker map, cached for a week.

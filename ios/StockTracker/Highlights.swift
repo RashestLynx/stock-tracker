@@ -13,6 +13,7 @@ struct Move: Codable, Hashable {
     var valueLabel: String
     var link: String
     var key: String
+    var price: Double?   // price per share at the trade, when known
 }
 
 struct Highlight {

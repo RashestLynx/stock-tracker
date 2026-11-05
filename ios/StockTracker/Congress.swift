@@ -10,6 +10,7 @@ struct CongressTrade {
     let type: String
     let amountLow: Double
     let amountHigh: Double
+    let estPrice: Double
     let amountRange: String
     let transactionDate: String
     let disclosureDate: String
@@ -58,6 +59,7 @@ enum Congress {
                 type: s(o, "type"),
                 amountLow: (o["amount_low"] as? NSNumber)?.doubleValue ?? 0,
                 amountHigh: (o["amount_high"] as? NSNumber)?.doubleValue ?? 0,
+                estPrice: (o["est_price"] as? NSNumber)?.doubleValue ?? 0,
                 amountRange: s(o, "amount_range"),
                 transactionDate: s(o, "transaction_date"),
                 disclosureDate: s(o, "disclosure_date"),

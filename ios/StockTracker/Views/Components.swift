@@ -74,6 +74,7 @@ struct EmptyStateView: View {
 struct AlertRow: View {
     let alert: Alert
     @Environment(\.openURL) private var openURL
+    @EnvironmentObject var model: AppModel
 
     private var badgeColor: Color {
         if alert.category == .fund { return Category.fund.color }
@@ -84,7 +85,14 @@ struct AlertRow: View {
 
     var body: some View {
         Button {
-            if let url = URL(string: alert.link) { openURL(url) }
+            if !alert.ticker.isEmpty && alert.category != .fund {
+                let price = model.moves.first { $0.key == alert.key || $0.key.hasPrefix(alert.key + "|") }?.price
+                model.openStock = StockTarget(
+                    ticker: alert.ticker, company: alert.company, heading: "This filing",
+                    who: alert.headline, lines: alert.lines, link: alert.link, tradePrice: price)
+            } else if let url = URL(string: alert.link) {
+                openURL(url)
+            }
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
