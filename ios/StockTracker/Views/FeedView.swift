@@ -101,6 +101,7 @@ struct FeedView: View {
             .searchable(text: $query, prompt: "Search \(section.label.lowercased())")
             .refreshable { await model.check() }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SettingsButton() }
                 ToolbarItem(placement: .topBarTrailing) {
                     if model.isChecking {
                         ProgressView()

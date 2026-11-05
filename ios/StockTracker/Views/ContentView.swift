@@ -6,9 +6,12 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            FeedView(goToSettings: { tab = 2 })
+            FeedView(goToSettings: { model.showSettings = true })
                 .tabItem { Label("Feed", systemImage: "bell.fill") }
                 .tag(0)
+            NewsView()
+                .tabItem { Label("News", systemImage: "newspaper.fill") }
+                .tag(5)
             WsbView()
                 .tabItem { Label("WSB", systemImage: "flame.fill") }
                 .tag(4)
@@ -18,16 +21,32 @@ struct ContentView: View {
             PicksView()
                 .tabItem { Label("Picks", systemImage: "star.fill") }
                 .tag(1)
-            SettingsView(onReady: {
-                tab = 0
-                Task { await model.check() }
-            })
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                .tag(2)
         }
-        .onAppear { if !model.isSetUp { tab = 2 } }
+        .onAppear { if !model.isSetUp { model.showSettings = true } }
         .sheet(item: $model.openStock) { target in
             StockSheet(target: target).environmentObject(model)
         }
+        .background(
+            EmptyView().sheet(item: $model.openPerson) { target in
+                NavigationStack { PersonView(target: target) }.environmentObject(model)
+            }
+        )
+        .background(
+            EmptyView().sheet(isPresented: $model.showSettings) {
+                SettingsView(onReady: {
+                    model.showSettings = false
+                    tab = 0
+                    Task { await model.check() }
+                }).environmentObject(model)
+            }
+        )
+    }
+}
+
+/// Settings button shown in each tab's top bar.
+struct SettingsButton: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        Button { model.showSettings = true } label: { Image(systemName: "gearshape") }
     }
 }

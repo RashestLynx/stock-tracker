@@ -37,6 +37,7 @@ struct Alert: Codable, Identifiable, Hashable {
     var lines: [String]       // "Bought…"/"Sold…" lines are colored
     var link: String
     var key: String
+    var person: String? = nil
 
     var id: String { key }
     var buy: Bool { lines.contains { $0.hasPrefix("Bought") } }
@@ -68,6 +69,7 @@ struct Pick: Codable, Hashable {
     var who: String
     var category: Category
     var action: String
+    var person: String? = nil
 }
 
 /// A stock that two or more tracked people bought or hold.

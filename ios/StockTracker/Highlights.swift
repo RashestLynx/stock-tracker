@@ -14,6 +14,7 @@ struct Move: Codable, Hashable {
     var link: String
     var key: String
     var price: Double?   // price per share at the trade, when known
+    var person: String? = nil
 }
 
 struct Highlight {

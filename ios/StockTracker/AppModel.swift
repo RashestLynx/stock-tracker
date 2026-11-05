@@ -28,6 +28,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var isChecking = false
     /// The stock whose summary sheet is open.
     @Published var openStock: StockTarget?
+    /// The investor whose profile sheet is open.
+    @Published var openPerson: PersonTarget?
+    @Published var showSettings = false
+    @Published var newsAlerts: Bool { didSet { d.set(newsAlerts, forKey: "newsAlerts") } }
     private var seen: [String]
 
     var isSetUp: Bool { userAgent.contains("@") }
@@ -43,6 +47,7 @@ final class AppModel: ObservableObject {
         backgroundOn = d.object(forKey: "backgroundOn") as? Bool ?? true
         bargoKey = d.string(forKey: "bargoKey") ?? ""
         massiveKey = d.string(forKey: "massiveKey") ?? ""
+        newsAlerts = d.object(forKey: "newsAlerts") as? Bool ?? true
         movers = Self.load("movers.json")
         status = d.string(forKey: "status") ?? "Not checked yet"
         lastCongressCheck = d.object(forKey: "lastCongress") as? Date ?? .distantPast
@@ -97,9 +102,10 @@ final class AppModel: ObservableObject {
                     for t in trades where !seenSet.contains(t.key) {
                         markSeen(t.key)
                         let cat: Category = t.chamber == "senate" ? .senate : .house
+                        let pk = People.congressKey(slug: t.memberSlug, chamber: t.chamber, state: t.state, member: t.member)
                         if t.isBuy && !t.ticker.isEmpty {
                             newPicks.append(Pick(time: Format.day(t.transactionDate), ticker: t.ticker,
-                                                 company: t.asset, who: t.member, category: cat, action: "buy"))
+                                                 company: t.asset, who: t.member, category: cat, action: "buy", person: pk))
                         }
                         if (t.isBuy || t.isSell) && !t.ticker.isEmpty && t.estValue > 0 {
                             newMoves.append(Move(
@@ -111,7 +117,7 @@ final class AppModel: ObservableObject {
                                 side: t.isBuy ? "buy" : "sell", value: t.estValue,
                                 valueLabel: t.amountRange.isEmpty ? Format.money(t.estValue) : t.amountRange,
                                 link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key,
-                                price: t.estPrice > 0 ? t.estPrice : nil))
+                                price: t.estPrice > 0 ? t.estPrice : nil, person: pk))
                         }
                         guard isWatching(cat), passes(t.ticker, isBuy: t.isBuy, amount: t.amountLow) else { continue }
                         let action = t.isBuy ? "Bought" : t.isSell ? "Sold" : (t.type.isEmpty ? "Traded" : t.type.capitalized)
@@ -120,7 +126,7 @@ final class AppModel: ObservableObject {
                             time: Date(), category: cat, ticker: t.ticker, company: t.asset, headline: who,
                             lines: ["\(action) \(t.amountRange)".trimmingCharacters(in: .whitespaces),
                                     "Traded \(t.transactionDate) · disclosed \(t.disclosureDate)"],
-                            link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key))
+                            link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key, person: pk))
                     }
                 } catch {
                     errors.append(error.localizedDescription)
@@ -136,9 +142,10 @@ final class AppModel: ObservableObject {
                     markSeen(f.accession)
                     guard let info = try? await Edgar.parseForm4(f, ua: ua) else { continue }
                     let who = info.owners.isEmpty ? "Unknown" : info.owners.joined(separator: ", ")
+                    let pk = info.ownerCiks.first.map { "ins:\($0)" }
                     if info.trades.contains(where: { $0.code == "P" }) && !info.ticker.isEmpty {
                         newPicks.append(Pick(time: Date(), ticker: info.ticker, company: info.issuer,
-                                             who: who, category: .insider, action: "buy"))
+                                             who: who, category: .insider, action: "buy", person: pk))
                     }
                     if !info.ticker.isEmpty {
                         for (code, side) in [("P", "buy"), ("S", "sell")] {
@@ -150,7 +157,7 @@ final class AppModel: ObservableObject {
                                     time: Date(), category: .insider, ticker: info.ticker, company: info.issuer,
                                     who: who, role: info.roles.joined(separator: ", "), side: side, value: v,
                                     valueLabel: Format.money(v), link: f.link, key: "\(f.accession)|\(side)",
-                                    price: shares > 0 ? v / shares : nil))
+                                    price: shares > 0 ? v / shares : nil, person: pk))
                             }
                         }
                     }
@@ -164,7 +171,7 @@ final class AppModel: ObservableObject {
                     newAlerts.append(Alert(
                         time: Date(), category: .insider, ticker: info.ticker, company: info.issuer,
                         headline: who + role, lines: lines.isEmpty ? ["Options/derivatives only"] : lines,
-                        link: f.link, key: f.accession))
+                        link: f.link, key: f.accession, person: pk))
                 }
             } catch {
                 errors.append("Insiders: \(error.localizedDescription)")
@@ -183,6 +190,9 @@ final class AppModel: ObservableObject {
                         let fund = f.title
                             .replacingOccurrences(of: #"^13F-HR\s*-\s*"#, with: "", options: .regularExpression)
                             .replacingOccurrences(of: #"\s*\(\d+\)\s*\(Filer\)\s*$"#, with: "", options: .regularExpression)
+                        let fundCik = f.title.range(of: #"\((\d+)\)"#, options: .regularExpression)
+                            .map { String(f.title[$0].dropFirst().dropLast().drop(while: { $0 == "0" })) }
+                        let pk = fundCik.map { "fund:\($0)" }
                         let holdings = (try? await Edgar.parse13FHoldings(f, ua: ua)) ?? []
                         let total = holdings.reduce(0) { $0 + $1.1 }
                         let mapped: [(ticker: String, name: String)] = holdings.compactMap { h in
@@ -190,7 +200,7 @@ final class AppModel: ObservableObject {
                         }
                         for m in mapped {
                             newPicks.append(Pick(time: Date(), ticker: m.ticker, company: m.name,
-                                                 who: fund, category: .fund, action: "hold"))
+                                                 who: fund, category: .fund, action: "hold", person: pk))
                         }
                         if !watch.isEmpty && !mapped.contains(where: { watch.contains($0.ticker) }) { continue }
                         var lines: [String] = []
@@ -200,7 +210,7 @@ final class AppModel: ObservableObject {
                         if total > 0 { lines.append("Top \(holdings.count) positions worth \(Format.money(total))") }
                         newAlerts.append(Alert(
                             time: Date(), category: .fund, ticker: "", company: "Quarterly holdings report",
-                            headline: fund, lines: lines, link: f.link, key: f.accession))
+                            headline: fund, lines: lines, link: f.link, key: f.accession, person: pk))
                     }
                 }
             } catch {
@@ -225,6 +235,19 @@ final class AppModel: ObservableObject {
             }
         }
 
+        // ----- news about watchlist stocks -----
+        var newsToPost: [NewsItem] = []
+        if newsAlerts && !watch.isEmpty {
+            var items: [NewsItem] = []
+            let ciks = await cikMap()
+            if let f = try? await News.filings(ua: ua, ciks: ciks) { items += f.filter { watch.contains($0.ticker) } }
+            if let n = try? await News.forTickers(Array(watch)) { items += n.filter { !$0.ticker.isEmpty } }
+            for n in items where !seenSet.contains("news:" + n.url) && Date().timeIntervalSince(n.time) < 6 * 3600 {
+                markSeen("news:" + n.url)
+                newsToPost.append(n)
+            }
+        }
+
         // ----- save -----
         addMoves(newMoves)
         addPicks(newPicks)
@@ -233,7 +256,18 @@ final class AppModel: ObservableObject {
         seen = Array((seen + newSeen).suffix(5000))
         Self.save(alerts, "alerts.json")
         Self.save(seen, "seen.json")
-        if !firstRun && notify { await post(newAlerts) }
+        if !firstRun && notify {
+            await post(newAlerts)
+            for n in newsToPost.prefix(3) {
+                let c = UNMutableNotificationContent()
+                c.title = n.isFiling ? "\(n.ticker) filed with the SEC" : "\(n.ticker) in the news"
+                c.body = n.isFiling ? "\(n.title)\n\(n.detail)" : "\(n.title)\n\(n.source)"
+                c.sound = .default
+                c.userInfo = ["link": n.url]
+                try? await UNUserNotificationCenter.current().add(
+                    UNNotificationRequest(identifier: "news:" + n.url, content: c, trigger: nil))
+            }
+        }
 
         let time = Date().formatted(date: .omitted, time: .shortened)
         if !errors.isEmpty && newAlerts.isEmpty { status = "Error at \(time): \(errors[0])" }
@@ -293,16 +327,20 @@ final class AppModel: ObservableObject {
 
     /// Ticker -> SEC CIK number, cached for a week.
     func cik(for ticker: String) async -> Int? {
+        await cikMap()[ticker.uppercased()]
+    }
+
+    func cikMap() async -> [String: Int] {
         let url = Self.dir.appendingPathComponent("ciks.json")
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
            let modified = attrs[.modificationDate] as? Date,
            Date().timeIntervalSince(modified) < 7 * 86_400,
            let cached: [String: Int] = Self.load("ciks.json") {
-            return cached[ticker.uppercased()]
+            return cached
         }
-        guard let map = try? await Edgar.tickerCiks(ua: userAgent) else { return nil }
+        guard let map = try? await Edgar.tickerCiks(ua: userAgent) else { return [:] }
         Self.save(map, "ciks.json")
-        return map[ticker.uppercased()]
+        return map
     }
 
     /// SEC name -> ticker map, cached for a week.

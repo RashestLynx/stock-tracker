@@ -39,6 +39,7 @@ struct HighlightTile: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
         Button {
             guard let h = highlight else { return }
             let m = h.move
@@ -74,10 +75,18 @@ struct HighlightTile: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
         .disabled(highlight == nil)
+        if let h = highlight {
+            Button("Investor profile") { model.openPerson = personOf(h.move) }
+                .buttonStyle(.borderless)
+                .font(.footnote.weight(.medium))
+                .padding(.horizontal, 14).padding(.bottom, 12)
+        }
+        }
+        .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
     }
 }

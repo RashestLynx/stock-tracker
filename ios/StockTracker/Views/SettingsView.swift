@@ -111,6 +111,18 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle(isOn: $model.newsAlerts) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Watchlist news")
+                            Text("Get notified about headlines and SEC filings for your watchlist tickers.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("News alerts")
+                }
+
+                Section {
                     Toggle("Check in the background", isOn: $model.backgroundOn)
                         .onChange(of: model.backgroundOn) { _, _ in model.scheduleBackgroundRefresh() }
                 } footer: {
@@ -128,6 +140,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { model.showSettings = false } } }
             .onAppear {
                 email = model.userAgent
                 key = model.bargoKey

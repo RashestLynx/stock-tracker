@@ -79,9 +79,9 @@ struct StockSheet: View {
                         Text("No one else you track has bought, sold or held it recently.")
                             .foregroundStyle(.secondary)
                     }
-                    peopleGroup("Bought (90 days)", bought.map { "\($0.who) (\($0.category.label))" }, .green)
-                    peopleGroup("Funds holding it", held.map(\.who), .primary)
-                    peopleGroup("Sold (7 days)", sold.map { "\($0.who) (\($0.category.label))" }, .red)
+                    peopleGroup("Bought (90 days)", bought.map { ("\($0.who) (\($0.category.label))", personOf($0)) }, .green)
+                    peopleGroup("Funds holding it", held.map { ($0.who, personOf($0)) }, .primary)
+                    peopleGroup("Sold (7 days)", sold.map { ("\($0.who) (\($0.category.label))", personOf($0)) }, .red)
                 }
 
                 Section {
@@ -113,11 +113,17 @@ struct StockSheet: View {
     }
 
     @ViewBuilder
-    private func peopleGroup(_ label: String, _ people: [String], _ color: Color) -> some View {
+    private func peopleGroup(_ label: String, _ people: [(String, PersonTarget)], _ color: Color) -> some View {
         if !people.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(label) · \(people.count)").font(.subheadline.weight(.semibold)).foregroundStyle(color)
-                ForEach(Array(people.prefix(8)), id: \.self) { Text("• \($0)").font(.footnote).foregroundStyle(.secondary) }
+                ForEach(Array(people.prefix(8).enumerated()), id: \.offset) { _, p in
+                    NavigationLink {
+                        PersonView(target: p.1)
+                    } label: {
+                        Text("• \(p.0)").font(.footnote)
+                    }
+                }
                 if people.count > 8 {
                     Text("• and \(people.count - 8) more").font(.footnote).foregroundStyle(.secondary)
                 }

@@ -5,6 +5,8 @@ struct Filing {
     let form: String
     let title: String
     let link: String
+    var updated: String = ""
+    var summary: String = ""
 }
 
 struct Trade {
@@ -18,6 +20,7 @@ struct Form4 {
     let ticker: String
     let issuer: String
     let owners: [String]
+    var ownerCiks: [String] = []
     let roles: [String]
     let trades: [Trade]
 }
@@ -67,7 +70,9 @@ enum Edgar {
             out.append(Filing(
                 accession: acc, form: term,
                 title: (e.child("title")?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                link: e.child("link")?.attrs["href"] ?? ""
+                link: e.child("link")?.attrs["href"] ?? "",
+                updated: e.child("updated")?.text ?? "",
+                summary: e.child("summary")?.text ?? ""
             ))
         }
         return out
@@ -93,9 +98,13 @@ enum Edgar {
               let root = XNode.parse(try await get(folder(f) + xmlName, ua: ua)) else { return nil }
 
         var owners: [String] = []
+        var ownerCiks: [String] = []
         var roles: [String] = []
         for o in root.all("reportingOwner") {
             if let n = o.text("reportingOwnerId/rptOwnerName") { owners.append(n) }
+            if let c = o.text("reportingOwnerId/rptOwnerCik") {
+                ownerCiks.append(String(c.drop(while: { $0 == "0" })))
+            }
             guard let rel = o.child("reportingOwnerRelationship") else { continue }
             let flag: (String) -> Bool = { ["1", "true"].contains((rel.text($0) ?? "").lowercased()) }
             if let t = rel.text("officerTitle"), !t.isEmpty { roles.append(t) }
@@ -113,7 +122,7 @@ enum Edgar {
         return Form4(
             ticker: (root.text("issuer/issuerTradingSymbol") ?? "").uppercased(),
             issuer: root.text("issuer/issuerName") ?? "",
-            owners: owners, roles: roles, trades: trades
+            owners: owners, ownerCiks: ownerCiks, roles: roles, trades: trades
         )
     }
 

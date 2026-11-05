@@ -63,6 +63,7 @@ struct MoversView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("This week's movers")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .refreshable { await load(force: true) }
             .task { await load(force: false) }
         }

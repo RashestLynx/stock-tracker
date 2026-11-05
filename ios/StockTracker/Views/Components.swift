@@ -85,6 +85,7 @@ struct AlertRow: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
         Button {
             if !alert.ticker.isEmpty && alert.category != .fund {
                 let price = model.moves.first { $0.key == alert.key || $0.key.hasPrefix(alert.key + "|") }?.price
@@ -116,6 +117,37 @@ struct AlertRow: View {
             .padding(.vertical, 6)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
+        if alert.category != .charges {
+            Button(alert.category == .fund ? "Fund profile" : "Investor profile") {
+                model.openPerson = personOf(alert)
+            }
+            .buttonStyle(.borderless)
+            .font(.footnote.weight(.medium))
+            .padding(.bottom, 4)
+        }
+        }
     }
+}
+
+// ---------------- investor profile helpers ----------------
+func cleanName(_ who: String) -> String {
+    var s = who
+    for p in ["Sen. ", "Rep. "] where s.hasPrefix(p) { s = String(s.dropFirst(p.count)) }
+    return s.components(separatedBy: " · ").first ?? s
+}
+
+func personOf(_ m: Move) -> PersonTarget {
+    PersonTarget(key: m.person ?? "", name: cleanName(m.who), category: m.category, role: m.role)
+}
+
+func personOf(_ p: Pick) -> PersonTarget {
+    PersonTarget(key: p.person ?? "", name: cleanName(p.who), category: p.category)
+}
+
+func personOf(_ a: Alert) -> PersonTarget {
+    let role = a.category == .insider ? (a.headline.components(separatedBy: " · ").dropFirst().first ?? "") : ""
+    return PersonTarget(key: a.person ?? "", name: cleanName(a.headline).components(separatedBy: ", ").first ?? a.headline,
+                        category: a.category, role: role)
 }

@@ -65,6 +65,7 @@ struct PicksView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Common picks")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .searchable(text: $query, prompt: "Search ticker, company or person")
             .refreshable { await model.check() }
         }
@@ -98,8 +99,11 @@ struct PickRow: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(c.label).font(.subheadline.weight(.semibold)).foregroundStyle(c.color)
                             ForEach(people, id: \.who) { p in
-                                Text("• \(p.who) (\(p.action == "hold" ? "holds" : "bought"))")
-                                    .font(.footnote).foregroundStyle(.secondary)
+                                Button("• \(p.who) (\(p.action == "hold" ? "holds" : "bought"))  ›") {
+                                    model.openPerson = personOf(p)
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.footnote)
                             }
                         }
                         .padding(.vertical, 2)

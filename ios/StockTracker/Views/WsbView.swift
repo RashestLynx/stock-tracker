@@ -60,6 +60,7 @@ struct WsbView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("WallStreetBets")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .refreshable { await load() }
             .task(id: source) { await load() }
         }
