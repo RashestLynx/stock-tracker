@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -52,6 +53,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -111,8 +115,9 @@ private fun rememberStoreTick(store: Store): Int {
 }
 
 private const val TAB_FEED = 0
-private const val TAB_PICKS = 1
-private const val TAB_SETTINGS = 2
+private const val TAB_MOVERS = 1
+private const val TAB_PICKS = 2
+private const val TAB_SETTINGS = 3
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,12 +160,13 @@ fun StockTrackerApp(store: Store) {
                         Text(
                             when (tab) {
                                 TAB_FEED -> "Stock Tracker"
+                                TAB_MOVERS -> "This week's movers"
                                 TAB_PICKS -> "Common picks"
                                 else -> "Settings"
                             },
                             fontWeight = FontWeight.SemiBold,
                         )
-                        if (tab != TAB_SETTINGS) {
+                        if (tab == TAB_FEED || tab == TAB_PICKS) {
                             Text(
                                 status,
                                 style = MaterialTheme.typography.labelMedium,
@@ -172,7 +178,7 @@ fun StockTrackerApp(store: Store) {
                     }
                 },
                 actions = {
-                    if (tab != TAB_SETTINGS) {
+                    if (tab == TAB_FEED || tab == TAB_PICKS) {
                         IconButton(onClick = { checkNow() }) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Check now")
                         }
@@ -189,10 +195,16 @@ fun StockTrackerApp(store: Store) {
                     label = { Text("Feed") },
                 )
                 NavigationBarItem(
+                    selected = tab == TAB_MOVERS,
+                    onClick = { tab = TAB_MOVERS },
+                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
+                    label = { Text("Movers") },
+                )
+                NavigationBarItem(
                     selected = tab == TAB_PICKS,
                     onClick = { tab = TAB_PICKS },
                     icon = { Icon(Icons.Filled.Star, contentDescription = null) },
-                    label = { Text("Common picks") },
+                    label = { Text("Picks") },
                 )
                 NavigationBarItem(
                     selected = tab == TAB_SETTINGS,
@@ -208,6 +220,7 @@ fun StockTrackerApp(store: Store) {
             when (tab) {
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_MOVERS -> MoversScreen(store, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onOpen = { stock = it })
                 else -> SettingsScreen(store, onMessage = { message(it) }, onReady = {
@@ -946,6 +959,28 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
             }
         }
 
+        var massiveKey by rememberSaveable { mutableStateOf(store.massiveKey) }
+        Section("Market data",
+            "The Movers tab uses a free key from Massive (formerly Polygon.io) for weekly stock prices.") {
+            OutlinedTextField(
+                value = massiveKey,
+                onValueChange = { massiveKey = it },
+                label = { Text("Massive API key") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    store.massiveKey = massiveKey
+                    store.moversCache = ""
+                    onMessage("Saved")
+                }) { Text("Save key") }
+                OutlinedButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MASSIVE_SIGNUP)))
+                }) { Text("Get a free key") }
+            }
+        }
+
         Section("Background checks") {
             SwitchRow("Check automatically",
                 "About every 15 minutes when you're online. Battery saver can delay this.",
@@ -1188,5 +1223,168 @@ private fun PeopleLine(label: String, people: List<String>, color: Color) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+
+// ============================================================ Movers (best / worst of the week)
+
+private const val MASSIVE_SIGNUP = "https://massive.com/dashboard/signup"
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MoversScreen(store: Store, onOpen: (StockTarget) -> Unit, onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    var result by remember { mutableStateOf(Movers.cached(store)) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var scope by rememberSaveable { mutableIntStateOf(0) } // 0 = whole market, 1 = people you track
+    var hasKey by remember { mutableStateOf(store.massiveKey.isNotBlank()) }
+    var keyInput by rememberSaveable { mutableStateOf("") }
+    var reloadToken by remember { mutableIntStateOf(0) }
+    var force by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hasKey, reloadToken) {
+        if (!hasKey) return@LaunchedEffect
+        loading = true
+        error = null
+        val r = withContext(Dispatchers.IO) { runCatching { Movers.load(store, force) } }
+        r.onSuccess { result = it }.onFailure { error = it.message ?: "Couldn't load market data" }
+        force = false
+        loading = false
+    }
+
+    PullToRefreshBox(
+        isRefreshing = loading,
+        onRefresh = { force = true; reloadToken++ },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (!hasKey) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("One-time setup", style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold)
+                            Text("Weekly prices for every U.S. stock come from Massive (formerly Polygon.io). " +
+                                "Their free plan works: sign up, copy your API key, and paste it here.",
+                                style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MASSIVE_SIGNUP)))
+                            }) { Text("Get a free key") }
+                            OutlinedTextField(
+                                value = keyInput, onValueChange = { keyInput = it },
+                                label = { Text("Paste API key") }, singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Button(
+                                onClick = {
+                                    store.massiveKey = keyInput
+                                    hasKey = keyInput.isNotBlank()
+                                    if (hasKey) onMessage("Key saved")
+                                },
+                                enabled = keyInput.isNotBlank(),
+                            ) { Text("Save and load movers") }
+                        }
+                    }
+                }
+                return@LazyColumn
+            }
+
+            item {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("Whole market", "People you track").forEachIndexed { i, label ->
+                        SegmentedButton(
+                            selected = scope == i,
+                            onClick = { scope = i },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        ) { Text(label) }
+                    }
+                }
+            }
+
+            val r = result
+            item {
+                Text(
+                    if (r != null) "Price change from ${r.fromDate} to ${r.toDate} (closing prices)." +
+                        if (scope == 0) " U.S. stocks over \$5 with real trading volume." else
+                            " Only stocks the people you track bought, sold or hold."
+                    else "Loading this week's prices…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            error?.let { e ->
+                item {
+                    Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (r != null) {
+                val gainers = if (scope == 0) r.marketGainers else r.trackedGainers
+                val losers = if (scope == 0) r.marketLosers else r.trackedLosers
+                item { MoversList("Top 10 this week", gainers, true, onOpen) }
+                item { MoversList("Bottom 10 this week", losers, false, onOpen) }
+            }
+            item {
+                Text("Data from Massive. Past performance isn't a prediction or financial advice.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoversList(title: String, list: List<Mover>, up: Boolean, onOpen: (StockTarget) -> Unit) {
+    val accent = if (up) TradeColors.buy() else TradeColors.sell()
+    val container = if (up) TradeColors.buyContainer() else TradeColors.sellContainer()
+    ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                color = accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            if (list.isEmpty()) {
+                Text("Nothing to show yet.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp))
+            }
+            list.forEachIndexed { i, m ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(StockTarget(m.ticker, m.name, "", "", emptyList(), "", 0.0)) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${i + 1}", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(24.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(m.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(m.name, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Surface(color = container, shape = RoundedCornerShape(50)) {
+                            Text(String.format(java.util.Locale.US, "%+.1f%%", m.pct),
+                                color = accent, fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
+                        Text(String.format(java.util.Locale.US, "\$%,.2f", m.price),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
     }
 }

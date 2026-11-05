@@ -121,6 +121,14 @@ class Store(context: Context) {
         get() = prefs.getString("bargo_key", "") ?: ""
         set(v) = prefs.edit().putString("bargo_key", v.trim()).apply()
 
+    var massiveKey: String
+        get() = prefs.getString("massive_key", "") ?: ""
+        set(v) = prefs.edit().putString("massive_key", v.trim()).apply()
+
+    var moversCache: String
+        get() = prefs.getString("movers_cache", "") ?: ""
+        set(v) = prefs.edit().putString("movers_cache", v).apply()
+
     var lastCongressCheck: Long
         get() = prefs.getLong("last_congress", 0L)
         set(v) = prefs.edit().putLong("last_congress", v).apply()
@@ -282,6 +290,24 @@ class Store(context: Context) {
 
     fun saveCikMap(map: Map<String, Long>) {
         cikFile.writeText(JSONObject(map).toString())
+    }
+
+    private val nameFile = File(appContext.filesDir, "ticker_names.json")
+
+    fun cachedNameMap(): Map<String, String>? {
+        if (!nameFile.exists() || System.currentTimeMillis() - nameFile.lastModified() > 7 * DAY_MS) return null
+        return try {
+            val o = JSONObject(nameFile.readText())
+            val map = HashMap<String, String>()
+            o.keys().forEach { map[it] = o.getString(it) }
+            map
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun saveNameMap(map: Map<String, String>) {
+        nameFile.writeText(JSONObject(map).toString())
     }
 
     companion object {
