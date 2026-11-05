@@ -1229,7 +1229,7 @@ private fun PeopleLine(label: String, people: List<String>, color: Color) {
 
 // ============================================================ Movers (best / worst of the week)
 
-private const val MASSIVE_SIGNUP = "https://massive.com/dashboard/signup"
+private const val MASSIVE_SIGNUP = "https://massive.com/pricing"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

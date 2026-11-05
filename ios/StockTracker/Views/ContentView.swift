@@ -9,8 +9,11 @@ struct ContentView: View {
             FeedView(goToSettings: { tab = 2 })
                 .tabItem { Label("Feed", systemImage: "bell.fill") }
                 .tag(0)
+            MoversView()
+                .tabItem { Label("Movers", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(3)
             PicksView()
-                .tabItem { Label("Common picks", systemImage: "star.fill") }
+                .tabItem { Label("Picks", systemImage: "star.fill") }
                 .tag(1)
             SettingsView(onReady: {
                 tab = 0

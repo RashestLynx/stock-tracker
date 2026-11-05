@@ -16,6 +16,8 @@ final class AppModel: ObservableObject {
     @Published var watching: [String: Bool] { didSet { d.set(watching, forKey: "watching") } }
     @Published var backgroundOn: Bool { didSet { d.set(backgroundOn, forKey: "backgroundOn") } }
     @Published var bargoKey: String { didSet { d.set(bargoKey, forKey: "bargoKey") } }
+    @Published var massiveKey: String { didSet { d.set(massiveKey, forKey: "massiveKey"); movers = nil } }
+    @Published var movers: MoversResult?
     @Published var status: String { didSet { d.set(status, forKey: "status") } }
     private var lastCongressCheck: Date { didSet { d.set(lastCongressCheck, forKey: "lastCongress") } }
 
@@ -40,6 +42,8 @@ final class AppModel: ObservableObject {
         watching = d.dictionary(forKey: "watching") as? [String: Bool] ?? [:]
         backgroundOn = d.object(forKey: "backgroundOn") as? Bool ?? true
         bargoKey = d.string(forKey: "bargoKey") ?? ""
+        massiveKey = d.string(forKey: "massiveKey") ?? ""
+        movers = Self.load("movers.json")
         status = d.string(forKey: "status") ?? "Not checked yet"
         lastCongressCheck = d.object(forKey: "lastCongress") as? Date ?? .distantPast
         alerts = Self.load("alerts.json") ?? []
@@ -245,6 +249,29 @@ final class AppModel: ObservableObject {
         }
         moves = Array(moves.sorted { $0.time > $1.time }.prefix(3000))
         Self.save(moves, "moves.json")
+    }
+
+    /// Loads the week's best and worst performers (cached for 6 hours unless forced).
+    func loadMovers(force: Bool) async throws {
+        if !force, let m = movers, Date().timeIntervalSince(m.fetchedAt) < 6 * 3600 { return }
+        let tracked = Set(picks.map(\.ticker) + moves.map(\.ticker))
+        let names = await tickerNames()
+        let r = try await Movers.load(key: massiveKey, names: names, tracked: tracked)
+        movers = r
+        Self.save(r, "movers.json")
+    }
+
+    private func tickerNames() async -> [String: String] {
+        let url = Self.dir.appendingPathComponent("names.json")
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let modified = attrs[.modificationDate] as? Date,
+           Date().timeIntervalSince(modified) < 7 * 86_400,
+           let cached: [String: String] = Self.load("names.json") {
+            return cached
+        }
+        guard let map = try? await Edgar.tickerNames(ua: userAgent) else { return [:] }
+        Self.save(map, "names.json")
+        return map
     }
 
     /// Ticker -> SEC CIK number, cached for a week.

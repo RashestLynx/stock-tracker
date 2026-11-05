@@ -6,6 +6,7 @@ struct SettingsView: View {
 
     @State private var email = ""
     @State private var key = ""
+    @State private var massiveKey = ""
     @State private var newTicker = ""
     @State private var savedMessage: String?
 
@@ -100,6 +101,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    SecureField("Massive API key", text: $massiveKey)
+                    Button("Save key") { model.massiveKey = massiveKey.trimmingCharacters(in: .whitespaces) }
+                    Link("Get a free key", destination: URL(string: Movers.signupURL)!)
+                } header: {
+                    Text("Market data")
+                } footer: {
+                    Text("The Movers tab uses a free key from Massive (formerly Polygon.io) for weekly stock prices.")
+                }
+
+                Section {
                     Toggle("Check in the background", isOn: $model.backgroundOn)
                         .onChange(of: model.backgroundOn) { _, _ in model.scheduleBackgroundRefresh() }
                 } footer: {
@@ -120,6 +131,7 @@ struct SettingsView: View {
             .onAppear {
                 email = model.userAgent
                 key = model.bargoKey
+                massiveKey = model.massiveKey
             }
         }
     }
