@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main]
+    paths-ignore: ["ios/**", ".github/workflows/ios.yml", "README.md"]
   workflow_dispatch:
 
 permissions:
@@ -37,8 +38,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk TradeTracker.apk
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest TradeTracker.apk \
+          gh release view latest >/dev/null 2>&1 || gh release create latest \
             --title "Latest build" \
-            --notes "Built automatically from commit ${{ github.sha }}" \
-            --target "${{ github.sha }}"
+            --notes "Android: download TradeTracker.apk. iPhone: download StockTracker.ipa and install it with Sideloadly (see README)."
+          gh release upload latest TradeTracker.apk --clobber

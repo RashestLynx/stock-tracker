@@ -7,3 +7,8 @@ local.properties
 *.apk
 edgar_seen.db
 __pycache__/
+ios/build/
+ios/*.xcodeproj/
+ios/Payload/
+ios/*.ipa
+ios/build.log
