@@ -1735,7 +1735,7 @@ private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
 
     // Refresh now, then every minute while this tab is open.
     LaunchedEffect(view, reload) {
-        while (true) {
+        while (view != 3) {
             loading = true
             error = null
             withContext(Dispatchers.IO) {
@@ -1743,7 +1743,8 @@ private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
                     when (view) {
                         0 -> News.market()
                         1 -> News.forTickers(yourTickers)
-                        else -> News.filings(store)
+                        2 -> News.filings(store)
+                        else -> emptyList()
                     }
                 }
             }.onSuccess { items = it; updated = System.currentTimeMillis() }
@@ -1761,11 +1762,15 @@ private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
         ) {
             item {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf("Market", "Your stocks", "Filings").forEachIndexed { i, label ->
+                    listOf("Market", "Stocks", "Filings", "People").forEachIndexed { i, label ->
                         SegmentedButton(selected = view == i, onClick = { view = i; items = emptyList() },
-                            shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label) }
+                            shape = SegmentedButtonDefaults.itemShape(i, 4)) { Text(label, maxLines = 1) }
                     }
                 }
+            }
+            if (view == 3) {
+                item { FollowingList(store) }
+                return@LazyColumn
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1817,6 +1822,115 @@ private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
             item {
                 Text("Headlines from Google News; filings from SEC EDGAR. Tap a story to read it at the source.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+
+// ============================================================ People you follow (creators etc.)
+
+@Composable
+private fun FollowingList(store: Store) {
+    var list by remember { mutableStateOf(Following.load(store)) }
+    var adding by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Private investors like finance YouTubers don't have to report their trades, so this follows " +
+            "what they share publicly: their newest videos (where they often say what they're buying or selling), " +
+            "news about them, and their businesses. You'll get a notification when they post a new video.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        list.forEach { f ->
+            FollowedCard(f, store, onRemove = {
+                list = list - f
+                Following.save(store, list)
+            })
+        }
+        if (adding) {
+            var name by rememberSaveable { mutableStateOf("") }
+            var handle by rememberSaveable { mutableStateOf("") }
+            Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Follow someone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(handle, { handle = it }, label = { Text("YouTube handle (optional), e.g. @grahamstephan") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(enabled = name.isNotBlank(), onClick = {
+                            list = list + Followed(name.trim(), handle.trim().removePrefix("@"), "\"${name.trim()}\"",
+                                emptyList(), emptyList())
+                            Following.save(store, list)
+                            adding = false
+                        }) { Text("Follow") }
+                        TextButton(onClick = { adding = false }) { Text("Cancel") }
+                    }
+                }
+            }
+        } else {
+            OutlinedButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Follow someone else")
+            }
+        }
+    }
+}
+
+@Composable
+private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
+    val context = LocalContext.current
+    var videos by remember(f.name) { mutableStateOf<List<Video>?>(null) }
+    var news by remember(f.name) { mutableStateOf<List<NewsItem>?>(null) }
+    LaunchedEffect(f.name) {
+        videos = withContext(Dispatchers.IO) { runCatching { Following.videos(f, store) }.getOrDefault(emptyList()) }
+        news = withContext(Dispatchers.IO) { runCatching { News.search(f.newsQuery) }.getOrDefault(emptyList()) }
+    }
+    fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TickerBadge(initials(f.name), MaterialTheme.colorScheme.tertiaryContainer,
+                    MaterialTheme.colorScheme.onTertiaryContainer)
+                Spacer(Modifier.width(12.dp))
+                Text(f.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f))
+                TextButton(onClick = onRemove) { Text("Unfollow") }
+            }
+            if (f.businesses.isNotEmpty()) {
+                Text("Businesses", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                f.businesses.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+            }
+            Text("Latest videos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            when {
+                videos == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                videos!!.isEmpty() -> Text(if (f.youtube.isBlank()) "No YouTube channel added." else "Couldn't load videos right now.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> videos!!.take(5).forEach { v ->
+                    Column(Modifier.fillMaxWidth().clickable { open(v.url) }.padding(vertical = 4.dp)) {
+                        Text(v.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(timeAgo(v.time), style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text("In the news", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            when {
+                news == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                news!!.isEmpty() -> Text("No recent news.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> news!!.take(4).forEach { n ->
+                    Column(Modifier.fillMaxWidth().clickable { open(n.url) }.padding(vertical = 4.dp)) {
+                        Text(n.title, style = MaterialTheme.typography.bodyMedium)
+                        Text("${n.source} · ${timeAgo(n.time)}", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (f.links.isNotEmpty()) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    f.links.forEach { (label, url) -> OutlinedButton(onClick = { open(url) }) { Text(label) } }
+                }
             }
         }
     }

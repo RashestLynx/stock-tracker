@@ -54,6 +54,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (store.watching(Category.CHARGES)) checkCharges(ua, seen)
 
         if (store.newsAlerts && store.tickers.isNotEmpty()) checkNews(seen, firstRun)
+        checkFollowing(seen, firstRun)
 
         store.addMoves(newMoves)
         store.addPicks(newPicks)
@@ -347,6 +348,33 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build())
+        }
+    }
+
+    // ------------------------------------------------------------ New videos from people you follow
+    private fun checkFollowing(seen: Set<String>, firstRun: Boolean) {
+        val ctx = applicationContext
+        for (f in Following.load(store)) {
+            val vids = try { Following.videos(f, store) } catch (_: Exception) { continue }
+            // Without any record yet for this person, just remember their current videos.
+            val known = vids.any { it.id in seen }
+            val fresh = vids.filter { it.id !in seen }
+            newSeen.addAll(fresh.map { it.id })
+            if (firstRun || !known) continue
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) return
+            for (v in fresh.take(2)) {
+                val open = PendingIntent.getActivity(ctx, v.id.hashCode(), Intent(Intent.ACTION_VIEW, Uri.parse(v.url)),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                NotificationManagerCompat.from(ctx).notify(v.id.hashCode(), NotificationCompat.Builder(ctx, CHANNEL)
+                    .setSmallIcon(android.R.drawable.stat_notify_more)
+                    .setContentTitle("${f.name} posted a new video")
+                    .setContentText(v.title)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(v.title))
+                    .setContentIntent(open).setAutoCancel(true).build())
+            }
         }
     }
 

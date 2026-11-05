@@ -64,6 +64,8 @@ object News {
         }
     }
 
+    fun search(query: String): List<NewsItem> = google("$query when:14d")
+
     private fun google(query: String): List<NewsItem> {
         val url = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=" + URLEncoder.encode(query, "UTF-8")
         val conn = URL(url).openConnection() as HttpURLConnection
