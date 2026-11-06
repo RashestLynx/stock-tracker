@@ -134,6 +134,10 @@ struct FollowedSection: View {
             } else {
                 ProgressView()
             }
+            if let cik = person.cik, !cik.isEmpty {
+                FundHoldingsRows(cik: cik)
+            }
+            if person.cik?.isEmpty ?? true {
             Text("Latest videos").font(.subheadline.weight(.semibold))
             if let v = videos {
                 if v.isEmpty {
@@ -152,6 +156,7 @@ struct FollowedSection: View {
                 }
             } else {
                 ProgressView()
+            }
             }
             Text("In the news").font(.subheadline.weight(.semibold))
             if let n = news {
@@ -188,6 +193,47 @@ struct FollowedSection: View {
             if let feed = known?.disclosureFeed, !feed.isEmpty {
                 disclosed = await Known.disclosures(feed: feed, name: person.name)
             }
+        }
+    }
+}
+
+
+/// A famous fund's latest 13F: top holdings, what changed, and any crypto funds.
+struct FundHoldingsRows: View {
+    let cik: String
+    @EnvironmentObject var model: AppModel
+    @State private var snap: Following.FundSnapshot?
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            Text("Latest holdings" + ((snap?.period).flatMap { $0.isEmpty ? nil : " (as of \($0))" } ?? ""))
+                .font(.subheadline.weight(.semibold))
+            if !loaded {
+                ProgressView()
+            } else if let s = snap {
+                Text("\(Format.money(s.total)) in reported U.S. stocks").font(.caption).foregroundStyle(.secondary)
+                ForEach(s.top) { h in
+                    HStack {
+                        Text(h.name).font(.subheadline).lineLimit(1)
+                        Spacer()
+                        Text(Format.money(h.value)).font(.caption.weight(.medium))
+                        Text(h.change).font(.caption2).frame(width: 72, alignment: .trailing)
+                            .foregroundStyle(h.change.hasPrefix("Added") || h.change == "New" ? .green : h.change.hasPrefix("Cut") ? .red : .secondary)
+                    }
+                }
+                if !s.newBuys.isEmpty { Text("New this quarter: " + s.newBuys.joined(separator: ", ")).font(.caption).foregroundStyle(.green) }
+                if !s.soldOut.isEmpty { Text("Sold out of: " + s.soldOut.joined(separator: ", ")).font(.caption).foregroundStyle(.red) }
+                if !s.crypto.isEmpty {
+                    Text("Crypto funds: " + s.crypto.map { "\($0.name) \(Format.money($0.value))" }.joined(separator: ", ")).font(.caption)
+                }
+            } else {
+                Text("Couldn't load their latest filing right now.").font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .task(id: cik) {
+            snap = await Following.fundSnapshot(cik: cik, ua: model.userAgent)
+            loaded = true
         }
     }
 }

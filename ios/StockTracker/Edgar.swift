@@ -147,6 +147,47 @@ enum Edgar {
     }
 
     /// A 13F's largest stock positions: (issuer name, value in dollars), biggest first.
+    struct Row13F { let name: String; let value: Double; let shares: Double; let option: Bool }
+
+    /// Every row of a 13F holdings table.
+    static func rows13F(_ f: Filing, ua: String) async throws -> [Row13F] {
+        guard let table = try await files(f, ua: ua).first(where: {
+            let l = $0.lowercased(); return l.hasSuffix(".xml") && l != "primary_doc.xml"
+        }), let root = XNode.parse(try await get(folder(f) + table, ua: ua)) else { return [] }
+        return root.all("infoTable").compactMap { row in
+            guard let name = row.text("nameOfIssuer") else { return nil }
+            return Row13F(name: name, value: Double(row.text("value") ?? "") ?? 0,
+                          shares: Double(row.text("shrsOrPrnAmt/sshPrnamt") ?? "") ?? 0,
+                          option: row.child("putCall") != nil)
+        }
+    }
+
+    static func top13F(_ rows: [Row13F], top: Int = 20) -> [(String, Double)] {
+        var totals: [String: Double] = [:]
+        for r in rows where !r.option { totals[r.name, default: 0] += r.value }
+        return totals.sorted { $0.value > $1.value }.prefix(top).map { ($0.key, $0.value) }
+    }
+
+    /// The newest 13F-HR filings for a filer, newest first, with their report period.
+    static func latest13Fs(cik: String, ua: String, count: Int = 2) async throws -> [(Filing, String)] {
+        guard let n = Int(cik) else { return [] }
+        let data = try await get(String(format: "https://data.sec.gov/submissions/CIK%010d.json", n), ua: ua)
+        guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let r = (j["filings"] as? [String: Any])?["recent"] as? [String: Any],
+              let forms = r["form"] as? [String], let accs = r["accessionNumber"] as? [String] else { return [] }
+        let periods = r["reportDate"] as? [String] ?? []
+        let name = j["name"] as? String ?? ""
+        var out: [(Filing, String)] = []
+        for i in forms.indices where forms[i] == "13F-HR" && i < accs.count {
+            let acc = accs[i]
+            let folder = "https://www.sec.gov/Archives/edgar/data/\(n)/\(acc.replacingOccurrences(of: "-", with: ""))/"
+            out.append((Filing(accession: acc, form: "13F-HR", title: name, link: folder + "\(acc)-index.htm"),
+                        i < periods.count ? periods[i] : ""))
+            if out.count >= count { break }
+        }
+        return out
+    }
+
     static func parse13FHoldings(_ f: Filing, ua: String, top: Int = 20) async throws -> [(String, Double)] {
         guard let table = try await files(f, ua: ua).first(where: {
             let l = $0.lowercased(); return l.hasSuffix(".xml") && l != "primary_doc.xml"

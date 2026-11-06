@@ -12,6 +12,9 @@ struct ContentView: View {
             NewsView()
                 .tabItem { Label("News", systemImage: "newspaper.fill") }
                 .tag(5)
+            CryptoView()
+                .tabItem { Label("Crypto", systemImage: "bitcoinsign.circle.fill") }
+                .tag(6)
             WsbView()
                 .tabItem { Label("WSB", systemImage: "flame.fill") }
                 .tag(4)

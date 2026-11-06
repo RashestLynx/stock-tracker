@@ -193,7 +193,11 @@ final class AppModel: ObservableObject {
                         let fundCik = f.title.range(of: #"\((\d+)\)"#, options: .regularExpression)
                             .map { String(f.title[$0].dropFirst().dropLast().drop(while: { $0 == "0" })) }
                         let pk = fundCik.map { "fund:\($0)" }
-                        let holdings = (try? await Edgar.parse13FHoldings(f, ua: ua)) ?? []
+                        let rows = (try? await Edgar.rows13F(f, ua: ua)) ?? []
+                        let holdings = Edgar.top13F(rows)
+                        var cryptoTotals: [String: Double] = [:]
+                        for r in rows where !r.option && Crypto.assetOf(r.name) != nil { cryptoTotals[r.name, default: 0] += r.value }
+                        CryptoStore.add(cryptoTotals.map { CryptoPos(fund: fund, asset: Crypto.assetOf($0.key)!, product: $0.key, value: $0.value, time: Date()) })
                         let total = holdings.reduce(0) { $0 + $1.1 }
                         let mapped: [(ticker: String, name: String)] = holdings.compactMap { h in
                             map[Edgar.normalizeName(h.0)].map { (ticker: $0, name: h.0.capitalized) }

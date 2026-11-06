@@ -8,6 +8,7 @@ struct Followed: Codable, Identifiable, Hashable {
     var newsQuery: String
     var businesses: [String]
     var links: [[String]]        // [label, url]
+    var cik: String? = nil       // SEC filer number for investment firms (13F holdings)
     var id: String { name }
 }
 
@@ -44,10 +45,74 @@ enum Following {
                          ["UK company register", "https://find-and-update.company-information.service.gov.uk/search?q=Mark+Tilbury"]]),
     ]
 
+    /// Famous investment firms, followed through their quarterly 13F holdings.
+    static let funds: [Followed] = [
+        Followed(name: "Berkshire Hathaway", youtube: "", newsQuery: "\"Berkshire Hathaway\" stocks",
+                 businesses: ["Warren Buffett's company, run by Greg Abel since 2026"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1067983&type=13F"]], cik: "1067983"),
+        Followed(name: "Pershing Square (Bill Ackman)", youtube: "", newsQuery: "\"Bill Ackman\" OR \"Pershing Square\"",
+                 businesses: ["Bill Ackman's concentrated hedge fund"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1336528&type=13F"]], cik: "1336528"),
+        Followed(name: "Duquesne (Stanley Druckenmiller)", youtube: "", newsQuery: "\"Druckenmiller\"",
+                 businesses: ["Stanley Druckenmiller's family office"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1536411&type=13F"]], cik: "1536411"),
+        Followed(name: "Bridgewater (Ray Dalio)", youtube: "", newsQuery: "\"Bridgewater Associates\" OR \"Ray Dalio\"",
+                 businesses: ["The world's largest hedge fund, founded by Ray Dalio"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1350694&type=13F"]], cik: "1350694"),
+    ]
+
     static func load() -> [Followed] {
-        guard let d = UserDefaults.standard.data(forKey: "following"),
-              let list = try? JSONDecoder().decode([Followed].self, from: d) else { return defaults }
+        let d = UserDefaults.standard
+        var list: [Followed]
+        if let data = d.data(forKey: "following"), let l = try? JSONDecoder().decode([Followed].self, from: data) {
+            list = l
+        } else {
+            list = defaults + funds
+        }
+        // One-time: add the famous funds to existing lists too.
+        if d.integer(forKey: "following_v") < 2 {
+            list += funds.filter { f in !list.contains { $0.name == f.name } }
+            save(list)
+            d.set(2, forKey: "following_v")
+        }
         return list
+    }
+
+    struct FundHolding: Identifiable { let name: String; let value: Double; let change: String; var id: String { name } }
+    struct FundSnapshot {
+        let period: String
+        let total: Double
+        let top: [FundHolding]
+        let newBuys: [String]
+        let soldOut: [String]
+        let crypto: [FundHolding]
+    }
+
+    /// Latest 13F with changes vs the one before.
+    static func fundSnapshot(cik: String, ua: String) async -> FundSnapshot? {
+        guard let filings = try? await Edgar.latest13Fs(cik: cik, ua: ua), let first = filings.first,
+              let now = try? await Edgar.rows13F(first.0, ua: ua) else { return nil }
+        let before = filings.count > 1 ? ((try? await Edgar.rows13F(filings[1].0, ua: ua)) ?? []) : []
+        func byName(_ rows: [Edgar.Row13F]) -> [String: (Double, Double)] {
+            var m: [String: (Double, Double)] = [:]
+            for r in rows where !r.option { let o = m[r.name] ?? (0, 0); m[r.name] = (o.0 + r.value, o.1 + r.shares) }
+            return m
+        }
+        let a = byName(now), b = byName(before)
+        func change(_ n: String) -> String {
+            let sh = a[n]?.1 ?? 0
+            guard let old = b[n]?.1 else { return before.isEmpty ? "" : "New" }
+            guard old > 0 else { return "" }
+            let pct = (sh - old) / old * 100
+            return pct > 1 ? String(format: "Added %.0f%%", pct) : pct < -1 ? String(format: "Cut %.0f%%", -pct) : "No change"
+        }
+        let top = a.sorted { $0.value.0 > $1.value.0 }.prefix(10).map { FundHolding(name: $0.key, value: $0.value.0, change: change($0.key)) }
+        let newBuys = before.isEmpty ? [] : a.keys.filter { b[$0] == nil }.sorted { (a[$0]?.0 ?? 0) > (a[$1]?.0 ?? 0) }.prefix(6).map { $0 }
+        let sold = b.keys.filter { a[$0] == nil }.sorted { (b[$0]?.0 ?? 0) > (b[$1]?.0 ?? 0) }.prefix(6).map { $0 }
+        let crypto = a.filter { Crypto.assetOf($0.key) != nil }.map { FundHolding(name: $0.key, value: $0.value.0, change: change($0.key)) }
+        CryptoStore.add(crypto.map { CryptoPos(fund: first.0.title, asset: Crypto.assetOf($0.name)!, product: $0.name, value: $0.value, time: Date()) })
+        return FundSnapshot(period: first.1, total: a.values.reduce(0) { $0 + $1.0 }, top: Array(top),
+                            newBuys: newBuys, soldOut: sold, crypto: crypto)
     }
 
     static func save(_ list: [Followed]) {
