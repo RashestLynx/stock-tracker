@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -53,6 +54,10 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -2635,6 +2640,13 @@ private fun shareCount(v: Double): String = when {
 @Composable
 private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Unit) {
     var list by remember { mutableStateOf(store.watchlist) }
+    var groups by remember { mutableStateOf(store.loadGroups()) }
+    var sel by rememberSaveable { mutableStateOf("") } // "" = All
+    var newGroup by remember { mutableStateOf<String?>(null) }
+    var editGroup by remember { mutableStateOf<String?>(null) }
+    val group = groups.firstOrNull { it.name == sel }
+    val shown = group?.tickers?.filter { it in list } ?: list
+    fun setGroups(g: List<WatchGroup>) { groups = g; store.saveGroups(g) }
     var input by rememberSaveable { mutableStateOf("") }
     var prices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var live by remember { mutableStateOf<Map<String, LiveQuote>>(emptyMap()) }
@@ -2643,18 +2655,18 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
     val picks = remember(tick) { store.picks() }
     val moves = remember(tick) { store.moves() }
 
-    LaunchedEffect(list) {
+    LaunchedEffect(shown) {
         while (true) {
             if (hasLive) {
                 // Live: refresh every 15 seconds while open, staying inside Finnhub's free 60 requests a minute.
-                live = withContext(Dispatchers.IO) {
-                    list.mapNotNull { t -> runCatching { Live.quote(t, store) }.getOrNull()?.let { t to it } }.toMap()
+                live = live + withContext(Dispatchers.IO) {
+                    shown.mapNotNull { t -> runCatching { Live.quote(t, store) }.getOrNull()?.let { t to it } }.toMap()
                 }
                 pricesLoaded = true
-                delay(maxOf(15_000L, list.size * 1_100L))
+                delay(maxOf(15_000L, shown.size * 1_100L))
             } else {
-                prices = withContext(Dispatchers.IO) {
-                    list.associateWith { t -> StockInfo.price(t).first }.filterValues { it != null }.mapValues { it.value!! }
+                prices = prices + withContext(Dispatchers.IO) {
+                    shown.associateWith { t -> StockInfo.price(t).first }.filterValues { it != null }.mapValues { it.value!! }
                 }
                 pricesLoaded = true
                 delay(5 * 60_000)
@@ -2665,7 +2677,28 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
     fun add() {
         val t = input.trim().uppercase().filter { it.isLetterOrDigit() || it == '.' || it == '-' }
         if (t.isNotEmpty() && t !in list) { list = list + t; store.watchlist = list }
+        if (t.isNotEmpty() && group != null && t !in group.tickers)
+            setGroups(groups.map { if (it.name == group.name) it.copy(tickers = it.tickers + t) else it })
         input = ""
+    }
+
+    newGroup?.let { name ->
+        AlertDialog(onDismissRequest = { newGroup = null },
+            title = { Text("New group") },
+            text = { OutlinedTextField(value = name, onValueChange = { newGroup = it.take(24) }, singleLine = true,
+                placeholder = { Text("e.g. Long term, Tech, Dividends") }) },
+            confirmButton = { TextButton(enabled = name.isNotBlank() && groups.none { it.name == name.trim() }, onClick = {
+                setGroups(groups + WatchGroup(name.trim(), emptyList())); sel = name.trim(); newGroup = null }) { Text("Create") } },
+            dismissButton = { TextButton(onClick = { newGroup = null }) { Text("Cancel") } })
+    }
+    editGroup?.let { name ->
+        AlertDialog(onDismissRequest = { editGroup = null },
+            title = { Text("Rename or delete \"${sel}\"") },
+            text = { OutlinedTextField(value = name, onValueChange = { editGroup = it.take(24) }, singleLine = true) },
+            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
+                setGroups(groups.map { if (it.name == sel) it.copy(name = name.trim()) else it }); sel = name.trim(); editGroup = null }) { Text("Rename") } },
+            dismissButton = { TextButton(onClick = { setGroups(groups.filter { it.name != sel }); sel = ""; editGroup = null }) {
+                Text("Delete group", color = TradeColors.sell()) } })
     }
 
     LazyColumn(
@@ -2684,12 +2717,28 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 Spacer(Modifier.width(8.dp))
                 FilledTonalIconButton(onClick = { add() }) { Icon(Icons.Filled.Add, contentDescription = "Add") }
             }
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = sel == "", onClick = { sel = "" }, label = { Text("All (${list.size})") })
+                groups.forEach { g ->
+                    FilterChip(selected = sel == g.name, onClick = { if (sel == g.name) editGroup = g.name else sel = g.name },
+                        label = { Text("${g.name} (${g.tickers.count { it in list }})") })
+                }
+                AssistChipLike("+ New group") { newGroup = "" }
+            }
+            if (group != null) Text("Tap the selected group again to rename or delete it. New tickers you add here go into this group.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(if (hasLive) "Live prices refresh every 15 seconds. You'll also get news and SEC filing alerts for these."
                 else "Showing latest closing prices. Add a free Finnhub key in Settings → Market data for live prices.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (list.isEmpty()) item { EmptyState("Your watchlist is empty", "Add tickers above, or tap \"Add to watchlist\" on any stock summary.") }
-        items(list, key = { it }) { t ->
+        else if (shown.isEmpty()) item { EmptyState("\"$sel\" is empty", "Add tickers above, or use the list button on a stock in All to put it in this group.") }
+        if (shown.isNotEmpty()) item(key = "checkup_$sel") {
+            GroupCheckup(if (group == null) "Whole watchlist" else group.name, shown, live, store, tick,
+                notes = group?.notes, onNotes = { n -> setGroups(groups.map { if (it.name == sel) it.copy(notes = n) else it }) },
+                onOpen = { onOpen(StockTarget(it, "", "", "", emptyList(), "", 0.0)) })
+        }
+        items(shown, key = { it }) { t ->
             val who = (picks.filter { it.ticker == t }.map { "${it.who} (${if (it.action == "hold") "holds" else "bought"})" } +
                 moves.filter { it.ticker == t && it.side == "sell" }.map { "${it.who} (sold)" }).distinct()
             ElevatedCard(onClick = { onOpen(StockTarget(t, "", "", "", emptyList(), "", 0.0)) },
@@ -2719,8 +2768,24 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        IconButton(onClick = { list = list - t; store.watchlist = list }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Remove $t")
+                        if (groups.isNotEmpty()) {
+                            var menu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.List, contentDescription = "Groups for $t") }
+                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    groups.forEach { g ->
+                                        val inIt = t in g.tickers
+                                        DropdownMenuItem(text = { Text(g.name) }, leadingIcon = { Checkbox(checked = inIt, onCheckedChange = null) },
+                                            onClick = { setGroups(groups.map { if (it.name == g.name) it.copy(tickers = if (inIt) it.tickers - t else it.tickers + t) else it }) })
+                                    }
+                                }
+                            }
+                        }
+                        IconButton(onClick = {
+                            if (group != null) setGroups(groups.map { if (it.name == group.name) it.copy(tickers = it.tickers - t) else it })
+                            else { list = list - t; store.watchlist = list; setGroups(groups.map { it.copy(tickers = it.tickers - t) }) }
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = if (group != null) "Remove $t from ${group.name}" else "Remove $t")
                         }
                     }
                     var info by remember(t) { mutableStateOf<StockSummary?>(null) }
@@ -2747,6 +2812,94 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                     }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun AssistChipLike(label: String, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), modifier = Modifier.height(32.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** Summary card at the top of each watchlist group: what's in it, how spread out it is, notes and ideas. */
+@Composable
+private fun GroupCheckup(title: String, tickers: List<String>, live: Map<String, LiveQuote>, store: Store, tick: Int,
+                         notes: String?, onNotes: (String) -> Unit, onOpen: (String) -> Unit) {
+    val picks = remember(tick) { store.picks() }
+    var info by remember(tickers) { mutableStateOf<Map<String, StockSummary?>>(emptyMap()) }
+    LaunchedEffect(tickers, picks) {
+        val want = tickers + Portfolio.ideaCandidates(tickers, picks)
+        for (t in want) {
+            if (t in info) continue
+            val s = withContext(Dispatchers.IO) { runCatching { StockInfo.load(t, "", store) }.getOrNull() }
+            info = info + (t to s)
+        }
+    }
+    val c = remember(tickers, info, live, picks) { Portfolio.checkup(tickers, info, live, picks) }
+    var expanded by rememberSaveable(title) { mutableStateOf(true) }
+    var draft by remember(title, notes) { mutableStateOf(notes ?: "") }
+
+    Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { expanded = !expanded }) {
+                Column(Modifier.weight(1f)) {
+                    Text("$title checkup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("${tickers.size} ${if (tickers.size == 1) "holding" else "holdings"} · ${c.sectors.size} ${if (c.sectors.size == 1) "area" else "areas"}" +
+                        (c.dayMove?.let { String.format(java.util.Locale.US, " · today %+.2f%% avg", it) } ?: ""),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Text(if (expanded) "Hide" else "Show", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            }
+            if (!expanded) return@Column
+
+            Text("What's in it", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            tickers.forEach { t ->
+                Row(Modifier.fillMaxWidth().clickable { onOpen(t) }) {
+                    Text(t, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(56.dp))
+                    Text(Portfolio.describe(t, info[t]), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            if (c.sectors.isNotEmpty()) {
+                Text("Mix by area", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                c.sectors.forEach { (name, n) ->
+                    val frac = n.toFloat() / tickers.size
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(150.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        LinearProgressIndicator(progress = { frac }, modifier = Modifier.weight(1f).height(6.dp))
+                        Text(" ${(frac * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(40.dp))
+                    }
+                }
+                Text("Counted by number of stocks, not dollars.", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            if (c.notes.isNotEmpty()) {
+                Text("Diversification notes", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                c.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+
+            if (c.ideas.isNotEmpty()) {
+                Text("Ideas to research (areas this group doesn't cover)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                c.ideas.forEach { i ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpen(i.ticker) }, verticalAlignment = Alignment.CenterVertically) {
+                        Text(i.ticker, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(56.dp))
+                        Text("${i.sector} · ${i.why}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+
+            if (notes != null) {
+                Text("Your notes", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                OutlinedTextField(value = draft, onValueChange = { draft = it; onNotes(it) }, modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Why you're watching these, price targets, reminders…") }, minLines = 2)
+            }
+            Text("General info from SEC industry codes and the people you track, not personal financial advice.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

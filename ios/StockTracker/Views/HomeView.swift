@@ -269,7 +269,16 @@ struct WatchlistView: View {
     @State private var prices: [String: Double] = [:]
     @State private var live: [String: LiveQuote] = [:]
     @State private var loaded = false
+    @State private var sel = ""            // "" = All
+    @State private var newName = ""
+    @State private var showNew = false
+    @State private var showEdit = false
     private var hasLive: Bool { !Live.key.isEmpty }
+    private var group: WatchGroup? { model.watchGroups.first { $0.name == sel } }
+    private var shown: [String] { group.map { g in g.tickers.filter { model.watchlist.contains($0) } } ?? model.watchlist }
+    private func updateGroup(_ name: String, _ f: (inout WatchGroup) -> Void) {
+        if let i = model.watchGroups.firstIndex(where: { $0.name == name }) { f(&model.watchGroups[i]) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -280,36 +289,76 @@ struct WatchlistView: View {
                             .textInputAutocapitalization(.characters).autocorrectionDisabled().onSubmit(add)
                         Button(action: add) { Image(systemName: "plus.circle.fill") }.disabled(input.isEmpty)
                     }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            chip("All (\(model.watchlist.count))", on: sel.isEmpty) { sel = "" }
+                            ForEach(model.watchGroups) { g in
+                                chip("\(g.name) (\(g.tickers.filter { model.watchlist.contains($0) }.count))", on: sel == g.name) {
+                                    if sel == g.name { newName = g.name; showEdit = true } else { sel = g.name }
+                                }
+                            }
+                            Button { newName = ""; showNew = true } label: { Label("New group", systemImage: "plus") }
+                                .buttonStyle(.bordered).font(.caption.weight(.semibold))
+                        }
+                    }
                 } footer: {
-                    Text(hasLive ? "Live prices refresh every 15 seconds. You'll also get news and SEC filing alerts for these."
-                         : "Showing latest closing prices. Add a free Finnhub key in Settings → Live prices for live prices.")
+                    Text((group != nil ? "Tap the selected group again to rename or delete it. New tickers go into this group. " : "")
+                         + (hasLive ? "Live prices refresh every 15 seconds. You'll also get news and SEC filing alerts for these."
+                         : "Showing latest closing prices. Add a free Finnhub key in Settings → Live prices for live prices."))
+                }
+                if !shown.isEmpty {
+                    Section {
+                        GroupCheckupView(title: group?.name ?? "Whole watchlist", tickers: shown, live: live,
+                                         notes: group.map { g in Binding(get: { g.notes }, set: { n in updateGroup(g.name) { $0.notes = n } }) })
+                    }
+                } else if !model.watchlist.isEmpty {
+                    EmptyStateView(title: "\"\(sel)\" is empty",
+                                   message: "Add tickers above, or use the folder button on a stock in All to put it in this group.", systemImage: "folder")
+                        .listRowBackground(Color.clear)
                 }
                 if model.watchlist.isEmpty {
                     EmptyStateView(title: "Your watchlist is empty",
                                    message: "Add tickers above, or tap \"Add to watchlist\" on any stock summary.", systemImage: "star")
                         .listRowBackground(Color.clear)
                 }
-                ForEach(model.watchlist, id: \.self) { t in
+                ForEach(shown, id: \.self) { t in
                     Section { row(t) }
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Watchlist")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
-            .task(id: model.watchlist) {
+            .alert("New group", isPresented: $showNew) {
+                TextField("e.g. Long term, Tech, Dividends", text: $newName)
+                Button("Create") {
+                    let n = newName.trimmingCharacters(in: .whitespaces)
+                    if !n.isEmpty && !model.watchGroups.contains(where: { $0.name == n }) { model.watchGroups.append(WatchGroup(name: n)); sel = n }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .alert("Rename or delete \"\(sel)\"", isPresented: $showEdit) {
+                TextField("Name", text: $newName)
+                Button("Rename") {
+                    let n = newName.trimmingCharacters(in: .whitespaces)
+                    if !n.isEmpty { let old = sel; updateGroup(old) { $0.name = n }; sel = n }
+                }
+                Button("Delete group", role: .destructive) { model.watchGroups.removeAll { $0.name == sel }; sel = "" }
+                Button("Cancel", role: .cancel) {}
+            }
+            .task(id: shown) {
                 while !Task.isCancelled {
                     if hasLive {
                         // Live: every 15 seconds, staying inside Finnhub's free 60 requests a minute.
                         var got: [String: LiveQuote] = [:]
-                        for t in model.watchlist { if let q = await Live.quote(t) { got[t] = q } }
-                        live = got
+                        for t in shown { if let q = await Live.quote(t) { got[t] = q } }
+                        live.merge(got) { $1 }
                         loaded = true
-                        let wait = max(15.0, Double(model.watchlist.count) * 1.1)
+                        let wait = max(15.0, Double(shown.count) * 1.1)
                         try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                     } else {
                         var got: [String: Double] = [:]
-                        for t in model.watchlist { if let p = await StockInfo.price(t) { got[t] = p } }
-                        prices = got
+                        for t in shown { if let p = await StockInfo.price(t) { got[t] = p } }
+                        prices.merge(got) { $1 }
                         loaded = true
                         try? await Task.sleep(nanoseconds: 300_000_000_000)
                     }
@@ -357,8 +406,25 @@ struct WatchlistView: View {
                     Button("Open in \(Broker.name)") { openURL(url) }.buttonStyle(.borderless).font(.caption)
                 }
                 Spacer()
-                Button("Remove", role: .destructive) { model.watchlist.removeAll { $0 == t } }
-                    .buttonStyle(.borderless).font(.caption)
+                if !model.watchGroups.isEmpty {
+                    Menu {
+                        ForEach(model.watchGroups) { g in
+                            let inIt = g.tickers.contains(t)
+                            Button { updateGroup(g.name) { if inIt { $0.tickers.removeAll { $0 == t } } else { $0.tickers.append(t) } } } label: {
+                                Label(g.name, systemImage: inIt ? "checkmark.circle.fill" : "circle")
+                            }
+                        }
+                    } label: { Label("Groups", systemImage: "folder") }
+                    .font(.caption)
+                }
+                Button(group != nil ? "Remove from group" : "Remove", role: .destructive) {
+                    if let g = group { updateGroup(g.name) { $0.tickers.removeAll { $0 == t } } }
+                    else {
+                        model.watchlist.removeAll { $0 == t }
+                        for i in model.watchGroups.indices { model.watchGroups[i].tickers.removeAll { $0 == t } }
+                    }
+                }
+                .buttonStyle(.borderless).font(.caption)
             }
         }
     }
@@ -366,7 +432,17 @@ struct WatchlistView: View {
     private func add() {
         let t = input.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
         if !t.isEmpty && !model.watchlist.contains(t) { model.watchlist.append(t) }
+        if !t.isEmpty, let g = group, !g.tickers.contains(t) { updateGroup(g.name) { $0.tickers.append(t) } }
         input = ""
+    }
+
+    private func chip(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.caption.weight(.semibold)).padding(.horizontal, 12).padding(.vertical, 7)
+                .background(on ? Color.green.opacity(0.25) : Color.secondary.opacity(0.12), in: Capsule())
+                .foregroundStyle(on ? Color.green : Color.primary)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -385,5 +461,91 @@ struct WatchInfo: View {
             }
         }
         .task(id: ticker) { info = await StockInfo.load(ticker: ticker, company: "", model: model) }
+    }
+}
+
+
+/// Summary at the top of each watchlist group: what's in it, mix by area, diversification notes, ideas and your notes.
+struct GroupCheckupView: View {
+    let title: String
+    let tickers: [String]
+    let live: [String: LiveQuote]
+    var notes: Binding<String>?
+    @EnvironmentObject var model: AppModel
+    @State private var info: [String: StockSummary] = [:]
+    @State private var expanded = true
+
+    var body: some View {
+        let c = Portfolio.checkup(tickers, info: info, live: live, picks: model.picks)
+        VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation { expanded.toggle() } } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(title) checkup").font(.headline)
+                        Text("\(tickers.count) \(tickers.count == 1 ? "holding" : "holdings") · \(c.sectors.count) \(c.sectors.count == 1 ? "area" : "areas")"
+                             + (c.dayMove.map { String(format: " · today %+.2f%% avg", $0) } ?? ""))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.primary)
+            }
+            .buttonStyle(.borderless)
+            if expanded {
+                Text("What's in it").font(.subheadline.weight(.bold))
+                ForEach(tickers, id: \.self) { t in
+                    Button { model.openStock = StockTarget(ticker: t, company: "") } label: {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(t).font(.caption.weight(.bold)).frame(width: 56, alignment: .leading)
+                            Text(Portfolio.describe(t, info[t])).font(.caption).lineLimit(1)
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                if !c.sectors.isEmpty {
+                    Text("Mix by area").font(.subheadline.weight(.bold))
+                    ForEach(c.sectors, id: \.0) { s in
+                        let frac = Double(s.1) / Double(tickers.count)
+                        HStack {
+                            Text(s.0).font(.caption).lineLimit(1).frame(width: 140, alignment: .leading)
+                            ProgressView(value: frac).tint(.green)
+                            Text("\(Int(frac * 100))%").font(.caption2).frame(width: 36, alignment: .trailing)
+                        }
+                    }
+                    Text("Counted by number of stocks, not dollars.").font(.caption2).foregroundStyle(.secondary)
+                }
+                if !c.notes.isEmpty {
+                    Text("Diversification notes").font(.subheadline.weight(.bold))
+                    ForEach(c.notes, id: \.self) { Text($0).font(.caption) }
+                }
+                if !c.ideas.isEmpty {
+                    Text("Ideas to research (areas this group doesn't cover)").font(.subheadline.weight(.bold))
+                    ForEach(c.ideas, id: \.self) { i in
+                        Button { model.openStock = StockTarget(ticker: i.ticker, company: "") } label: {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(i.ticker).font(.caption.weight(.bold)).frame(width: 56, alignment: .leading)
+                                Text("\(i.sector) · \(i.why)").font(.caption).lineLimit(1)
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                if let notes {
+                    Text("Your notes").font(.subheadline.weight(.bold))
+                    TextField("Why you're watching these, price targets, reminders…", text: notes, axis: .vertical)
+                        .lineLimit(2...6).textFieldStyle(.roundedBorder)
+                }
+                Text("General info from SEC industry codes and the people you track, not personal financial advice.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .task(id: tickers) {
+            for t in tickers + Portfolio.ideaCandidates(tickers, picks: model.picks) where info[t] == nil {
+                info[t] = await StockInfo.load(ticker: t, company: "", model: model)
+            }
+        }
     }
 }

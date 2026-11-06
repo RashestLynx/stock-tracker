@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published var tickers: [String] { didSet { d.set(tickers, forKey: "tickers") } }
     /// Stocks and funds the user keeps an eye on (separate from the alert-only ticker filter).
     @Published var watchlist: [String] { didSet { d.set(watchlist, forKey: "watchlist") } }
+    @Published var watchGroups: [WatchGroup] { didSet { d.set(try? JSONEncoder().encode(watchGroups), forKey: "watchGroups") } }
     @Published var buysOnly: Bool { didSet { d.set(buysOnly, forKey: "buysOnly") } }
     @Published var minValue: Double { didSet { d.set(minValue, forKey: "minValue") } }
     @Published var watching: [String: Bool] { didSet { d.set(watching, forKey: "watching") } }
@@ -44,6 +45,7 @@ final class AppModel: ObservableObject {
         userAgent = d.string(forKey: "ua") ?? ""
         tickers = d.stringArray(forKey: "tickers") ?? []
         watchlist = d.stringArray(forKey: "watchlist") ?? []
+        watchGroups = (d.data(forKey: "watchGroups")).flatMap { try? JSONDecoder().decode([WatchGroup].self, from: $0) } ?? []
         buysOnly = d.bool(forKey: "buysOnly")
         minValue = d.double(forKey: "minValue")
         watching = d.dictionary(forKey: "watching") as? [String: Bool] ?? [:]
