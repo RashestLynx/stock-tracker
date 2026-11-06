@@ -106,6 +106,9 @@ object StockInfo {
 
     // ---------------- Price ----------------
     /** Latest delayed close from Stooq, e.g. "AAPL.US,2026-11-05,22:00:00,230.10". */
+    /** Latest price for the watchlist (cached by load() too). */
+    fun price(ticker: String): Pair<Double?, String> = try { quote(ticker) } catch (_: Exception) { null to "" }
+
     private fun quote(ticker: String): Pair<Double?, String> {
         val sym = ticker.lowercase(Locale.US).replace('.', '-') + ".us"
         val csv = get("https://stooq.com/q/l/?s=$sym&f=sd2t2c&h&e=csv")

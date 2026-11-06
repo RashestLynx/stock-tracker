@@ -107,6 +107,11 @@ class Store(context: Context) {
             .map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
         set(v) = prefs.edit().putString("tickers", v.joinToString(",")).apply()
 
+    /** Stocks and funds the user keeps an eye on (separate from the alert-only ticker filter). */
+    var watchlist: List<String>
+        get() = (prefs.getString("watchlist", "") ?: "").split(",").map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+        set(v) = prefs.edit().putString("watchlist", v.distinct().joinToString(",")).apply()
+
     var buysOnly: Boolean
         get() = prefs.getBoolean("buys_only", false)
         set(v) = prefs.edit().putBoolean("buys_only", v).apply()

@@ -54,7 +54,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (store.watching(Category.FUND)) check13F(ua, seen, if (firstRun) 12 else 40)
         if (store.watching(Category.CHARGES)) checkCharges(ua, seen)
 
-        if (store.newsAlerts && store.tickers.isNotEmpty()) checkNews(seen, firstRun)
+        if (store.newsAlerts && (store.tickers.isNotEmpty() || store.watchlist.isNotEmpty())) checkNews(seen, firstRun)
         checkFollowing(seen, firstRun)
 
         store.addCryptoPositions(newCrypto)
@@ -329,7 +329,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
 
     // ------------------------------------------------------------ News about watchlist stocks
     private fun checkNews(seen: Set<String>, firstRun: Boolean) {
-        val watch = store.tickers.toList()
+        val watch = (store.watchlist + store.tickers).distinct()
         val items = mutableListOf<NewsItem>()
         try { items += News.filings(store).filter { it.ticker in watch } } catch (_: Exception) {}
         try { items += News.forTickers(watch).filter { it.ticker.isNotEmpty() } } catch (_: Exception) {}

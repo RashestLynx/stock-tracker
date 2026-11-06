@@ -1200,6 +1200,15 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
                     Text("Open ${t.ticker} in ${Broker.name(store)}")
                 }
             }
+            var watching by remember(t.ticker) { mutableStateOf(t.ticker.uppercase() in store.watchlist) }
+            OutlinedButton(onClick = {
+                store.watchlist = if (watching) store.watchlist - t.ticker.uppercase() else store.watchlist + t.ticker.uppercase()
+                watching = !watching
+            }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (watching) "On your watchlist (tap to remove)" else "Add to watchlist")
+            }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             // ---- price ----
@@ -2446,7 +2455,10 @@ private fun HomeScreen(
                                 if (s.soldOut.isNotEmpty()) append(" Sold out of: " + s.soldOut.take(3).joinToString(", ") + ".")
                                 s.top.firstOrNull()?.let { append(" Biggest holding: ${it.name}.") }
                             }
-                            out.add(Post(f.name, about, null, dayMs(s.period) + 45L * Store.DAY_MS, text, "", "", "", null, f))
+                            val names = store.cachedTickerMap() ?: runCatching { Edgar.companyTickers(store.userAgent).also { store.saveTickerMap(it) } }.getOrNull()
+                            val pick = (s.newBuys + s.top.map { it.name }).firstNotNullOfOrNull { n -> names?.get(Edgar.normalizeName(n))?.let { it to n } }
+                            out.add(Post(f.name, about, null, dayMs(s.period) + 45L * Store.DAY_MS, text,
+                                pick?.first ?: "", pick?.second ?: "", "", null, f))
                         }
                         if (f.youtube.isNotBlank()) runCatching { Following.videos(f, store) }.getOrNull()?.take(2)?.forEach { v ->
                             out.add(Post(f.name, about, null, v.time, "Posted a new video: \"${v.title}\"", "", "", v.url, null, f))
@@ -2559,14 +2571,15 @@ private fun MarketsScreen(
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            listOf("Movers", "Common picks", "WSB").forEachIndexed { i, label ->
+            listOf("Watchlist", "Movers", "Picks", "WSB").forEachIndexed { i, label ->
                 SegmentedButton(selected = view == i, onClick = { view = i },
-                    shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label, maxLines = 1) }
+                    shape = SegmentedButtonDefaults.itemShape(i, 4)) { Text(label, maxLines = 1) }
             }
         }
         when (view) {
-            0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            0 -> WatchlistScreen(store, tick, onOpen = onOpen)
+            1 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
+            2 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
             else -> WsbScreen(store, onOpen = onOpen)
         }
     }
@@ -2577,4 +2590,88 @@ private fun shareCount(v: Double): String = when {
     v >= 1e9 -> String.format(java.util.Locale.US, "%.2fB", v / 1e9)
     v >= 1e6 -> String.format(java.util.Locale.US, "%.1fM", v / 1e6)
     else -> String.format(java.util.Locale.US, "%,.0f", v)
+}
+
+
+// ============================================================ Watchlist
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Unit) {
+    var list by remember { mutableStateOf(store.watchlist) }
+    var input by rememberSaveable { mutableStateOf("") }
+    var prices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    val picks = remember(tick) { store.picks() }
+    val moves = remember(tick) { store.moves() }
+
+    LaunchedEffect(list) {
+        while (true) {
+            val got = withContext(Dispatchers.IO) {
+                list.associateWith { t -> StockInfo.price(t).first }.filterValues { it != null }.mapValues { it.value!! }
+            }
+            prices = got
+            delay(5 * 60_000)
+        }
+    }
+
+    fun add() {
+        val t = input.trim().uppercase().filter { it.isLetterOrDigit() || it == '.' || it == '-' }
+        if (t.isNotEmpty() && t !in list) { list = list + t; store.watchlist = list }
+        input = ""
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = input, onValueChange = { input = it.uppercase().take(10) },
+                    placeholder = { Text("Add a stock or fund, e.g. NVDA or VOO") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { add() }), modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledTonalIconButton(onClick = { add() }) { Icon(Icons.Filled.Add, contentDescription = "Add") }
+            }
+            Text("You'll also get news and SEC filing alerts for these (Settings → News alerts).",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (list.isEmpty()) item { EmptyState("Your watchlist is empty", "Add tickers above, or tap \"Add to watchlist\" on any stock summary.") }
+        items(list, key = { it }) { t ->
+            val who = (picks.filter { it.ticker == t }.map { "${it.who} (${if (it.action == "hold") "holds" else "bought"})" } +
+                moves.filter { it.ticker == t && it.side == "sell" }.map { "${it.who} (sold)" }).distinct()
+            ElevatedCard(onClick = { onOpen(StockTarget(t, "", "", "", emptyList(), "", 0.0)) },
+                shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TickerBadge(t, TradeColors.buyContainer(), TradeColors.buy())
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(prices[t]?.let { String.format(java.util.Locale.US, "\$%,.2f latest close", it) } ?: "Price loading…",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { list = list - t; store.watchlist = list }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Remove $t")
+                        }
+                    }
+                    if (who.isEmpty()) {
+                        Text("No one you track has bought, sold or held it recently.", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Text("${who.size} tracked ${if (who.size == 1) "person" else "people"}: " + who.take(4).joinToString(", ") +
+                            if (who.size > 4) " and ${who.size - 4} more" else "", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Broker.link(store, t)?.let { url ->
+                        val context = LocalContext.current
+                        TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
+                            contentPadding = PaddingValues(0.dp)) { Text("Open in ${Broker.name(store)}") }
+                    }
+                }
+            }
+        }
+    }
 }
