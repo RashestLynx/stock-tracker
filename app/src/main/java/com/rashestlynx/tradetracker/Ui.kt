@@ -128,6 +128,7 @@ private const val TAB_NEWS = 5
 private const val TAB_CRYPTO = 6
 private const val TAB_HOME = 7
 private const val TAB_MARKETS = 8
+private const val TAB_WATCH = 9
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
@@ -176,6 +177,7 @@ fun StockTrackerApp(store: Store) {
                             when (tab) {
                                 TAB_HOME -> "Stock Tracker"
                                 TAB_MARKETS -> "Markets"
+                                TAB_WATCH -> "Watchlist"
                                 TAB_FEED -> "Sections"
                                 TAB_MOVERS -> "This week's movers"
                                 TAB_WSB -> "WallStreetBets"
@@ -216,17 +218,19 @@ fun StockTrackerApp(store: Store) {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_HOME, onClick = { tab = TAB_HOME },
-                    icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Home") })
+                    icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Home") }, alwaysShowLabel = false)
+                NavigationBarItem(selected = tab == TAB_WATCH, onClick = { tab = TAB_WATCH },
+                    icon = { Icon(Icons.Filled.Star, contentDescription = null) }, label = { Text("Watchlist") }, alwaysShowLabel = false)
                 NavigationBarItem(selected = tab == TAB_FEED, onClick = { tab = TAB_FEED },
-                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null) }, label = { Text("Sections") })
+                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null) }, label = { Text("Sections") }, alwaysShowLabel = false)
                 NavigationBarItem(selected = tab == TAB_NEWS, onClick = { tab = TAB_NEWS },
-                    icon = { Icon(Icons.Filled.Info, contentDescription = null) }, label = { Text("News") })
+                    icon = { Icon(Icons.Filled.Info, contentDescription = null) }, label = { Text("News") }, alwaysShowLabel = false)
                 NavigationBarItem(selected = tab == TAB_CRYPTO, onClick = { tab = TAB_CRYPTO },
                     icon = { Text("₿", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    label = { Text("Crypto") })
+                    label = { Text("Crypto") }, alwaysShowLabel = false)
                 NavigationBarItem(selected = tab == TAB_MARKETS || tab == TAB_MOVERS || tab == TAB_PICKS || tab == TAB_WSB,
                     onClick = { tab = TAB_MARKETS },
-                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") })
+                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") }, alwaysShowLabel = false)
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -235,6 +239,7 @@ fun StockTrackerApp(store: Store) {
             when (tab) {
                 TAB_HOME -> HomeScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_WATCH -> WatchlistScreen(store, tick, onOpen = { stock = it })
                 TAB_MARKETS, TAB_MOVERS, TAB_PICKS, TAB_WSB -> MarketsScreen(store, tick, refreshing,
                     onRefresh = { checkNow() }, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
@@ -2603,15 +2608,14 @@ private fun MarketsScreen(
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            listOf("Watchlist", "Movers", "Picks", "WSB").forEachIndexed { i, label ->
+            listOf("Movers", "Common picks", "WSB").forEachIndexed { i, label ->
                 SegmentedButton(selected = view == i, onClick = { view = i },
-                    shape = SegmentedButtonDefaults.itemShape(i, 4)) { Text(label, maxLines = 1) }
+                    shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label, maxLines = 1) }
             }
         }
         when (view) {
-            0 -> WatchlistScreen(store, tick, onOpen = onOpen)
-            1 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            2 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
+            1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
             else -> WsbScreen(store, onOpen = onOpen)
         }
     }
@@ -2719,6 +2723,16 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                             Icon(Icons.Filled.Close, contentDescription = "Remove $t")
                         }
                     }
+                    var info by remember(t) { mutableStateOf<StockSummary?>(null) }
+                    LaunchedEffect(t) { info = withContext(Dispatchers.IO) { runCatching { StockInfo.load(t, "", store) }.getOrNull() } }
+                    info?.let { i ->
+                        val line = listOf(i.name, i.industry, i.exchange).filter { it.isNotBlank() }.joinToString(" · ")
+                        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (i.about.isNotBlank()) Text(i.about, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    PriceChartBlock(t, store, live[t])
                     if (who.isEmpty()) {
                         Text("No one you track has bought, sold or held it recently.", style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
