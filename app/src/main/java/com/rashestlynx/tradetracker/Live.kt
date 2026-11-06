@@ -7,7 +7,8 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** A live quote: price, change today in dollars and percent. */
-data class LiveQuote(val price: Double, val change: Double, val changePct: Double, val time: Long)
+data class LiveQuote(val price: Double, val change: Double, val changePct: Double, val time: Long,
+                     val open: Double = 0.0, val prevClose: Double = 0.0)
 
 /** Live stock prices from Finnhub's free API (needs a free key; 60 requests a minute). */
 object Live {
@@ -32,7 +33,10 @@ object Live {
             val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             val c = o.optDouble("c", 0.0)
             if (c <= 0) return null
-            return LiveQuote(c, o.optDouble("d", 0.0), o.optDouble("dp", 0.0), o.optLong("t", 0L) * 1000)
+            val q = LiveQuote(c, o.optDouble("d", 0.0), o.optDouble("dp", 0.0), o.optLong("t", 0L) * 1000,
+                o.optDouble("o", 0.0), o.optDouble("pc", 0.0))
+            LiveTicks.add(ticker, q, q.open, store)
+            return q
         } finally {
             conn.disconnect()
         }

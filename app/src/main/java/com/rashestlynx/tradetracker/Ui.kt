@@ -95,6 +95,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -1231,6 +1234,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             // ---- price ----
+            PriceChartBlock(t.ticker, store, liveQ)
             liveQ?.let { q ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).background(TradeColors.sell(), CircleShape))
@@ -2730,5 +2734,106 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 }
             }
         }
+    }
+}
+
+
+// ============================================================ Price chart (Robinhood-style)
+
+@Composable
+private fun PriceChartBlock(ticker: String, store: Store, live: LiveQuote?) {
+    var range by rememberSaveable(ticker) { mutableStateOf(ChartRange.D1) }
+    var pts by remember(ticker, range) { mutableStateOf<List<Pt>?>(null) }
+    var error by remember(ticker, range) { mutableStateOf<String?>(null) }
+    var selected by remember(ticker, range) { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(ticker, range, live?.price) {
+        runCatching { withContext(Dispatchers.IO) { Charts.history(ticker, range, store) } }
+            .onSuccess { pts = it; error = null }
+            .onFailure { error = it.message; if (pts == null) pts = emptyList() }
+    }
+
+    val data = pts.orEmpty()
+    val base = if (range == ChartRange.D1) (live?.prevClose?.takeIf { it > 0 } ?: data.firstOrNull()?.p) else data.firstOrNull()?.p
+    val shown = selected?.let { data.getOrNull(it) } ?: data.lastOrNull()
+    val up = shown != null && base != null && shown.p >= base
+    val color = if (up) TradeColors.buy() else TradeColors.sell()
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (shown != null && base != null && base > 0) {
+            val ch = shown.p - base
+            Text(String.format(java.util.Locale.US, "\$%,.2f", shown.p), style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold)
+            Text(String.format(java.util.Locale.US, "%s%.2f (%+.2f%%) %s", if (ch >= 0) "▲ +" else "▼ ", ch, ch / base * 100,
+                if (selected != null) java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                    .format(java.util.Date(shown.t)) else if (range == ChartRange.D1) "today" else "past ${range.label}"),
+                color = color, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        }
+        Box(Modifier.fillMaxWidth().height(200.dp)) {
+            when {
+                pts == null -> LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.Center))
+                data.size < 2 -> Text(
+                    error ?: if (range == ChartRange.D1) "Today's chart draws live while the app is open during market hours."
+                    else "No chart data.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center).padding(16.dp))
+                else -> {
+                    val min = minOf(data.minOf { it.p }, base ?: Double.MAX_VALUE)
+                    val max = maxOf(data.maxOf { it.p }, base ?: -Double.MAX_VALUE)
+                    val dash = MaterialTheme.colorScheme.outline
+                    androidx.compose.foundation.Canvas(
+                        Modifier.fillMaxSize().pointerInput(data) {
+                            detectDragGesturesAfterLongPressOrNot(
+                                onMove = { x -> selected = ((x / size.width) * (data.size - 1)).toInt().coerceIn(0, data.size - 1) },
+                                onEnd = { selected = null },
+                            )
+                        }
+                    ) {
+                        val span = (max - min).takeIf { it > 0 } ?: 1.0
+                        fun x(i: Int) = size.width * i / (data.size - 1)
+                        fun y(p: Double) = (size.height * (1 - (p - min) / span)).toFloat()
+                        base?.let {
+                            drawLine(dash, androidx.compose.ui.geometry.Offset(0f, y(it)), androidx.compose.ui.geometry.Offset(size.width, y(it)),
+                                strokeWidth = 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 8f)))
+                        }
+                        val path = androidx.compose.ui.graphics.Path()
+                        data.forEachIndexed { i, pt -> if (i == 0) path.moveTo(x(i), y(pt.p)) else path.lineTo(x(i), y(pt.p)) }
+                        drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 5f,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                        selected?.let { i ->
+                            drawLine(dash, androidx.compose.ui.geometry.Offset(x(i), 0f), androidx.compose.ui.geometry.Offset(x(i), size.height), strokeWidth = 2f)
+                            drawCircle(color, 10f, androidx.compose.ui.geometry.Offset(x(i), y(data[i].p)))
+                        } ?: drawCircle(color, 9f, androidx.compose.ui.geometry.Offset(x(data.size - 1), y(data.last().p)))
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            ChartRange.entries.forEach { r ->
+                TextButton(onClick = { range = r }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text(r.label, fontWeight = if (r == range) FontWeight.Bold else FontWeight.Normal,
+                        color = if (r == range) color else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (range == ChartRange.D1) {
+            Text("1D draws live from today's open while the app is open. Dashed line = yesterday's close.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Touch-and-drag (or tap) across the chart to read prices. */
+private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDragGesturesAfterLongPressOrNot(
+    onMove: (Float) -> Unit, onEnd: () -> Unit,
+) {
+    awaitEachGesture {
+        val down = awaitFirstDown()
+        onMove(down.position.x)
+        do {
+            val event = awaitPointerEvent()
+            event.changes.forEach { if (it.pressed) { onMove(it.position.x); it.consume() } }
+        } while (event.changes.any { it.pressed })
+        onEnd()
     }
 }
