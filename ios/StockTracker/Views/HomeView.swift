@@ -246,17 +246,15 @@ struct MarketsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("View", selection: $view) {
-                Text("Watchlist").tag(0)
-                Text("Movers").tag(1)
-                Text("Picks").tag(2)
-                Text("WSB").tag(3)
+                Text("Movers").tag(0)
+                Text("Common picks").tag(1)
+                Text("WSB").tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.vertical, 6)
             switch view {
-            case 0: WatchlistView()
-            case 1: MoversView()
-            case 2: PicksView()
+            case 0: MoversView()
+            case 1: PicksView()
             default: WsbView()
             }
         }
@@ -348,6 +346,8 @@ struct WatchlistView: View {
                 .foregroundStyle(.primary)
             }
             .buttonStyle(.borderless)
+            WatchInfo(ticker: t)
+            PriceChartView(ticker: t, live: live[t])
             Text(who.isEmpty ? "No one you track has bought, sold or held it recently."
                  : "\(who.count) tracked \(who.count == 1 ? "person" : "people"): " + who.prefix(4).joined(separator: ", ")
                     + (who.count > 4 ? " and \(who.count - 4) more" : ""))
@@ -367,5 +367,23 @@ struct WatchlistView: View {
         let t = input.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
         if !t.isEmpty && !model.watchlist.contains(t) { model.watchlist.append(t) }
         input = ""
+    }
+}
+
+
+/// Company line and short description for a watchlist card.
+struct WatchInfo: View {
+    let ticker: String
+    @EnvironmentObject var model: AppModel
+    @State private var info: StockSummary?
+    var body: some View {
+        Group {
+            if let i = info {
+                let line = [i.name, i.industry, i.exchange].filter { !$0.isEmpty }.joined(separator: " · ")
+                if !line.isEmpty { Text(line).font(.caption.weight(.medium)).lineLimit(1) }
+                if !i.about.isEmpty { Text(i.about).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+            }
+        }
+        .task(id: ticker) { info = await StockInfo.load(ticker: ticker, company: "", model: model) }
     }
 }

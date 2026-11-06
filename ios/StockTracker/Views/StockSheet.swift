@@ -49,6 +49,7 @@ struct StockSheet: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    PriceChartView(ticker: target.ticker, live: live)
                     if summary == nil {
                         ProgressView().frame(maxWidth: .infinity)
                     } else if let price = live?.price ?? summary?.price {

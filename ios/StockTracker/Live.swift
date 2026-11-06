@@ -1,7 +1,7 @@
 import Foundation
 
 /// A live quote: price, change today in dollars and percent.
-struct LiveQuote { let price: Double; let change: Double; let changePct: Double }
+struct LiveQuote { let price: Double; let change: Double; let changePct: Double; var open: Double = 0; var prevClose: Double = 0 }
 
 /// Live stock prices from Finnhub's free API (needs a free key; 60 requests a minute).
 enum Live {
@@ -25,7 +25,10 @@ enum Live {
               (r as? HTTPURLResponse)?.statusCode ?? 0 < 300,
               let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
               let c = (o["c"] as? NSNumber)?.doubleValue, c > 0 else { return nil }
-        return LiveQuote(price: c, change: (o["d"] as? NSNumber)?.doubleValue ?? 0, changePct: (o["dp"] as? NSNumber)?.doubleValue ?? 0)
+        let q = LiveQuote(price: c, change: (o["d"] as? NSNumber)?.doubleValue ?? 0, changePct: (o["dp"] as? NSNumber)?.doubleValue ?? 0,
+                          open: (o["o"] as? NSNumber)?.doubleValue ?? 0, prevClose: (o["pc"] as? NSNumber)?.doubleValue ?? 0)
+        LiveTicks.add(ticker, q)
+        return q
     }
 }
 

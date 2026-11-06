@@ -9,6 +9,9 @@ struct ContentView: View {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
+            WatchlistView()
+                .tabItem { Label("Watchlist", systemImage: "star.fill") }
+                .tag(5)
             FeedView(goToSettings: { model.showSettings = true })
                 .tabItem { Label("Sections", systemImage: "bell.fill") }
                 .tag(1)
