@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
@@ -122,6 +123,8 @@ private const val TAB_FEED = 0
 private const val TAB_WSB = 4
 private const val TAB_NEWS = 5
 private const val TAB_CRYPTO = 6
+private const val TAB_HOME = 7
+private const val TAB_MARKETS = 8
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
@@ -131,7 +134,7 @@ private const val TAB_SETTINGS = 3
 fun StockTrackerApp(store: Store) {
     val context = LocalContext.current
     val tick = rememberStoreTick(store)
-    var tab by rememberSaveable { mutableIntStateOf(if (store.isSetUp) TAB_FEED else TAB_SETTINGS) }
+    var tab by rememberSaveable { mutableIntStateOf(if (store.isSetUp) TAB_HOME else TAB_SETTINGS) }
     var refreshing by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -168,7 +171,9 @@ fun StockTrackerApp(store: Store) {
                     Column {
                         Text(
                             when (tab) {
-                                TAB_FEED -> "Stock Tracker"
+                                TAB_HOME -> "Stock Tracker"
+                                TAB_MARKETS -> "Markets"
+                                TAB_FEED -> "Sections"
                                 TAB_MOVERS -> "This week's movers"
                                 TAB_WSB -> "WallStreetBets"
                                 TAB_NEWS -> "Live news"
@@ -178,7 +183,7 @@ fun StockTrackerApp(store: Store) {
                             },
                             fontWeight = FontWeight.SemiBold,
                         )
-                        if (tab == TAB_FEED || tab == TAB_PICKS) {
+                        if (tab == TAB_FEED || tab == TAB_HOME) {
                             Text(
                                 status,
                                 style = MaterialTheme.typography.labelMedium,
@@ -190,7 +195,7 @@ fun StockTrackerApp(store: Store) {
                     }
                 },
                 actions = {
-                    if (tab == TAB_FEED || tab == TAB_PICKS) {
+                    if (tab == TAB_FEED || tab == TAB_HOME) {
                         IconButton(onClick = { checkNow() }) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Check now")
                         }
@@ -200,56 +205,35 @@ fun StockTrackerApp(store: Store) {
                             Icon(Icons.Filled.Settings, contentDescription = "Settings")
                         }
                     } else {
-                        TextButton(onClick = { tab = TAB_FEED }) { Text("Done") }
+                        TextButton(onClick = { tab = TAB_HOME }) { Text("Done") }
                     }
                 },
             )
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    selected = tab == TAB_CRYPTO,
-                    onClick = { tab = TAB_CRYPTO },
+                NavigationBarItem(selected = tab == TAB_HOME, onClick = { tab = TAB_HOME },
+                    icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Home") })
+                NavigationBarItem(selected = tab == TAB_FEED, onClick = { tab = TAB_FEED },
+                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null) }, label = { Text("Sections") })
+                NavigationBarItem(selected = tab == TAB_NEWS, onClick = { tab = TAB_NEWS },
+                    icon = { Icon(Icons.Filled.Info, contentDescription = null) }, label = { Text("News") })
+                NavigationBarItem(selected = tab == TAB_CRYPTO, onClick = { tab = TAB_CRYPTO },
                     icon = { Text("₿", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    label = { Text("Crypto") },
-                    alwaysShowLabel = false,
-                )
-                NavigationBarItem(
-                    selected = tab == TAB_FEED,
-                    onClick = { tab = TAB_FEED },
-                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null) },
-                    label = { Text("Feed") },
-                )
-                NavigationBarItem(
-                    selected = tab == TAB_NEWS,
-                    onClick = { tab = TAB_NEWS },
-                    icon = { Icon(Icons.Filled.Info, contentDescription = null) },
-                    label = { Text("News") },
-                )
-                NavigationBarItem(
-                    selected = tab == TAB_WSB,
-                    onClick = { tab = TAB_WSB },
-                    icon = { Icon(Icons.Filled.Face, contentDescription = null) },
-                    label = { Text("WSB") },
-                )
-                NavigationBarItem(
-                    selected = tab == TAB_MOVERS,
-                    onClick = { tab = TAB_MOVERS },
-                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
-                    label = { Text("Movers") },
-                )
-                NavigationBarItem(
-                    selected = tab == TAB_PICKS,
-                    onClick = { tab = TAB_PICKS },
-                    icon = { Icon(Icons.Filled.Star, contentDescription = null) },
-                    label = { Text("Picks") },
-                )
+                    label = { Text("Crypto") })
+                NavigationBarItem(selected = tab == TAB_MARKETS || tab == TAB_MOVERS || tab == TAB_PICKS || tab == TAB_WSB,
+                    onClick = { tab = TAB_MARKETS },
+                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") })
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
+                TAB_HOME -> HomeScreen(store, tick, refreshing, onRefresh = { checkNow() },
+                    onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_MARKETS, TAB_MOVERS, TAB_PICKS, TAB_WSB -> MarketsScreen(store, tick, refreshing,
+                    onRefresh = { checkNow() }, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
                 TAB_CRYPTO -> CryptoScreen(store, onOpen = { stock = it })
@@ -259,7 +243,7 @@ fun StockTrackerApp(store: Store) {
                 TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onOpen = { stock = it })
                 else -> SettingsScreen(store, onMessage = { message(it) }, onReady = {
-                    tab = TAB_FEED
+                    tab = TAB_HOME
                     checkNow()
                 })
             }
@@ -344,7 +328,7 @@ private fun FeedScreen(
             ) {
                 // First thing on screen: today's top buy and sale (or setup, before that).
                 if (!store.isSetUp) item { SetupCard(onSetup) }
-                else item(key = "today") { TodayCard(highlights, onOpen) }
+                // Today's buy & sale lives on Home now.
                 // Section tabs stay pinned at the top while scrolling.
                 stickyHeader(key = "tabs") {
                     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
@@ -2338,6 +2322,211 @@ private fun InsiderBlock(f: Followed, store: Store) {
                 TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(x.link))) },
                     contentPadding = PaddingValues(0.dp)) { Text("View filing") }
             }
+        }
+    }
+}
+
+
+// ============================================================ Home: social-style feed
+
+/** One post in the Home feed. */
+private data class Post(
+    val who: String,
+    val about: String,          // their business / role
+    val category: Category?,    // for the avatar color; null = someone you follow
+    val time: Long,
+    val text: String,
+    val ticker: String,
+    val company: String,
+    val link: String,
+    val person: PersonTarget?,
+    val followed: Followed?,
+)
+
+@Composable
+private fun Avatar(name: String, size: Int = 44) {
+    val palette = listOf(0xFF1E88E5, 0xFF43A047, 0xFF8E24AA, 0xFFF4511E, 0xFF00897B, 0xFF3949AB, 0xFFD81B60, 0xFF6D4C41)
+    val color = Color(palette[(name.hashCode() and 0x7fffffff) % palette.size])
+    Box(Modifier.size(size.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
+        Text(initials(name), color = Color.White, fontWeight = FontWeight.Bold,
+            style = if (size >= 44) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelMedium)
+    }
+}
+
+private val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+private fun dayMs(d: String): Long = try { synchronized(dateFmt) { dateFmt.parse(d)?.time } ?: 0L } catch (_: Exception) { 0L }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeScreen(
+    store: Store, tick: Int, refreshing: Boolean, onRefresh: () -> Unit,
+    onSetup: () -> Unit, onOpen: (StockTarget) -> Unit,
+) {
+    val openPerson = LocalOpenPerson.current
+    val highlights = remember(tick) { Highlights.compute(store.moves(), store.picks()) }
+    var showFollowed by remember { mutableStateOf<Followed?>(null) }
+    var followedPosts by remember { mutableStateOf<List<Post>>(emptyList()) }
+    var reload by remember { mutableIntStateOf(0) }
+
+    // Posts from the app's tracked filings (Congress, insiders, funds).
+    val alertPosts = remember(tick) {
+        store.alerts().filter { it.category != Category.CHARGES }.take(150).map { a ->
+            val isFund = a.category == Category.FUND
+            val name = if (isFund) a.headline else cleanName(a.headline).substringBefore(", ")
+            val about = when (a.category) {
+                Category.SENATE -> "U.S. Senator" + a.headline.substringAfter(" · ", "").let { if (it.isNotEmpty()) " · $it" else "" }
+                Category.HOUSE -> "U.S. Representative" + a.headline.substringAfter(" · ", "").let { if (it.isNotEmpty()) " · $it" else "" }
+                Category.INSIDER -> listOf(a.headline.substringAfter(" · ", ""), a.company).filter { it.isNotBlank() }.joinToString(" at ")
+                else -> "Investment fund"
+            }
+            Post(name, about, a.category, a.time,
+                if (isFund) "Filed new quarterly holdings. " + a.lines.joinToString(" · ") else a.lines.joinToString(" · "),
+                a.ticker, a.company, a.link, personOf(a), null)
+        }
+    }
+
+    // Posts from people you follow, loaded live.
+    LaunchedEffect(reload) {
+        val list = Following.load(store)
+        val out = java.util.Collections.synchronizedList(mutableListOf<Post>())
+        withContext(Dispatchers.IO) {
+            kotlinx.coroutines.coroutineScope {
+                list.forEach { f ->
+                    launch {
+                        val about = f.businesses.firstOrNull().orEmpty()
+                        if (f.insider.isNotEmpty()) runCatching { Following.insiderFilings(f, store, 3) }.getOrNull()?.forEach { x ->
+                            out.add(Post(f.name, about, null, dayMs(x.date), x.lines.joinToString(" · ") +
+                                if (x.company.isNotBlank()) " · ${x.company}" else "", x.ticker, x.company, x.link, null, f))
+                        }
+                        if (f.cik.isNotEmpty()) runCatching { Following.fundSnapshot(f.cik, store) }.getOrNull()?.let { s ->
+                            val text = buildString {
+                                append("Filed holdings as of ${s.period}.")
+                                if (s.newBuys.isNotEmpty()) append(" New: " + s.newBuys.take(3).joinToString(", ") + ".")
+                                if (s.soldOut.isNotEmpty()) append(" Sold out of: " + s.soldOut.take(3).joinToString(", ") + ".")
+                                s.top.firstOrNull()?.let { append(" Biggest holding: ${it.name}.") }
+                            }
+                            out.add(Post(f.name, about, null, dayMs(s.period) + 45L * Store.DAY_MS, text, "", "", "", null, f))
+                        }
+                        if (f.youtube.isNotBlank()) runCatching { Following.videos(f, store) }.getOrNull()?.take(2)?.forEach { v ->
+                            out.add(Post(f.name, about, null, v.time, "Posted a new video: \"${v.title}\"", "", "", v.url, null, f))
+                        }
+                    }
+                }
+            }
+        }
+        followedPosts = out.toList()
+    }
+
+    val posts = (followedPosts + alertPosts).sortedByDescending { it.time }
+    val context = LocalContext.current
+
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = { onRefresh(); reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (!store.isSetUp) item { SetupCard(onSetup) } else item(key = "today") { TodayCard(highlights, onOpen) }
+
+            // "Stories" row of people you follow.
+            item(key = "stories") {
+                val follows = remember(reload) { Following.load(store) }
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    follows.forEach { f ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(68.dp).clickable { showFollowed = f }) {
+                            Box(Modifier.size(62.dp).background(TradeColors.buy(), CircleShape), contentAlignment = Alignment.Center) {
+                                Avatar(f.name, 56)
+                            }
+                            Text(f.name.substringBefore(" ("), style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+            }
+
+            if (posts.isEmpty()) item { EmptyState("Your feed is warming up", "Pull down to check for new filings.") }
+            items(posts.take(200), key = { it.who + it.time + it.text.hashCode() }) { p ->
+                ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable {
+                                when {
+                                    p.followed != null -> showFollowed = p.followed
+                                    p.person != null -> openPerson(p.person)
+                                }
+                            }) {
+                            Avatar(p.who)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(p.who, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(listOf(p.about, if (p.time > 0) timeAgo(p.time) else "").filter { it.isNotBlank() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            p.category?.let { CategoryPill(it) }
+                        }
+                        Text(p.text, style = MaterialTheme.typography.bodyMedium,
+                            color = when {
+                                p.text.startsWith("Bought") -> TradeColors.buy()
+                                p.text.startsWith("Sold") -> TradeColors.sell()
+                                else -> MaterialTheme.colorScheme.onSurface
+                            })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (p.ticker.isNotEmpty()) {
+                                OutlinedButton(onClick = { onOpen(StockTarget(p.ticker, p.company, "", "", emptyList(), "", 0.0)) }) {
+                                    Text("$${p.ticker}")
+                                }
+                            }
+                            if (p.link.isNotEmpty()) {
+                                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.link))) }) {
+                                    Text("Source")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(8.dp)) }
+        }
+    }
+
+    showFollowed?.let { f ->
+        val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showFollowed = null }, sheetState = sheet) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 32.dp)) {
+                FollowedCard(f, store, onRemove = {
+                    Following.save(store, Following.load(store).filter { it.name != f.name })
+                    showFollowed = null
+                    reload++
+                })
+            }
+        }
+    }
+}
+
+// ============================================================ Markets: Movers, Picks, WSB together
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MarketsScreen(
+    store: Store, tick: Int, refreshing: Boolean, onRefresh: () -> Unit,
+    onOpen: (StockTarget) -> Unit, onMessage: (String) -> Unit,
+) {
+    var view by rememberSaveable { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            listOf("Movers", "Common picks", "WSB").forEachIndexed { i, label ->
+                SegmentedButton(selected = view == i, onClick = { view = i },
+                    shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label, maxLines = 1) }
+            }
+        }
+        when (view) {
+            0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
+            1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            else -> WsbScreen(store, onOpen = onOpen)
         }
     }
 }
