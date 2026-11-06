@@ -1017,6 +1017,32 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
         }
 
         var massiveKey by rememberSaveable { mutableStateOf(store.massiveKey) }
+        var broker by remember { mutableStateOf(Broker.name(store)) }
+        var customLink by rememberSaveable { mutableStateOf(Broker.customTemplate(store)) }
+        Section("Your brokerage",
+            "Stock summaries get a button that opens the ticker in this app. If the app is installed it opens there, otherwise in the browser.") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                (Broker.CHOICES.map { it.name } + Broker.CUSTOM).forEach { n ->
+                    FilterChip(selected = broker == n, onClick = {
+                        broker = n
+                        Broker.set(store, n, customLink)
+                    }, label = { Text(n) })
+                }
+            }
+            if (broker == Broker.CUSTOM) {
+                OutlinedTextField(
+                    value = customLink,
+                    onValueChange = { customLink = it; Broker.set(store, Broker.CUSTOM, it) },
+                    label = { Text("Link with {T} where the ticker goes") },
+                    placeholder = { Text("https://yourbroker.com/quote/{T}") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Open any stock in your brokerage's website, copy the address, and replace the ticker with {T}.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
         Section("Market data",
             "The Movers tab uses a free key from Massive (formerly Polygon.io) for weekly stock prices.") {
             OutlinedTextField(
@@ -1185,6 +1211,11 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
                 }
             }
 
+            Broker.link(store, t.ticker)?.let { url ->
+                Button(onClick = { open(url) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open ${t.ticker} in ${Broker.name(store)}")
+                }
+            }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             // ---- price ----
@@ -2168,6 +2199,10 @@ private fun CryptoScreen(store: Store, onOpen: (StockTarget) -> Unit) {
                                     Text(String.format(java.util.Locale.US, "%+.1f%% today", it.change24h),
                                         color = if (up) TradeColors.buy() else TradeColors.sell(),
                                         style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                                Broker.link(store, sym, crypto = true)?.let { url ->
+                                    TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
+                                        contentPadding = PaddingValues(0.dp)) { Text("Open in ${Broker.name(store)}") }
                                 }
                             }
                         }
