@@ -40,6 +40,12 @@ struct FollowedSection: View {
     let onRemove: () -> Void
     @State private var videos: [Video]?
     @State private var news: [NewsItem]?
+    @State private var mentions: [Mention]?
+    @EnvironmentObject var model: AppModel
+
+    private var reported: [Move] {
+        model.moves.filter { cleanName($0.who).localizedCaseInsensitiveContains(person.name) }.sorted { $0.time > $1.time }
+    }
 
     var body: some View {
         Section {
@@ -48,6 +54,47 @@ struct FollowedSection: View {
                     Text("Businesses").font(.subheadline.weight(.semibold))
                     ForEach(person.businesses, id: \.self) { Text("• \($0)").font(.subheadline) }
                 }
+            }
+            if !reported.isEmpty {
+                Text("Reported trades").font(.subheadline.weight(.semibold))
+                ForEach(Array(reported.prefix(8).enumerated()), id: \.offset) { _, m in
+                    Button {
+                        model.openStock = StockTarget(ticker: m.ticker, company: m.company)
+                    } label: {
+                        TradeLine(line: "\(m.side == "buy" ? "Bought" : "Sold") \(m.ticker) · \(m.valueLabel) · \(Format.ago(m.time))")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            Text("Stocks they've talked about").font(.subheadline.weight(.semibold))
+            if let ms = mentions {
+                if ms.isEmpty {
+                    Text("No specific stocks named in their recent videos or news.").font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    ForEach(ms) { m in
+                        Button {
+                            model.openStock = StockTarget(ticker: m.ticker, company: m.company)
+                        } label: {
+                            HStack {
+                                Text(m.ticker).font(.headline).frame(width: 64, alignment: .leading)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(m.company).font(.caption).lineLimit(1)
+                                    Text("\(m.count) mention\(m.count == 1 ? "" : "s") · latest \(Format.ago(m.latest))")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(m.stance.capitalized).font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(m.stance == "buying" ? .green : m.stance == "selling" ? .red : .secondary)
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    Text("From their video titles and descriptions and news about them. These are things they've said, not confirmed trades.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            } else {
+                ProgressView()
             }
             Text("Latest videos").font(.subheadline.weight(.semibold))
             if let v = videos {
@@ -95,8 +142,11 @@ struct FollowedSection: View {
             }
         }
         .task(id: person.id) {
-            videos = await Following.videos(person)
-            news = (try? await News.search(person.newsQuery)) ?? []
+            let v = await Following.videos(person)
+            let n = (try? await News.search(person.newsQuery)) ?? []
+            videos = v
+            news = n
+            mentions = await Following.mentions(videos: v, news: n, ua: model.userAgent)
         }
     }
 }
