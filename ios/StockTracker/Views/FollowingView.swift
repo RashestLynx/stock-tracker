@@ -41,6 +41,13 @@ struct FollowedSection: View {
     @State private var videos: [Video]?
     @State private var news: [NewsItem]?
     @State private var mentions: [Mention]?
+    @State private var disclosed: [Holding] = []
+
+    private var known: KnownInfo? { Known.people[person.name] }
+    private var owns: [Holding] {
+        var seen = Set<String>()
+        return ((known?.owns ?? []) + disclosed).filter { seen.insert($0.id).inserted }
+    }
     @EnvironmentObject var model: AppModel
 
     private var reported: [Move] {
@@ -54,6 +61,37 @@ struct FollowedSection: View {
                     Text("Businesses").font(.subheadline.weight(.semibold))
                     ForEach(person.businesses, id: \.self) { Text("• \($0)").font(.subheadline) }
                 }
+            }
+            if !owns.isEmpty {
+                Text("What they own (in their own words)").font(.subheadline.weight(.semibold))
+                ForEach(owns) { h in
+                    HStack(alignment: .top) {
+                        Button {
+                            if !h.ticker.isEmpty { model.openStock = StockTarget(ticker: h.ticker, company: h.name) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(h.ticker.isEmpty ? h.name : "\(h.ticker) · \(h.name)").font(.subheadline.weight(.semibold))
+                                Text(h.note).font(.caption).foregroundStyle(.secondary)
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.borderless)
+                        Spacer()
+                        if let u = URL(string: h.sourceURL) { Link(h.source, destination: u).font(.caption) }
+                    }
+                }
+            }
+            if let k = known, !k.recommends.isEmpty {
+                Text("Funds they recommend (not disclosed as owned)").font(.subheadline.weight(.semibold))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(k.recommends, id: \.self) { t in
+                            Button(t) { model.openStock = StockTarget(ticker: t, company: "") }
+                                .buttonStyle(.bordered).controlSize(.small)
+                        }
+                    }
+                }
+                if let u = URL(string: k.recommendsSource) { Link("Source", destination: u).font(.caption) }
             }
             if !reported.isEmpty {
                 Text("Reported trades").font(.subheadline.weight(.semibold))
@@ -147,6 +185,9 @@ struct FollowedSection: View {
             videos = v
             news = n
             mentions = await Following.mentions(videos: v, news: n, ua: model.userAgent)
+            if let feed = known?.disclosureFeed, !feed.isEmpty {
+                disclosed = await Known.disclosures(feed: feed, name: person.name)
+            }
         }
     }
 }
