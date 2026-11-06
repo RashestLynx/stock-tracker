@@ -22,6 +22,7 @@ data class Followed(
     val businesses: List<String>,   // public info about their companies
     val links: List<Pair<String, String>>,
     val cik: String = "",           // SEC filer number for investment firms (13F holdings)
+    val insider: String = "",       // SEC filer number, or EDGAR name like "Musk Elon", for company-insider filings
 )
 
 data class Video(val title: String, val url: String, val time: Long, val id: String, val description: String = "")
@@ -55,6 +56,27 @@ object Following {
             recommendsSource = BRIEFS_ETF,
             disclosureFeed = "https://www.briefs.co/feed/",
         ),
+        "Elon Musk" to KnownInfo(
+            owns = listOf(
+                Holding("Tesla", "TSLA", "Largest individual shareholder. In June 2026 he exercised 303,960,630 Tesla options from his 2018 pay package; no shares were sold",
+                    "Teslarati", "https://www.teslarati.com/?p=302443"),
+                Holding("SpaceX", "", "CEO and largest shareholder; SpaceX went public in June 2026", "Teslarati", "https://www.teslarati.com/?p=302443"),
+            ), recommends = emptyList(), recommendsSource = ""),
+        "Sam Altman" to KnownInfo(
+            owns = listOf(
+                Holding("OpenAI", "", "Holds no equity in OpenAI", "Reuters via Layer3", "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+                Holding("Helion Energy (private)", "", "Stake valued around \$1.7 billion in a May 2026 court document", "Layer3", "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+                Holding("Stripe (private)", "", "Stake valued around \$633 million in the same court document", "Layer3", "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+                Holding("Oklo", "OKLO", "Public nuclear company he chaired until April 2025; holds shares", "BingX", "https://bingx.com/en/learn/article/what-is-sam-altman-s-net-worth"),
+                Holding("Reddit", "RDDT", "Was one of his biggest holdings; a court document says he sold out by the end of 2025", "Layer3", "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+            ), recommends = emptyList(), recommendsSource = ""),
+        "Donald Trump" to KnownInfo(
+            owns = listOf(
+                Holding("Stock trades on his behalf", "", "Ethics filings show 3,642 trades in Q1 2026 worth \$220M-\$750M; they don't say who directed them",
+                    "Moneywise", "https://moneywise.com/news/top-stories/trump-eric-trump-nvidia-palantir-stock-trades-insider-trading-accusations"),
+                Holding("Nvidia", "NVDA", "15 transactions in Q1 2026 (9 purchases, 6 sales)", "CBS News", "https://cbsnews.com/news/trump-stock-trades-2026"),
+                Holding("Trump Media & Technology Group", "DJT", "His media company, listed on Nasdaq", "SEC", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=trump+media"),
+            ), recommends = emptyList(), recommendsSource = ""),
         "Mark Tilbury" to KnownInfo(
             owns = listOf(
                 Holding("S&P 500 index funds", "", "Says index funds hold the majority of his money; the S&P 500 is \"part of my portfolio\"",
@@ -156,14 +178,86 @@ object Following {
             listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1350694&type=13F"), cik = "1350694"),
     )
 
+    /** Famous rich people in the public eye. */
+    val PUBLIC = listOf(
+        Followed("Elon Musk", "", "\"Elon Musk\" (Tesla OR SpaceX OR xAI) stock",
+            listOf("CEO of Tesla and SpaceX; founder of xAI"),
+            listOf("SEC insider filings" to "https://www.sec.gov/cgi-bin/own-disp?action=getowner&CIK=1494730"), insider = "1494730"),
+        Followed("Sam Altman", "", "\"Sam Altman\" (stake OR investment OR shares)",
+            listOf("CEO of OpenAI (holds no OpenAI equity)", "Investor in Helion, Stripe, Oklo and hundreds of startups"),
+            emptyList(), insider = "Altman Samuel H"),
+        Followed("Donald Trump", "", "\"Trump\" (\"278-T\" OR \"financial disclosure\" OR \"stock trades\")",
+            listOf("President of the United States", "Largest shareholder of Trump Media & Technology Group (DJT)"),
+            listOf("Office of Government Ethics filings" to "https://www.oge.gov/web/OGE.nsf/Officials%20Individual%20Disclosures%20Search%20Collection?OpenForm"),
+            insider = "Trump Donald J."),
+        Followed("Jeff Bezos", "", "\"Jeff Bezos\" (Amazon OR shares OR stake)", listOf("Founder and executive chair of Amazon; founder of Blue Origin"),
+            emptyList(), insider = "Bezos Jeffrey P"),
+        Followed("Mark Zuckerberg", "", "\"Zuckerberg\" (shares OR stake OR sold)", listOf("Founder and CEO of Meta Platforms"),
+            emptyList(), insider = "Zuckerberg Mark"),
+        Followed("Jensen Huang", "", "\"Jensen Huang\" (shares OR sold OR stake)", listOf("Co-founder and CEO of Nvidia"),
+            emptyList(), insider = "Huang Jen Hsun"),
+        Followed("Bill Gates", "", "\"Bill Gates\" (stake OR shares OR foundation)", listOf("Co-founder of Microsoft; his foundation trust reports its stock holdings"),
+            listOf("Foundation trust 13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1166559&type=13F"), cik = "1166559"),
+    )
+
     fun load(store: Store): List<Followed> {
-        // One-time: add the famous funds to existing lists too.
-        if (store.prefs.getInt("following_v", 1) < 2) {
+        // One-time: add new built-in groups to existing lists too.
+        val v = store.prefs.getInt("following_v", 1)
+        if (v < 3) {
             val current = loadRaw(store)
-            save(store, current + FUNDS.filter { f -> current.none { it.name == f.name } })
-            store.prefs.edit().putInt("following_v", 2).apply()
+            val add = (if (v < 2) FUNDS else emptyList()) + PUBLIC
+            save(store, current + add.filter { f -> current.none { it.name == f.name } })
+            store.prefs.edit().putInt("following_v", 3).apply()
         }
         return loadRaw(store)
+    }
+
+    /** Resolve an SEC filer number from a number or an EDGAR name ("Musk Elon"). Cached. Blocking. */
+    fun insiderCik(f: Followed, store: Store): String? {
+        val q = f.insider.trim()
+        if (q.isEmpty()) return null
+        if (q.all { it.isDigit() }) return q
+        val key = "insider_cik_" + q
+        store.prefs.getString(key, null)?.let { return it.ifEmpty { null } }
+        val found = try {
+            val j = JSONObject(Edgar.get("https://efts.sec.gov/LATEST/search-index?keysTyped=" +
+                java.net.URLEncoder.encode(q, "UTF-8"), store.userAgent))
+            val hits = j.optJSONObject("hits")?.optJSONArray("hits")
+            var cik: String? = null
+            if (hits != null) for (i in 0 until hits.length()) {
+                val h = hits.getJSONObject(i)
+                val ent = h.optJSONObject("_source")?.optString("entity").orEmpty()
+                if (ent.lowercase(Locale.US).startsWith(q.lowercase(Locale.US).split(" ").first())) {
+                    cik = h.optString("_id").trimStart('0'); break
+                }
+            }
+            cik
+        } catch (_: Exception) { null }
+        if (found != null) store.prefs.edit().putString(key, found).apply()
+        return found
+    }
+
+    data class InsiderFiling(val date: String, val ticker: String, val company: String, val lines: List<String>, val link: String)
+
+    /** Their latest SEC Form 4 insider filings (any company). Blocking. */
+    fun insiderFilings(f: Followed, store: Store, max: Int = 6): List<InsiderFiling> {
+        val cik = insiderCik(f, store) ?: return emptyList()
+        val ua = store.userAgent
+        val j = JSONObject(Edgar.get(String.format(Locale.US, "https://data.sec.gov/submissions/CIK%010d.json", cik.toLong()), ua))
+        val r = j.getJSONObject("filings").getJSONObject("recent")
+        val forms = r.getJSONArray("form"); val accs = r.getJSONArray("accessionNumber"); val dates = r.getJSONArray("filingDate")
+        val out = mutableListOf<InsiderFiling>()
+        for (i in 0 until forms.length()) {
+            if (forms.getString(i) !in setOf("4", "4/A")) continue
+            val acc = accs.getString(i)
+            val folder = "https://www.sec.gov/Archives/edgar/data/$cik/${acc.replace("-", "")}/"
+            val filing = Filing(acc, "4", f.name, folder + "$acc-index.htm")
+            val info = try { Edgar.parseForm4(filing, ua) } catch (_: Exception) { null } ?: continue
+            out.add(InsiderFiling(dates.getString(i), info.ticker, info.issuer,
+                Edgar.summarize(info.trades).ifEmpty { listOf("Options/derivatives only") }, filing.link))
+            if (out.size >= max) break
+        }
+        return out
     }
 
     private fun loadRaw(store: Store): List<Followed> {
@@ -179,6 +273,7 @@ object Following {
                     List(b.length()) { i -> b.getString(i) },
                     List(l.length()) { i -> l.getJSONArray(i).let { p -> p.getString(0) to p.getString(1) } },
                     o.optString("cik"),
+                    o.optString("insider"),
                 )
             }
         } catch (e: Exception) {
@@ -190,7 +285,7 @@ object Following {
         val arr = JSONArray()
         list.forEach { f ->
             arr.put(JSONObject().put("name", f.name).put("yt", f.youtube).put("q", f.newsQuery)
-                .put("biz", JSONArray(f.businesses)).put("cik", f.cik)
+                .put("biz", JSONArray(f.businesses)).put("cik", f.cik).put("insider", f.insider)
                 .put("links", JSONArray(f.links.map { JSONArray(listOf(it.first, it.second)) })))
         }
         store.prefs.edit().putString("following", arr.toString()).apply()

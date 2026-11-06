@@ -2037,9 +2037,10 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            if (f.insider.isNotEmpty()) InsiderBlock(f, store)
             if (f.cik.isNotEmpty()) FundHoldingsBlock(f, store)
-            if (f.cik.isEmpty()) Text("Latest videos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            if (f.cik.isEmpty()) when {
+            if (f.youtube.isNotBlank()) Text("Latest videos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            if (f.youtube.isNotBlank()) when {
                 videos == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 videos!!.isEmpty() -> Text(if (f.youtube.isBlank()) "No YouTube channel added." else "Couldn't load videos right now.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2302,6 +2303,40 @@ private fun CryptoScreen(store: Store, onOpen: (StockTarget) -> Unit) {
                 Text("Prices and company holdings from CoinGecko; fund positions from SEC filings; news from Google News. " +
                     "Not financial advice.", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+
+// ============================================================ Public figures' SEC insider filings
+
+@Composable
+private fun InsiderBlock(f: Followed, store: Store) {
+    val context = LocalContext.current
+    val openStock = LocalOpenStock.current
+    var filings by remember(f.name) { mutableStateOf<List<Following.InsiderFiling>?>(null) }
+    LaunchedEffect(f.name) {
+        filings = withContext(Dispatchers.IO) { runCatching { Following.insiderFilings(f, store) }.getOrDefault(emptyList()) }
+    }
+    Text("SEC insider filings", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    when {
+        filings == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+        filings!!.isEmpty() -> Text("No recent company-insider filings found.", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else -> filings!!.forEach { x ->
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(listOf(x.ticker, x.company).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f).clickable(enabled = x.ticker.isNotEmpty()) {
+                            openStock(StockTarget(x.ticker, x.company, "", "", emptyList(), "", 0.0))
+                        }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(x.date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                x.lines.forEach { TradeLine(it) }
+                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(x.link))) },
+                    contentPadding = PaddingValues(0.dp)) { Text("View filing") }
             }
         }
     }
