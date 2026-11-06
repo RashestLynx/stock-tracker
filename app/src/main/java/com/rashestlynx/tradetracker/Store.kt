@@ -326,6 +326,30 @@ class Store(context: Context) {
         nameFile.writeText(JSONObject(map).toString())
     }
 
+    // ---------------- crypto fund positions seen in 13Fs ----------------
+    data class CryptoPos(val fund: String, val person: String, val asset: String, val product: String,
+                         val value: Double, val time: Long)
+
+    fun cryptoPositions(): List<CryptoPos> {
+        val arr = JSONArray(prefs.getString("crypto_pos", "[]"))
+        return List(arr.length()) {
+            val o = arr.getJSONObject(it)
+            CryptoPos(o.optString("f"), o.optString("p"), o.optString("a"), o.optString("n"), o.optDouble("v"), o.optLong("t"))
+        }
+    }
+
+    fun addCryptoPositions(new: List<CryptoPos>) {
+        if (new.isEmpty()) return
+        val merged = LinkedHashMap<String, CryptoPos>()
+        (new + cryptoPositions()).forEach { val k = "${it.fund}|${it.product}"; if (k !in merged) merged[k] = it }
+        val arr = JSONArray()
+        merged.values.sortedByDescending { it.value }.take(1500).forEach {
+            arr.put(JSONObject().put("f", it.fund).put("p", it.person).put("a", it.asset).put("n", it.product)
+                .put("v", it.value).put("t", it.time))
+        }
+        prefs.edit().putString("crypto_pos", arr.toString()).apply()
+    }
+
     // ---------------- generic cached text files (investor profile data) ----------------
     fun cachedText(name: String, maxAgeMs: Long): String? {
         val f = File(appContext.filesDir, name)

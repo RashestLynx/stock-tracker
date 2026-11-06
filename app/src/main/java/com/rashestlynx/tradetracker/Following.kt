@@ -21,6 +21,7 @@ data class Followed(
     val newsQuery: String,          // what to search news for
     val businesses: List<String>,   // public info about their companies
     val links: List<Pair<String, String>>,
+    val cik: String = "",           // SEC filer number for investment firms (13F holdings)
 )
 
 data class Video(val title: String, val url: String, val time: Long, val id: String, val description: String = "")
@@ -143,8 +144,30 @@ object Following {
         ),
     )
 
+    /** Famous investment firms, followed through their quarterly 13F holdings. */
+    val FUNDS = listOf(
+        Followed("Berkshire Hathaway", "", "\"Berkshire Hathaway\" stocks", listOf("Warren Buffett's company, run by Greg Abel since 2026"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1067983&type=13F"), cik = "1067983"),
+        Followed("Pershing Square (Bill Ackman)", "", "\"Bill Ackman\" OR \"Pershing Square\"", listOf("Bill Ackman's concentrated hedge fund"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1336528&type=13F"), cik = "1336528"),
+        Followed("Duquesne (Stanley Druckenmiller)", "", "\"Druckenmiller\"", listOf("Stanley Druckenmiller's family office"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1536411&type=13F"), cik = "1536411"),
+        Followed("Bridgewater (Ray Dalio)", "", "\"Bridgewater Associates\" OR \"Ray Dalio\"", listOf("The world's largest hedge fund, founded by Ray Dalio"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1350694&type=13F"), cik = "1350694"),
+    )
+
     fun load(store: Store): List<Followed> {
-        val raw = store.prefs.getString("following", null) ?: return DEFAULTS
+        // One-time: add the famous funds to existing lists too.
+        if (store.prefs.getInt("following_v", 1) < 2) {
+            val current = loadRaw(store)
+            save(store, current + FUNDS.filter { f -> current.none { it.name == f.name } })
+            store.prefs.edit().putInt("following_v", 2).apply()
+        }
+        return loadRaw(store)
+    }
+
+    private fun loadRaw(store: Store): List<Followed> {
+        val raw = store.prefs.getString("following", null) ?: return DEFAULTS + FUNDS
         return try {
             val arr = JSONArray(raw)
             List(arr.length()) {
@@ -155,10 +178,11 @@ object Following {
                     o.optString("name"), o.optString("yt"), o.optString("q"),
                     List(b.length()) { i -> b.getString(i) },
                     List(l.length()) { i -> l.getJSONArray(i).let { p -> p.getString(0) to p.getString(1) } },
+                    o.optString("cik"),
                 )
             }
         } catch (e: Exception) {
-            DEFAULTS
+            DEFAULTS + FUNDS
         }
     }
 
@@ -166,7 +190,7 @@ object Following {
         val arr = JSONArray()
         list.forEach { f ->
             arr.put(JSONObject().put("name", f.name).put("yt", f.youtube).put("q", f.newsQuery)
-                .put("biz", JSONArray(f.businesses))
+                .put("biz", JSONArray(f.businesses)).put("cik", f.cik)
                 .put("links", JSONArray(f.links.map { JSONArray(listOf(it.first, it.second)) })))
         }
         store.prefs.edit().putString("following", arr.toString()).apply()
@@ -285,6 +309,42 @@ object Following {
             Mention(t, byTicker[t]?.second ?: t, stance, hits.size, newest.first.time, newest.first.url)
         }.sortedWith(compareByDescending<Mention> { it.stance != "mentioned" }.thenByDescending { it.latest })
             .take(15)
+    }
+
+    // ------------------------------------------------------------ fund holdings
+    data class FundHolding(val name: String, val value: Double, val change: String)
+    data class FundSnapshot(val period: String, val total: Double, val top: List<FundHolding>,
+                            val newBuys: List<String>, val soldOut: List<String>, val crypto: List<FundHolding>)
+
+    /** Latest 13F with changes vs the one before. Blocking. */
+    fun fundSnapshot(cik: String, store: Store): FundSnapshot? {
+        val ua = store.userAgent
+        val filings = Edgar.latest13Fs(cik, ua, 2)
+        if (filings.isEmpty()) return null
+        val now = Edgar.rows13F(filings[0].first, ua).filter { !it.option }
+        val before = if (filings.size > 1) Edgar.rows13F(filings[1].first, ua).filter { !it.option } else emptyList()
+        fun byName(rows: List<Edgar.Row13F>) = rows.groupBy { it.name }.mapValues { (_, r) -> r.sumOf { it.value } to r.sumOf { it.shares } }
+        val a = byName(now); val b = byName(before)
+        fun change(n: String): String {
+            val sh = a[n]?.second ?: 0.0
+            val old = b[n]?.second ?: return if (before.isEmpty()) "" else "New"
+            if (old <= 0) return ""
+            val pct = (sh - old) / old * 100
+            return when {
+                pct > 1 -> String.format(Locale.US, "Added %.0f%%", pct)
+                pct < -1 -> String.format(Locale.US, "Cut %.0f%%", -pct)
+                else -> "No change"
+            }
+        }
+        val top = a.entries.sortedByDescending { it.value.first }.take(10).map { FundHolding(it.key, it.value.first, change(it.key)) }
+        val newBuys = if (before.isEmpty()) emptyList() else a.keys.filter { it !in b }.sortedByDescending { a[it]?.first ?: 0.0 }.take(6)
+        val sold = b.keys.filter { it !in a }.sortedByDescending { b[it]?.first ?: 0.0 }.take(6)
+        val crypto = a.filter { Crypto.assetOf(it.key) != null }.map { FundHolding(it.key, it.value.first, change(it.key)) }
+        // Record their crypto positions for the Crypto tab.
+        store.addCryptoPositions(crypto.map {
+            Store.CryptoPos(filings[0].first.title, "fund:$cik", Crypto.assetOf(it.name)!!, it.name, it.value, System.currentTimeMillis())
+        })
+        return FundSnapshot(filings[0].second, a.values.sumOf { it.first }, top, newBuys, sold, crypto)
     }
 
     private fun get(url: String): String {

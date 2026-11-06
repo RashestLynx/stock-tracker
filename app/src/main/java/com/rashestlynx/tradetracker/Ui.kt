@@ -121,6 +121,7 @@ private fun rememberStoreTick(store: Store): Int {
 private const val TAB_FEED = 0
 private const val TAB_WSB = 4
 private const val TAB_NEWS = 5
+private const val TAB_CRYPTO = 6
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
@@ -171,6 +172,7 @@ fun StockTrackerApp(store: Store) {
                                 TAB_MOVERS -> "This week's movers"
                                 TAB_WSB -> "WallStreetBets"
                                 TAB_NEWS -> "Live news"
+                                TAB_CRYPTO -> "Bitcoin & Ethereum"
                                 TAB_PICKS -> "Common picks"
                                 else -> "Settings"
                             },
@@ -205,6 +207,13 @@ fun StockTrackerApp(store: Store) {
         },
         bottomBar = {
             NavigationBar {
+                NavigationBarItem(
+                    selected = tab == TAB_CRYPTO,
+                    onClick = { tab = TAB_CRYPTO },
+                    icon = { Text("₿", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                    label = { Text("Crypto") },
+                    alwaysShowLabel = false,
+                )
                 NavigationBarItem(
                     selected = tab == TAB_FEED,
                     onClick = { tab = TAB_FEED },
@@ -243,6 +252,7 @@ fun StockTrackerApp(store: Store) {
             when (tab) {
                 TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
+                TAB_CRYPTO -> CryptoScreen(store, onOpen = { stock = it })
                 TAB_NEWS -> NewsScreen(store, onOpen = { stock = it })
                 TAB_WSB -> WsbScreen(store, onOpen = { stock = it })
                 TAB_MOVERS -> MoversScreen(store, onOpen = { stock = it }, onMessage = { message(it) })
@@ -1996,8 +2006,9 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text("Latest videos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            when {
+            if (f.cik.isNotEmpty()) FundHoldingsBlock(f, store)
+            if (f.cik.isEmpty()) Text("Latest videos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            if (f.cik.isEmpty()) when {
                 videos == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 videos!!.isEmpty() -> Text(if (f.youtube.isBlank()) "No YouTube channel added." else "Couldn't load videos right now.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2026,6 +2037,236 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     f.links.forEach { (label, url) -> OutlinedButton(onClick = { open(url) }) { Text(label) } }
                 }
+            }
+        }
+    }
+}
+
+
+// ============================================================ Famous funds' holdings
+
+private fun money(v: Double): String = when {
+    v >= 1e12 -> String.format(java.util.Locale.US, "\$%.1fT", v / 1e12)
+    v >= 1e9 -> String.format(java.util.Locale.US, "\$%.1fB", v / 1e9)
+    v >= 1e6 -> String.format(java.util.Locale.US, "\$%.1fM", v / 1e6)
+    else -> String.format(java.util.Locale.US, "\$%,.0f", v)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FundHoldingsBlock(f: Followed, store: Store) {
+    var snap by remember(f.cik) { mutableStateOf<Following.FundSnapshot?>(null) }
+    var loaded by remember(f.cik) { mutableStateOf(false) }
+    LaunchedEffect(f.cik) {
+        snap = withContext(Dispatchers.IO) { runCatching { Following.fundSnapshot(f.cik, store) }.getOrNull() }
+        loaded = true
+    }
+    Text("Latest holdings" + (snap?.period?.takeIf { it.isNotBlank() }?.let { " (as of $it)" } ?: ""),
+        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    val s = snap
+    when {
+        !loaded -> LinearProgressIndicator(Modifier.fillMaxWidth())
+        s == null -> Text("Couldn't load their latest filing right now.", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else -> {
+            Text("${money(s.total)} in reported U.S. stocks", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            s.top.forEach { h ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(h.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(money(h.value), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.width(8.dp))
+                    Text(h.change, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(76.dp),
+                        color = when {
+                            h.change.startsWith("Added") || h.change == "New" -> TradeColors.buy()
+                            h.change.startsWith("Cut") -> TradeColors.sell()
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        })
+                }
+            }
+            if (s.newBuys.isNotEmpty()) {
+                Text("New this quarter: " + s.newBuys.joinToString(", "), style = MaterialTheme.typography.bodySmall,
+                    color = TradeColors.buy())
+            }
+            if (s.soldOut.isNotEmpty()) {
+                Text("Sold out of: " + s.soldOut.joinToString(", "), style = MaterialTheme.typography.bodySmall,
+                    color = TradeColors.sell())
+            }
+            if (s.crypto.isNotEmpty()) {
+                Text("Crypto funds: " + s.crypto.joinToString(", ") { "${it.name} ${money(it.value)}" },
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+// ============================================================ Crypto tab
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CryptoScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    var prices by remember { mutableStateOf<Map<String, CoinPrice>>(emptyMap()) }
+    var treasuries by remember { mutableStateOf<List<TreasuryCompany>>(emptyList()) }
+    var news by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
+    var reload by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(true) }
+    var coin by rememberSaveable { mutableIntStateOf(0) } // 0 BTC, 1 ETH
+    val asset = if (coin == 0) "BTC" else "ETH"
+
+    LaunchedEffect(reload) {
+        while (true) {
+            loading = true
+            withContext(Dispatchers.IO) { runCatching { Crypto.prices() } }.onSuccess { prices = it }
+            loading = false
+            delay(60_000)
+        }
+    }
+    LaunchedEffect(coin, reload) {
+        treasuries = withContext(Dispatchers.IO) {
+            runCatching { Crypto.treasuries(if (coin == 0) "bitcoin" else "ethereum") }.getOrDefault(emptyList())
+        }
+        news = withContext(Dispatchers.IO) {
+            runCatching { News.search(if (coin == 0) "bitcoin (ETF OR institutional OR fund OR whale)" else "ethereum (ETF OR institutional OR fund OR whale)") }
+                .getOrDefault(emptyList())
+        }
+    }
+
+    val positions = remember(reload) { store.cryptoPositions() }
+    val funds = positions.filter { it.asset == asset }.sortedByDescending { it.value }
+    val moves = remember(reload) { store.moves() }
+    val tradeMoves = moves.filter {
+        val a = Crypto.tickerAsset(it.ticker)
+        a == asset || (a == "STOCK" && coin == 0)
+    }.sortedByDescending { it.time }
+    val charges = remember(reload) {
+        store.alerts().filter { it.category == Category.CHARGES &&
+            listOf("crypto", "bitcoin", "ether", "token", "digital asset", "coin").any { k ->
+                (it.headline + " " + it.lines.joinToString(" ")).contains(k, ignoreCase = true) } }
+    }
+
+    PullToRefreshBox(isRefreshing = loading && prices.isEmpty(), onRefresh = { reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    listOf("BTC" to "Bitcoin", "ETH" to "Ethereum").forEachIndexed { i, (sym, label) ->
+                        val p = prices[sym]
+                        val up = (p?.change24h ?: 0.0) >= 0
+                        ElevatedCard(onClick = { coin = i }, shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f),
+                            colors = if (coin == i) CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                            else CardDefaults.elevatedCardColors()) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                                Text(p?.let { String.format(java.util.Locale.US, "\$%,.0f", it.usd) } ?: "—",
+                                    style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                p?.let {
+                                    Text(String.format(java.util.Locale.US, "%+.1f%% today", it.change24h),
+                                        color = if (up) TradeColors.buy() else TradeColors.sell(),
+                                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+                Text("Prices refresh every minute (CoinGecko).", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            item {
+                SheetBlock("Big funds holding ${if (coin == 0) "Bitcoin" else "Ethereum"} funds") {
+                    Text("From their quarterly SEC filings (13F). Fills in as new filings arrive; the next wave is due mid-November.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (funds.isEmpty()) Text("None captured yet.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    funds.take(25).forEach { p ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(p.fund, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(p.product, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text(money(p.value), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            item {
+                SheetBlock("Insider & Congress crypto trades") {
+                    Text(
+                        "Coins have no company insiders who must report trades, so this shows trades in crypto funds " +
+                            "(like IBIT) by members of Congress and insider trades at crypto companies" +
+                            (if (coin == 0) " (Strategy, Coinbase, miners)." else "."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (tradeMoves.isEmpty()) Text("None captured in the last 7 days.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    tradeMoves.take(15).forEach { m ->
+                        Column(Modifier.fillMaxWidth().clickable { onOpen(StockTarget(m.ticker, m.company, "", "", emptyList(), "", m.price)) }
+                            .padding(vertical = 3.dp)) {
+                            TradeLine("${if (m.side == "buy") "Bought" else "Sold"} ${m.ticker} · ${m.valueLabel}")
+                            Text("${m.who} · ${m.category.label} · ${timeAgo(m.time)}", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (charges.isNotEmpty()) {
+                        Text("SEC crypto insider trading cases", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        charges.take(5).forEach { a ->
+                            Text("• ${a.headline}", style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.link))) })
+                        }
+                    }
+                }
+            }
+
+            if (treasuries.isNotEmpty()) {
+                item {
+                    SheetBlock("Public companies holding ${if (coin == 0) "Bitcoin" else "Ethereum"}") {
+                        treasuries.take(15).forEach { t ->
+                            Row(Modifier.fillMaxWidth().clickable(enabled = t.symbol.isNotBlank()) {
+                                onOpen(StockTarget(t.symbol.substringBefore(".").substringBefore(":"), t.name, "", "", emptyList(), "", 0.0))
+                            }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(t.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(listOf(t.symbol, t.country).filter { it.isNotBlank() }.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(String.format(java.util.Locale.US, "%,.0f %s", t.coins, asset),
+                                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(money(t.valueUsd), style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                SheetBlock("Big-money ${if (coin == 0) "Bitcoin" else "Ethereum"} news") {
+                    if (news.isEmpty()) Text("Loading…", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    news.take(8).forEach { n ->
+                        Column(Modifier.fillMaxWidth().clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.url))) }
+                            .padding(vertical = 4.dp)) {
+                            Text(n.title, style = MaterialTheme.typography.bodyMedium)
+                            Text("${n.source} · ${timeAgo(n.time)}", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Prices and company holdings from CoinGecko; fund positions from SEC filings; news from Google News. " +
+                    "Not financial advice.", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

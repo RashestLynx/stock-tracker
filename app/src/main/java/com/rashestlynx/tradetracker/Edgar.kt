@@ -170,6 +170,61 @@ object Edgar {
         }
     }
 
+    /** One row of a 13F holdings table. */
+    data class Row13F(val name: String, val cls: String, val value: Double, val shares: Double, val option: Boolean)
+
+    /** Every row of a 13F holdings table. */
+    fun rows13F(filing: Filing, userAgent: String): List<Row13F> {
+        val folder = filing.link.substringBeforeLast("/") + "/"
+        val items = JSONObject(get(folder + "index.json", userAgent))
+            .getJSONObject("directory").getJSONArray("item")
+        var tableName: String? = null
+        for (i in 0 until items.length()) {
+            val name = items.getJSONObject(i).getString("name")
+            val lower = name.lowercase(Locale.US)
+            if (lower.endsWith(".xml") && lower != "primary_doc.xml") { tableName = name; break }
+        }
+        if (tableName == null) return emptyList()
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            .parse(get(folder + tableName, userAgent).byteInputStream())
+        return doc.documentElement.children("infoTable").mapNotNull { row ->
+            val name = row.text("nameOfIssuer") ?: return@mapNotNull null
+            Row13F(
+                name = name,
+                cls = row.text("titleOfClass") ?: "",
+                value = row.text("value")?.toDoubleOrNull() ?: 0.0,
+                shares = row.text("shrsOrPrnAmt/sshPrnamt")?.toDoubleOrNull() ?: 0.0,
+                option = row.child("putCall") != null,
+            )
+        }
+    }
+
+    /** Biggest positions from a list of 13F rows (options skipped), largest first. */
+    fun top13F(rows: List<Row13F>, top: Int = 20): List<Pair<String, Double>> {
+        val totals = LinkedHashMap<String, Double>()
+        rows.filter { !it.option }.forEach { totals[it.name] = (totals[it.name] ?: 0.0) + it.value }
+        return totals.entries.sortedByDescending { it.value }.take(top).map { it.key to it.value }
+    }
+
+    /** The newest [count] 13F-HR filings for a filer, newest first, as (filing, period of report). */
+    fun latest13Fs(cik: String, userAgent: String, count: Int = 2): List<Pair<Filing, String>> {
+        val n = cik.toLong()
+        val j = JSONObject(get(String.format(Locale.US, "https://data.sec.gov/submissions/CIK%010d.json", n), userAgent))
+        val r = j.getJSONObject("filings").getJSONObject("recent")
+        val forms = r.getJSONArray("form")
+        val accs = r.getJSONArray("accessionNumber")
+        val periods = r.optJSONArray("reportDate")
+        val out = mutableListOf<Pair<Filing, String>>()
+        for (i in 0 until forms.length()) {
+            if (forms.getString(i) != "13F-HR") continue
+            val acc = accs.getString(i)
+            val folder = "https://www.sec.gov/Archives/edgar/data/$n/${acc.replace("-", "")}/"
+            out.add(Filing(acc, "13F-HR", j.optString("name"), folder + "$acc-index.htm") to (periods?.optString(i) ?: ""))
+            if (out.size >= count) break
+        }
+        return out
+    }
+
     /** A 13F's largest stock positions: (issuer name, value in dollars), biggest first. */
     fun parse13FHoldings(filing: Filing, userAgent: String, top: Int = 20): List<Pair<String, Double>> {
         val folder = filing.link.substringBeforeLast("/") + "/"

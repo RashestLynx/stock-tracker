@@ -34,6 +34,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
     private val newPicks = mutableListOf<Pick>()
     private val newSeen = mutableListOf<String>()
     private val newMoves = mutableListOf<Move>()
+    private val newCrypto = mutableListOf<Store.CryptoPos>()
     private val errors = mutableListOf<String>()
 
     override fun doWork(): Result {
@@ -56,6 +57,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         if (store.newsAlerts && store.tickers.isNotEmpty()) checkNews(seen, firstRun)
         checkFollowing(seen, firstRun)
 
+        store.addCryptoPositions(newCrypto)
         store.addMoves(newMoves)
         store.addPicks(newPicks)
         store.addAlerts(newAlerts)
@@ -248,10 +250,15 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                 .replace(Regex("\\s*\\(\\d+\\)\\s*\\(Filer\\)\\s*$"), "")
             val pk = Regex("\\((\\d+)\\)").find(f.title)?.groupValues?.get(1)?.trimStart('0')
                 ?.let { "fund:$it" } ?: ""
-            val holdings = try {
-                Edgar.parse13FHoldings(f, ua)
+            val rows = try {
+                Edgar.rows13F(f, ua)
             } catch (e: Exception) {
                 errors.add("Funds: ${e.message}"); emptyList()
+            }
+            val holdings = Edgar.top13F(rows)
+            rows.filter { !it.option }.groupBy { it.name }.forEach { (name, rs) ->
+                val asset = Crypto.assetOf(name) ?: return@forEach
+                newCrypto.add(Store.CryptoPos(fund, pk, asset, name, rs.sumOf { it.value }, System.currentTimeMillis()))
             }
             val total = holdings.sumOf { it.second }
             val mapped = holdings.mapNotNull { (name, value) ->
