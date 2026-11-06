@@ -29,6 +29,15 @@ struct StockSheet: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    if let url = Broker.link(target.ticker) {
+                        Button {
+                            openURL(url)
+                        } label: {
+                            Label("Open \(target.ticker) in \(Broker.name)", systemImage: "arrow.up.forward.app")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                     if summary == nil {
                         ProgressView().frame(maxWidth: .infinity)
                     } else if let price = summary?.price {

@@ -149,6 +149,9 @@ struct CryptoView: View {
                     Text(String(format: "%+.1f%% today", p.change24h)).font(.caption.weight(.semibold))
                         .foregroundStyle(p.change24h >= 0 ? .green : .red)
                 }
+                if coin == idx, let url = Broker.link(sym, crypto: true) {
+                    Link("Open in \(Broker.name)", destination: url).font(.caption.weight(.medium))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)

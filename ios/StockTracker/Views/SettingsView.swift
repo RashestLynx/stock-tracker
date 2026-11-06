@@ -7,6 +7,8 @@ struct SettingsView: View {
     @State private var email = ""
     @State private var key = ""
     @State private var massiveKey = ""
+    @State private var broker = Broker.name
+    @State private var customLink = Broker.customTemplate
     @State private var newTicker = ""
     @State private var savedMessage: String?
 
@@ -98,6 +100,24 @@ struct SettingsView: View {
                     Text("Congress data")
                 } footer: {
                     Text("Without a key, Senate and House are checked about every 5 hours to stay inside the free limit. A free Bargo key lets the app check hourly.")
+                }
+
+                Section {
+                    Picker("Brokerage", selection: $broker) {
+                        ForEach(Broker.choices.map(\.name) + [Broker.custom], id: \.self) { Text($0).tag($0) }
+                    }
+                    .onChange(of: broker) { _, v in Broker.name = v }
+                    if broker == Broker.custom {
+                        TextField("https://yourbroker.com/quote/{T}", text: $customLink)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                            .onChange(of: customLink) { _, v in Broker.customTemplate = v }
+                    }
+                } header: {
+                    Text("Your brokerage")
+                } footer: {
+                    Text(broker == Broker.custom
+                         ? "Open any stock on your brokerage's website, copy the address, and replace the ticker with {T}."
+                         : "Stock summaries get a button that opens the ticker in this app. If the app is installed it opens there, otherwise in Safari.")
                 }
 
                 Section {
