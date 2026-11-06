@@ -137,7 +137,8 @@ class Store(context: Context) {
         set(v) = prefs.edit().putBoolean("news_alerts", v).apply()
 
     var massiveKey: String
-        get() = prefs.getString("massive_key", "") ?: ""
+        // The user's own Massive key is built in; a key saved in Settings replaces it.
+        get() = (prefs.getString("massive_key", "") ?: "").ifBlank { "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" }
         set(v) = prefs.edit().putString("massive_key", v.trim()).apply()
 
     var moversCache: String

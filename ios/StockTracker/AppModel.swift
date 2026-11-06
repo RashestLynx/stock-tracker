@@ -49,7 +49,9 @@ final class AppModel: ObservableObject {
         watching = d.dictionary(forKey: "watching") as? [String: Bool] ?? [:]
         backgroundOn = d.object(forKey: "backgroundOn") as? Bool ?? true
         bargoKey = d.string(forKey: "bargoKey") ?? ""
-        massiveKey = d.string(forKey: "massiveKey") ?? ""
+        // The user's own Massive key is built in; a key saved in Settings replaces it.
+        let savedMassive = d.string(forKey: "massiveKey") ?? ""
+        massiveKey = savedMassive.isEmpty ? "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" : savedMassive
         newsAlerts = d.object(forKey: "newsAlerts") as? Bool ?? true
         movers = Self.load("movers.json")
         status = d.string(forKey: "status") ?? "Not checked yet"
