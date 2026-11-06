@@ -13,7 +13,10 @@ data class LiveQuote(val price: Double, val change: Double, val changePct: Doubl
 object Live {
     const val SIGNUP = "https://finnhub.io/register"
 
-    fun key(store: Store): String = store.prefs.getString("finnhub_key", "") ?: ""
+    /** The user's own key, built in so live prices work out of the box. A key saved in Settings replaces it. */
+    private const val DEFAULT_KEY = "dbmm4e1r01qn1o61utegdbmm4e1r01qn1o61utf0"
+
+    fun key(store: Store): String = (store.prefs.getString("finnhub_key", "") ?: "").ifBlank { DEFAULT_KEY }
     fun setKey(store: Store, k: String) = store.prefs.edit().putString("finnhub_key", k.trim()).apply()
 
     /** Blocking. Returns null without a key or when the symbol isn't found. */

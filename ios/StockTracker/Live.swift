@@ -8,7 +8,11 @@ enum Live {
     static let signup = "https://finnhub.io/register"
 
     static var key: String {
-        get { UserDefaults.standard.string(forKey: "finnhub_key") ?? "" }
+        // The user's own key, built in so live prices work out of the box. A key saved in Settings replaces it.
+        get {
+            let saved = UserDefaults.standard.string(forKey: "finnhub_key") ?? ""
+            return saved.isEmpty ? "dbmm4e1r01qn1o61utegdbmm4e1r01qn1o61utf0" : saved
+        }
         set { UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespaces), forKey: "finnhub_key") }
     }
 
