@@ -12,13 +12,28 @@ android {
         applicationId = "com.rashestlynx.tradetracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0"
+        val run = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
+        versionCode = 100 + run
+        versionName = "2.$run"
+    }
+
+    // One fixed signing key, so each new APK installs over the previous one as an update.
+    signingConfigs {
+        create("tracker") {
+            storeFile = file("tracker.keystore")
+            storePassword = "tracker123"
+            keyAlias = "tracker"
+            keyPassword = "tracker123"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("tracker")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("tracker")
         }
     }
 

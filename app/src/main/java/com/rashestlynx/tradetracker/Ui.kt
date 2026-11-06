@@ -2725,6 +2725,9 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 }
                 AssistChipLike("+ New group") { newGroup = "" }
             }
+            val ctx = LocalContext.current
+            val ver = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "" }
+            Text("App version $ver", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (group != null) Text("Tap the selected group again to rename or delete it. New tickers you add here go into this group.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(if (hasLive) "Live prices refresh every 15 seconds. You'll also get news and SEC filing alerts for these."
