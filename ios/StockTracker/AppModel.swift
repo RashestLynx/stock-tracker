@@ -48,7 +48,9 @@ final class AppModel: ObservableObject {
         minValue = d.double(forKey: "minValue")
         watching = d.dictionary(forKey: "watching") as? [String: Bool] ?? [:]
         backgroundOn = d.object(forKey: "backgroundOn") as? Bool ?? true
-        bargoKey = d.string(forKey: "bargoKey") ?? ""
+        // The user's own Bargo key is built in (hourly Congress checks); a key saved in Settings replaces it.
+        let savedBargo = d.string(forKey: "bargoKey") ?? ""
+        bargoKey = savedBargo.isEmpty ? "fak_PAPE7zAnmQGjv-zKB7HlKR_tbVSP-cziSmE12TOfJ_6z" : savedBargo
         // The user's own Massive key is built in; a key saved in Settings replaces it.
         let savedMassive = d.string(forKey: "massiveKey") ?? ""
         massiveKey = savedMassive.isEmpty ? "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" : savedMassive

@@ -128,7 +128,8 @@ class Store(context: Context) {
         set(v) = prefs.edit().putBoolean("background_on", v).apply()
 
     var bargoKey: String
-        get() = prefs.getString("bargo_key", "") ?: ""
+        // The user's own Bargo key is built in (hourly Congress checks); a key saved in Settings replaces it.
+        get() = (prefs.getString("bargo_key", "") ?: "").ifBlank { "fak_PAPE7zAnmQGjv-zKB7HlKR_tbVSP-cziSmE12TOfJ_6z" }
         set(v) = prefs.edit().putString("bargo_key", v.trim()).apply()
 
     /** Background notifications for news and SEC filings about watchlist stocks. */
