@@ -23,7 +23,10 @@ data class Followed(
     val links: List<Pair<String, String>>,
 )
 
-data class Video(val title: String, val url: String, val time: Long, val id: String)
+data class Video(val title: String, val url: String, val time: Long, val id: String, val description: String = "")
+
+/** A stock someone talked about publicly. stance = "buying", "selling" or "mentioned". */
+data class Mention(val ticker: String, val company: String, val stance: String, val count: Int, val latest: Long, val url: String)
 
 object Following {
     val DEFAULTS = listOf(
@@ -110,11 +113,12 @@ object Following {
         p.setInput(StringReader(xml))
         val out = mutableListOf<Video>()
         var inEntry = false
-        var title = ""; var link = ""; var date = ""; var id = ""
+        var title = ""; var link = ""; var date = ""; var id = ""; var desc = ""
         var e = p.eventType
         while (e != XmlPullParser.END_DOCUMENT) {
             if (e == XmlPullParser.START_TAG) when (p.name) {
-                "entry" -> { inEntry = true; title = ""; link = ""; date = ""; id = "" }
+                "entry" -> { inEntry = true; title = ""; link = ""; date = ""; id = ""; desc = "" }
+                "media:description" -> if (inEntry) desc = p.nextText().trim()
                 "title" -> if (inEntry) title = p.nextText().trim()
                 "link" -> if (inEntry) link = p.getAttributeValue(null, "href") ?: link
                 "published" -> if (inEntry) date = p.nextText().trim()
@@ -122,11 +126,78 @@ object Following {
             } else if (e == XmlPullParser.END_TAG && p.name == "entry") {
                 inEntry = false
                 val t = try { iso.parse(date)?.time } catch (_: Exception) { null } ?: System.currentTimeMillis()
-                if (title.isNotEmpty() && link.isNotEmpty()) out.add(Video(title, link, t, "yt:" + id.ifEmpty { link }))
+                if (title.isNotEmpty() && link.isNotEmpty()) out.add(Video(title, link, t, "yt:" + id.ifEmpty { link }, desc))
             }
             e = p.next()
         }
         return out
+    }
+
+    // ------------------------------------------------------------ stocks they talk about
+    private var companies: List<Triple<String, String, String>>? = null // ticker, display name, normalized name
+    private val STOP = setOf("ALL", "NOW", "ARE", "ONE", "CAN", "BIG", "FAST", "GOOD", "BEST", "REAL", "SAFE", "LOW",
+        "HIGH", "FREE", "CASH", "GAIN", "LOVE", "PLAY", "RUN", "TRUE", "OPEN", "HOME", "LIFE", "WELL", "KEY", "CEO",
+        "IPO", "ETF", "USA", "AI", "IT", "ON", "SO", "GO", "BE", "DO", "BY", "AT", "OR", "UP", "TV", "FBI", "IRS",
+        "YOU", "NEW", "BUY", "MAN", "HAS", "OUT", "SEE", "WAY", "HOW", "WHY", "NOT", "AND", "THE", "FOR", "TOP")
+
+    /** The ~600 largest U.S. companies (SEC list is ordered by size), cached for a week. */
+    private fun bigCompanies(store: Store): List<Triple<String, String, String>> {
+        companies?.let { return it }
+        val raw = store.cachedText("company_tickers_raw.json", 7 * Store.DAY_MS)
+            ?: Edgar.get("https://www.sec.gov/files/company_tickers.json", store.userAgent)
+                .also { store.saveText("company_tickers_raw.json", it) }
+        val o = JSONObject(raw)
+        val rows = o.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { it to o.getJSONObject(k) } }
+            .sortedBy { it.first }.take(600).map { it.second }
+        val seen = HashSet<String>()
+        val list = rows.mapNotNull { r ->
+            val t = r.optString("ticker").uppercase(Locale.US)
+            val title = r.optString("title")
+            if (t.isEmpty() || !seen.add(t)) null else Triple(t, title, Edgar.normalizeName(title))
+        }.toList()
+        companies = list
+        return list
+    }
+
+    private val BUY = Regex("\\b(buying|bought|buy|adding|added|loading up|i own|my portfolio|investing in)\\b", RegexOption.IGNORE_CASE)
+    private val SELL = Regex("\\b(selling|sold|sell|dumping|dumped|trimming|getting out)\\b", RegexOption.IGNORE_CASE)
+
+    /**
+     * Stocks named in their video titles/descriptions and news headlines. Public statements only:
+     * private investors don't report actual trades.
+     */
+    fun mentions(videos: List<Video>, news: List<NewsItem>, store: Store): List<Mention> {
+        val cos = try { bigCompanies(store) } catch (_: Exception) { return emptyList() }
+        val byTicker = cos.associateBy { it.first }
+        data class Src(val text: String, val title: String, val time: Long, val url: String)
+        val sources = videos.map { Src(it.title + "\n" + it.description.take(1500), it.title, it.time, it.url) } +
+            news.map { Src(it.title, it.title, it.time, it.url) }
+        val agg = LinkedHashMap<String, MutableList<Pair<Src, String>>>()
+        for (src in sources) {
+            val found = HashSet<String>()
+            Regex("\\$([A-Z]{1,5})\\b").findAll(src.text).forEach { found.add(it.groupValues[1]) }
+            Regex("\\b([A-Z]{3,5})\\b").findAll(src.text).forEach { m ->
+                val t = m.groupValues[1]
+                if (t in byTicker && t !in STOP) found.add(t)
+            }
+            val norm = " " + Edgar.normalizeName(src.text) + " "
+            for ((t, _, n) in cos) {
+                if (n.length >= 4 && n !in STOP && " $n " in norm) found.add(t)
+            }
+            // The stance comes from the title, where creators say what they're doing.
+            val stance = when {
+                SELL.containsMatchIn(src.title) && !BUY.containsMatchIn(src.title) -> "selling"
+                BUY.containsMatchIn(src.title) -> "buying"
+                else -> "mentioned"
+            }
+            found.forEach { agg.getOrPut(it) { mutableListOf() }.add(src to stance) }
+        }
+        return agg.map { (t, hits) ->
+            val newest = hits.maxBy { it.first.time }
+            val stance = hits.firstOrNull { it.second != "mentioned" }?.second ?: "mentioned"
+            Mention(t, byTicker[t]?.second ?: t, stance, hits.size, newest.first.time, newest.first.url)
+        }.sortedWith(compareByDescending<Mention> { it.stance != "mentioned" }.thenByDescending { it.latest })
+            .take(15)
     }
 
     private fun get(url: String): String {

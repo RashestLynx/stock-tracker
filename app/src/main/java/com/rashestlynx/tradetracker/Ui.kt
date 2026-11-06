@@ -159,7 +159,7 @@ fun StockTrackerApp(store: Store) {
         if (refreshing) { delay(120_000); refreshing = false } // don't spin forever offline
     }
 
-    CompositionLocalProvider(LocalOpenPerson provides { person = it }) {
+    CompositionLocalProvider(LocalOpenPerson provides { person = it }, LocalOpenStock provides { stock = it }) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -1583,6 +1583,7 @@ private fun CategoryPillText(text: String) {
 // ============================================================ Investor profiles
 
 val LocalOpenPerson = staticCompositionLocalOf<(PersonTarget) -> Unit> { {} }
+val LocalOpenStock = staticCompositionLocalOf<(StockTarget) -> Unit> { {} }
 
 private fun cleanName(who: String) = who.removePrefix("Sen. ").removePrefix("Rep. ").substringBefore(" · ")
 
@@ -1881,9 +1882,18 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
     val context = LocalContext.current
     var videos by remember(f.name) { mutableStateOf<List<Video>?>(null) }
     var news by remember(f.name) { mutableStateOf<List<NewsItem>?>(null) }
+    var mentions by remember(f.name) { mutableStateOf<List<Mention>?>(null) }
+    val openStock = LocalOpenStock.current
+    // Actual reported trades, if this person files them (Congress members, insiders, funds).
+    val reported = remember(f.name) {
+        store.moves().filter { cleanName(it.who).contains(f.name, ignoreCase = true) }.sortedByDescending { it.time }
+    }
     LaunchedEffect(f.name) {
         videos = withContext(Dispatchers.IO) { runCatching { Following.videos(f, store) }.getOrDefault(emptyList()) }
         news = withContext(Dispatchers.IO) { runCatching { News.search(f.newsQuery) }.getOrDefault(emptyList()) }
+        mentions = withContext(Dispatchers.IO) {
+            runCatching { Following.mentions(videos.orEmpty(), news.orEmpty(), store) }.getOrDefault(emptyList())
+        }
     }
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
@@ -1900,6 +1910,50 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
             if (f.businesses.isNotEmpty()) {
                 Text("Businesses", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 f.businesses.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+            }
+            if (reported.isNotEmpty()) {
+                Text("Reported trades", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                reported.take(8).forEach { m ->
+                    Box(Modifier.clickable { openStock(StockTarget(m.ticker, m.company, "", "", emptyList(), "", 0.0)) }) {
+                        TradeLine("${if (m.side == "buy") "Bought" else "Sold"} ${m.ticker} · ${m.valueLabel} · ${timeAgo(m.time)}")
+                    }
+                }
+            }
+            Text("Stocks they've talked about", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            when {
+                mentions == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                mentions!!.isEmpty() -> Text("No specific stocks named in their recent videos or news.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> {
+                    mentions!!.forEach { m ->
+                        val color = when (m.stance) {
+                            "buying" -> TradeColors.buy()
+                            "selling" -> TradeColors.sell()
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { openStock(StockTarget(m.ticker, m.company, "", "", emptyList(), "", 0.0)) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(m.ticker, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.width(64.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(m.company, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis)
+                                Text("${m.count} mention${if (m.count == 1) "" else "s"} · latest ${timeAgo(m.latest)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(m.stance.replaceFirstChar { it.uppercase() }, color = color,
+                                fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                    Text("From their video titles and descriptions and news about them. These are things they've said, " +
+                        "not confirmed trades.", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Text("Latest videos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             when {
