@@ -1000,6 +1000,18 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
             }
         }
 
+        var finnhubKey by rememberSaveable { mutableStateOf(Live.key(store)) }
+        Section("Live prices", "Live stock prices for your watchlist and stock summaries use a free key from Finnhub.") {
+            OutlinedTextField(value = finnhubKey, onValueChange = { finnhubKey = it }, label = { Text("Finnhub API key") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { Live.setKey(store, finnhubKey); onMessage("Saved") }) { Text("Save key") }
+                OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Live.SIGNUP))) }) {
+                    Text("Get a free key")
+                }
+            }
+        }
+
         var massiveKey by rememberSaveable { mutableStateOf(store.massiveKey) }
         var broker by remember { mutableStateOf(Broker.name(store)) }
         var customLink by rememberSaveable { mutableStateOf(Broker.customTemplate(store)) }
@@ -1161,11 +1173,18 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
     var loading by remember(t.ticker) { mutableStateOf(true) }
     val activity = remember(t.ticker) { activityFor(t.ticker, store) }
 
+    var liveQ by remember(t.ticker) { mutableStateOf<LiveQuote?>(null) }
     LaunchedEffect(t.ticker) {
         summary = withContext(Dispatchers.IO) {
             runCatching { StockInfo.load(t.ticker, t.company, store) }.getOrNull()
         }
         loading = false
+    }
+    LaunchedEffect(t.ticker) {
+        while (Live.key(store).isNotBlank()) {
+            liveQ = withContext(Dispatchers.IO) { runCatching { Live.quote(t.ticker, store) }.getOrNull() }
+            delay(15_000)
+        }
     }
 
     fun open(url: String) {
@@ -1212,13 +1231,22 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             // ---- price ----
-            s?.price?.let { price ->
+            liveQ?.let { q ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(TradeColors.sell(), CircleShape))
+                    Text(" LIVE · " + String.format(java.util.Locale.US, "%s%.2f (%+.2f%%) today",
+                        if (q.change >= 0) "▲ +" else "▼ ", q.change, q.changePct),
+                        color = if (q.change >= 0) TradeColors.buy() else TradeColors.sell(),
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            (liveQ?.price ?: s?.price)?.let { price ->
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(String.format(java.util.Locale.US, "\$%,.2f", price),
                             style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (s.priceDate.isNotEmpty()) "close ${s.priceDate}" else "latest",
+                        Text(if (liveQ != null) "live" else if (!s?.priceDate.isNullOrEmpty()) "close ${s?.priceDate}" else "latest",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 4.dp))
@@ -2601,18 +2629,28 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
     var list by remember { mutableStateOf(store.watchlist) }
     var input by rememberSaveable { mutableStateOf("") }
     var prices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var live by remember { mutableStateOf<Map<String, LiveQuote>>(emptyMap()) }
     var pricesLoaded by remember { mutableStateOf(false) }
+    val hasLive = Live.key(store).isNotBlank()
     val picks = remember(tick) { store.picks() }
     val moves = remember(tick) { store.moves() }
 
     LaunchedEffect(list) {
         while (true) {
-            val got = withContext(Dispatchers.IO) {
-                list.associateWith { t -> StockInfo.price(t).first }.filterValues { it != null }.mapValues { it.value!! }
+            if (hasLive) {
+                // Live: refresh every 15 seconds while open, staying inside Finnhub's free 60 requests a minute.
+                live = withContext(Dispatchers.IO) {
+                    list.mapNotNull { t -> runCatching { Live.quote(t, store) }.getOrNull()?.let { t to it } }.toMap()
+                }
+                pricesLoaded = true
+                delay(maxOf(15_000L, list.size * 1_100L))
+            } else {
+                prices = withContext(Dispatchers.IO) {
+                    list.associateWith { t -> StockInfo.price(t).first }.filterValues { it != null }.mapValues { it.value!! }
+                }
+                pricesLoaded = true
+                delay(5 * 60_000)
             }
-            prices = got
-            pricesLoaded = true
-            delay(5 * 60_000)
         }
     }
 
@@ -2638,7 +2676,8 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 Spacer(Modifier.width(8.dp))
                 FilledTonalIconButton(onClick = { add() }) { Icon(Icons.Filled.Add, contentDescription = "Add") }
             }
-            Text("You'll also get news and SEC filing alerts for these (Settings → News alerts).",
+            Text(if (hasLive) "Live prices refresh every 15 seconds. You'll also get news and SEC filing alerts for these."
+                else "Showing latest closing prices. Add a free Finnhub key in Settings → Market data for live prices.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (list.isEmpty()) item { EmptyState("Your watchlist is empty", "Add tickers above, or tap \"Add to watchlist\" on any stock summary.") }
@@ -2653,8 +2692,24 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(t, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(prices[t]?.let { String.format(java.util.Locale.US, "\$%,.2f latest close", it) } ?: if (pricesLoaded) "Price unavailable" else "Price loading…",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val q = live[t]
+                            if (q != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(String.format(java.util.Locale.US, "\$%,.2f", q.price), style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(String.format(java.util.Locale.US, "%s%.2f (%+.2f%%)", if (q.change >= 0) "▲ +" else "▼ ", q.change, q.changePct),
+                                        color = if (q.change >= 0) TradeColors.buy() else TradeColors.sell(),
+                                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.width(8.dp))
+                                    Box(Modifier.size(6.dp).background(TradeColors.sell(), CircleShape))
+                                    Text(" LIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text(prices[t]?.let { String.format(java.util.Locale.US, "\$%,.2f latest close", it) }
+                                    ?: if (pricesLoaded) "Price unavailable" else "Price loading…",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         IconButton(onClick = { list = list - t; store.watchlist = list }) {
                             Icon(Icons.Filled.Close, contentDescription = "Remove $t")
