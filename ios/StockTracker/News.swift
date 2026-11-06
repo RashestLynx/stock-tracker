@@ -56,6 +56,8 @@ enum News {
         }
     }
 
+    static func search(_ query: String) async throws -> [NewsItem] { try await google(query + " when:14d") }
+
     private static func google(_ query: String) async throws -> [NewsItem] {
         let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
             .replacingOccurrences(of: "&", with: "%26") ?? ""

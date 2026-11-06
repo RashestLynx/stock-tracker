@@ -26,6 +26,7 @@ struct NewsView: View {
                         Text("Market").tag(0)
                         Text("Your stocks").tag(1)
                         Text("Filings").tag(2)
+                        Text("People").tag(3)
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
@@ -36,16 +37,20 @@ struct NewsView: View {
                         Text("LIVE · refreshes every minute" + (updated.map { " · updated \(Format.ago($0))" } ?? ""))
                     }
                 } footer: {
-                    Text(view == 0 ? "Latest market headlines from Google News."
+                    Text(view == 3 ? "Private investors like finance YouTubers don't have to report their trades, so this follows what they share publicly: their newest videos (where they often say what they're buying or selling), news about them, and their businesses. You'll get a notification when they post a new video."
+                         : view == 0 ? "Latest market headlines from Google News."
                          : view == 1 ? (yourTickers.isEmpty ? "Add tickers to your watchlist in Settings to follow them here."
                                         : "Headlines about \(yourTickers.joined(separator: ", ")).")
                          : "Official company announcements (SEC 8-K), posted the moment they're filed: earnings, CEO changes, deals and more.")
                 }
 
-                if let e = error { Section { Text(e).foregroundStyle(.red) } }
-                if loading && items.isEmpty { Section { ProgressView().frame(maxWidth: .infinity) } }
+                if view == 3 {
+                    FollowingSections()
+                }
+                if let e = error, view != 3 { Section { Text(e).foregroundStyle(.red) } }
+                if view != 3 && loading && items.isEmpty { Section { ProgressView().frame(maxWidth: .infinity) } }
 
-                ForEach(items.prefix(60)) { n in
+                ForEach(view == 3 ? [] : Array(items.prefix(60))) { n in
                     VStack(alignment: .leading, spacing: 6) {
                         Button {
                             if let u = URL(string: n.url) { openURL(u) }
@@ -86,7 +91,7 @@ struct NewsView: View {
             .refreshable { await load() }
             .task(id: view) {
                 items = []
-                while !Task.isCancelled {
+                while !Task.isCancelled && view != 3 {
                     await load()
                     try? await Task.sleep(nanoseconds: 60_000_000_000)
                 }

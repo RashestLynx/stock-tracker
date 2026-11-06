@@ -248,6 +248,17 @@ final class AppModel: ObservableObject {
             }
         }
 
+        // ----- new videos from people you follow -----
+        var videosToPost: [(String, Video)] = []
+        for f in Following.load() {
+            let vids = await Following.videos(f)
+            let known = vids.contains { seenSet.contains($0.id) }
+            for v in vids where !seenSet.contains(v.id) {
+                markSeen(v.id)
+                if known { videosToPost.append((f.name, v)) }
+            }
+        }
+
         // ----- save -----
         addMoves(newMoves)
         addPicks(newPicks)
@@ -258,6 +269,15 @@ final class AppModel: ObservableObject {
         Self.save(seen, "seen.json")
         if !firstRun && notify {
             await post(newAlerts)
+            for (name, v) in videosToPost.prefix(3) {
+                let c = UNMutableNotificationContent()
+                c.title = "\(name) posted a new video"
+                c.body = v.title
+                c.sound = .default
+                c.userInfo = ["link": v.url]
+                try? await UNUserNotificationCenter.current().add(
+                    UNNotificationRequest(identifier: v.id, content: c, trigger: nil))
+            }
             for n in newsToPost.prefix(3) {
                 let c = UNMutableNotificationContent()
                 c.title = n.isFiling ? "\(n.ticker) filed with the SEC" : "\(n.ticker) in the news"
