@@ -15,9 +15,20 @@ struct Post: Identifiable {
     var id: String { who + "|" + String(time.timeIntervalSince1970) + "|" + String(text.hashValue) }
 }
 
+/// Funds show a ticker (or "13F") instead of initials.
+func fundBadge(_ name: String) -> String {
+    let n = name.lowercased()
+    if n.contains("berkshire") { return "BRK.B" }
+    if n.contains("pershing square") { return "PSH" }
+    return "13F"
+}
+
+func isFund(_ f: Followed) -> Bool { Following.funds.contains { $0.name == f.name } }
+
 struct Avatar: View {
     let name: String
     var size: CGFloat = 44
+    var fund = false
     private static let palette: [Color] = [.blue, .green, .purple, .orange, .teal, .indigo, .pink, .brown]
     private var initials: String {
         let w = name.split(separator: " ").filter { $0.first?.isLetter == true }
@@ -25,8 +36,21 @@ struct Avatar: View {
         return s.isEmpty ? "?" : s.uppercased()
     }
     var body: some View {
+        if fund {
+            Text(fundBadge(name))
+                .font(size >= 50 ? .caption.weight(.heavy) : .caption2.weight(.heavy))
+                .minimumScaleFactor(0.6).lineLimit(1)
+                .foregroundStyle(.orange)
+                .frame(width: size, height: size)
+                .background(Color.orange.opacity(0.18), in: Circle())
+        } else {
+            initialsView
+        }
+    }
+
+    private var initialsView: some View {
         let idx = abs(name.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }) % Self.palette.count
-        Text(initials)
+        return Text(initials)
             .font(size >= 44 ? .headline : .caption.weight(.bold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
@@ -81,7 +105,7 @@ struct HomeView: View {
                             ForEach(follows) { f in
                                 Button { showFollowed = f } label: {
                                     VStack(spacing: 4) {
-                                        Avatar(name: f.name, size: 56)
+                                        Avatar(name: f.name, size: 56, fund: isFund(f))
                                             .padding(3).overlay(Circle().stroke(Color.green, lineWidth: 3))
                                         Text(f.name.components(separatedBy: " (").first ?? f.name)
                                             .font(.caption2).lineLimit(1).frame(width: 70)
@@ -144,7 +168,7 @@ struct HomeView: View {
                 if let f = p.followed { showFollowed = f } else if let t = p.person { model.openPerson = t }
             } label: {
                 HStack(spacing: 10) {
-                    Avatar(name: p.who)
+                    Avatar(name: p.who, fund: p.category == .fund || (p.followed.map(isFund) ?? false))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(p.who).font(.subheadline.weight(.bold)).lineLimit(1)
                         Text([p.about, Format.ago(p.time)].filter { !$0.isEmpty }.joined(separator: " · "))

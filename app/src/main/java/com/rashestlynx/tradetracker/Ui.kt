@@ -1650,7 +1650,7 @@ private fun PersonSheet(t: PersonTarget, store: Store, onDismiss: () -> Unit) {
             val p = profile
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val (bg, fg) = categoryColors(t.category)
-                TickerBadge(initials(p?.name ?: t.name), bg, fg)
+                TickerBadge(if (t.category == Category.FUND) fundBadge(p?.name ?: t.name) else initials(p?.name ?: t.name), bg, fg)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p?.name ?: t.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -1926,7 +1926,7 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
     ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TickerBadge(initials(f.name), MaterialTheme.colorScheme.tertiaryContainer,
+                TickerBadge(if (isFund(f)) fundBadge(f.name) else initials(f.name), MaterialTheme.colorScheme.tertiaryContainer,
                     MaterialTheme.colorScheme.onTertiaryContainer)
                 Spacer(Modifier.width(12.dp))
                 Text(f.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
@@ -2364,8 +2364,28 @@ private data class Post(
     val followed: Followed?,
 )
 
+/** Funds show a ticker (or "13F") instead of initials. */
+private fun fundBadge(name: String): String {
+    val n = name.lowercase(java.util.Locale.US)
+    return when {
+        "berkshire" in n -> "BRK.B"
+        "pershing square" in n -> "PSH"
+        else -> "13F"
+    }
+}
+
+private fun isFund(f: Followed) = Following.FUNDS.any { it.name == f.name }
+
 @Composable
-private fun Avatar(name: String, size: Int = 44) {
+private fun Avatar(name: String, size: Int = 44, fund: Boolean = false) {
+    if (fund) {
+        Box(Modifier.size(size.dp).background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape),
+            contentAlignment = Alignment.Center) {
+            Text(fundBadge(name), color = MaterialTheme.colorScheme.onTertiaryContainer, fontWeight = FontWeight.Bold,
+                style = if (size >= 50) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelSmall, maxLines = 1)
+        }
+        return
+    }
     val palette = listOf(0xFF1E88E5, 0xFF43A047, 0xFF8E24AA, 0xFFF4511E, 0xFF00897B, 0xFF3949AB, 0xFFD81B60, 0xFF6D4C41)
     val color = Color(palette[(name.hashCode() and 0x7fffffff) % palette.size])
     Box(Modifier.size(size.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
@@ -2458,7 +2478,7 @@ private fun HomeScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.width(68.dp).clickable { showFollowed = f }) {
                             Box(Modifier.size(62.dp).background(TradeColors.buy(), CircleShape), contentAlignment = Alignment.Center) {
-                                Avatar(f.name, 56)
+                                Avatar(f.name, 56, fund = isFund(f))
                             }
                             Text(f.name.substringBefore(" ("), style = MaterialTheme.typography.labelSmall, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
@@ -2478,7 +2498,7 @@ private fun HomeScreen(
                                     p.person != null -> openPerson(p.person)
                                 }
                             }) {
-                            Avatar(p.who)
+                            Avatar(p.who, fund = p.category == Category.FUND || (p.followed?.let { isFund(it) } ?: false))
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(p.who, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,

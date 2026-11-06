@@ -22,7 +22,8 @@ struct PersonView: View {
         List {
             Section {
                 HStack(spacing: 14) {
-                    TickerBadge(text: initials(profile?.name ?? target.name), color: target.category.color)
+                    TickerBadge(text: target.category == .fund ? fundBadge(profile?.name ?? target.name) : initials(profile?.name ?? target.name),
+                                color: target.category.color)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(profile?.name ?? target.name).font(.title3.weight(.bold))
                         Text(profile?.subtitle ?? target.category.label).font(.caption).foregroundStyle(.secondary)
