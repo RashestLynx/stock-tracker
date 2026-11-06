@@ -1,5 +1,12 @@
 # Stock Tracker
 
+## Download
+
+- **Android:** [TradeTracker.apk](https://github.com/RashestLynx/stock-tracker/releases/download/latest/TradeTracker.apk)
+- **iPhone:** [StockTracker.ipa](https://github.com/RashestLynx/stock-tracker/releases/download/latest/StockTracker.ipa) (install with Sideloadly, see below)
+
+These links always point to the newest build. The repo is private, so sign in to GitHub in your browser first.
+
 Android and iPhone apps that watch public trade disclosures and alert you, with each group in its own section:
 
 - **Senate**: U.S. senators' stock trades (STOCK Act)
