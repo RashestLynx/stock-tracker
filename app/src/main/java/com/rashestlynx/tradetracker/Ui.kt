@@ -2601,6 +2601,7 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
     var list by remember { mutableStateOf(store.watchlist) }
     var input by rememberSaveable { mutableStateOf("") }
     var prices by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var pricesLoaded by remember { mutableStateOf(false) }
     val picks = remember(tick) { store.picks() }
     val moves = remember(tick) { store.moves() }
 
@@ -2610,6 +2611,7 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 list.associateWith { t -> StockInfo.price(t).first }.filterValues { it != null }.mapValues { it.value!! }
             }
             prices = got
+            pricesLoaded = true
             delay(5 * 60_000)
         }
     }
@@ -2651,7 +2653,7 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(t, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(prices[t]?.let { String.format(java.util.Locale.US, "\$%,.2f latest close", it) } ?: "Price loading…",
+                            Text(prices[t]?.let { String.format(java.util.Locale.US, "\$%,.2f latest close", it) } ?: if (pricesLoaded) "Price unavailable" else "Price loading…",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { list = list - t; store.watchlist = list }) {

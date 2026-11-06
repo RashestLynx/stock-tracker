@@ -199,6 +199,7 @@ struct HomeView: View {
         follows = Following.load()
         let ua = model.userAgent
         let list = follows
+        let names = list.contains(where: { ($0.cik ?? "").isEmpty == false }) ? await model.tickerMap(ua: ua) : [:]
         let result = await withTaskGroup(of: [Post].self) { group -> [Post] in
             for f in list {
                 group.addTask {
@@ -218,8 +219,9 @@ struct HomeView: View {
                         if !s.soldOut.isEmpty { text += " Sold out of: " + s.soldOut.prefix(3).joined(separator: ", ") + "." }
                         if let t = s.top.first { text += " Biggest holding: \(t.name)." }
                         let filed = (Self.dayFmt.date(from: s.period) ?? Date.distantPast).addingTimeInterval(45 * 86_400)
+                        let pick = (s.newBuys + s.top.map(\.name)).lazy.compactMap { n in names[Edgar.normalizeName(n)].map { ($0, n) } }.first
                         out.append(Post(who: f.name, about: about, category: nil, time: filed, text: text,
-                                        ticker: "", company: "", link: "", followed: f))
+                                        ticker: pick?.0 ?? "", company: pick?.1 ?? "", link: "", followed: f))
                     }
                     if !f.youtube.isEmpty {
                         for v in await Following.videos(f).prefix(2) {
@@ -238,23 +240,110 @@ struct HomeView: View {
     }
 }
 
-/// Movers, Common picks and WSB in one tab.
+/// Watchlist, Movers, Common picks and WSB in one tab.
 struct MarketsView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
             Picker("View", selection: $view) {
-                Text("Movers").tag(0)
-                Text("Common picks").tag(1)
-                Text("WSB").tag(2)
+                Text("Watchlist").tag(0)
+                Text("Movers").tag(1)
+                Text("Picks").tag(2)
+                Text("WSB").tag(3)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.vertical, 6)
             switch view {
-            case 0: MoversView()
-            case 1: PicksView()
+            case 0: WatchlistView()
+            case 1: MoversView()
+            case 2: PicksView()
             default: WsbView()
             }
         }
+    }
+}
+
+/// Stocks and funds the user keeps an eye on.
+struct WatchlistView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.openURL) private var openURL
+    @State private var input = ""
+    @State private var prices: [String: Double] = [:]
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack {
+                        TextField("Add a stock or fund, e.g. NVDA or VOO", text: $input)
+                            .textInputAutocapitalization(.characters).autocorrectionDisabled().onSubmit(add)
+                        Button(action: add) { Image(systemName: "plus.circle.fill") }.disabled(input.isEmpty)
+                    }
+                } footer: {
+                    Text("You'll also get news and SEC filing alerts for these (Settings → News alerts).")
+                }
+                if model.watchlist.isEmpty {
+                    EmptyStateView(title: "Your watchlist is empty",
+                                   message: "Add tickers above, or tap \"Add to watchlist\" on any stock summary.", systemImage: "star")
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(model.watchlist, id: \.self) { t in
+                    Section { row(t) }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Watchlist")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
+            .task(id: model.watchlist) {
+                while !Task.isCancelled {
+                    var got: [String: Double] = [:]
+                    for t in model.watchlist { if let p = await StockInfo.price(t) { got[t] = p } }
+                    prices = got
+                    loaded = true
+                    try? await Task.sleep(nanoseconds: 300_000_000_000)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ t: String) -> some View {
+        let who = Array(Set(model.picks.filter { $0.ticker == t }.map { "\($0.who) (\($0.action == "hold" ? "holds" : "bought"))" }
+            + model.moves.filter { $0.ticker == t && $0.side == "sell" }.map { "\($0.who) (sold)" })).sorted()
+        VStack(alignment: .leading, spacing: 6) {
+            Button { model.openStock = StockTarget(ticker: t, company: "") } label: {
+                HStack(spacing: 12) {
+                    TickerBadge(text: t, color: .green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(t).font(.headline)
+                        Text(prices[t].map { "$" + Format.number($0, decimals: 2) + " latest close" }
+                             ?? (loaded ? "Price unavailable" : "Price loading…"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .foregroundStyle(.primary)
+            }
+            .buttonStyle(.borderless)
+            Text(who.isEmpty ? "No one you track has bought, sold or held it recently."
+                 : "\(who.count) tracked \(who.count == 1 ? "person" : "people"): " + who.prefix(4).joined(separator: ", ")
+                    + (who.count > 4 ? " and \(who.count - 4) more" : ""))
+                .font(.caption).foregroundStyle(who.isEmpty ? .secondary : .primary)
+            HStack {
+                if let url = Broker.link(t) {
+                    Button("Open in \(Broker.name)") { openURL(url) }.buttonStyle(.borderless).font(.caption)
+                }
+                Spacer()
+                Button("Remove", role: .destructive) { model.watchlist.removeAll { $0 == t } }
+                    .buttonStyle(.borderless).font(.caption)
+            }
+        }
+    }
+
+    private func add() {
+        let t = input.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
+        if !t.isEmpty && !model.watchlist.contains(t) { model.watchlist.append(t) }
+        input = ""
     }
 }

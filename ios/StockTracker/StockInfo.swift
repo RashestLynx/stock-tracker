@@ -101,6 +101,9 @@ enum StockInfo {
     }
 
     // ---------------- Price ----------------
+    /// Latest close for the watchlist.
+    static func price(_ ticker: String) async -> Double? { await quote(ticker)?.0 }
+
     /// Latest delayed close from Stooq, e.g. "AAPL.US,2026-11-05,22:00:00,230.10".
     private static func quote(_ ticker: String) async -> (Double, String)? {
         let sym = ticker.lowercased().replacingOccurrences(of: ".", with: "-") + ".us"

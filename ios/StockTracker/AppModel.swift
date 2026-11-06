@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
     // ---------------- settings ----------------
     @Published var userAgent: String { didSet { d.set(userAgent, forKey: "ua") } }
     @Published var tickers: [String] { didSet { d.set(tickers, forKey: "tickers") } }
+    /// Stocks and funds the user keeps an eye on (separate from the alert-only ticker filter).
+    @Published var watchlist: [String] { didSet { d.set(watchlist, forKey: "watchlist") } }
     @Published var buysOnly: Bool { didSet { d.set(buysOnly, forKey: "buysOnly") } }
     @Published var minValue: Double { didSet { d.set(minValue, forKey: "minValue") } }
     @Published var watching: [String: Bool] { didSet { d.set(watching, forKey: "watching") } }
@@ -41,6 +43,7 @@ final class AppModel: ObservableObject {
     init() {
         userAgent = d.string(forKey: "ua") ?? ""
         tickers = d.stringArray(forKey: "tickers") ?? []
+        watchlist = d.stringArray(forKey: "watchlist") ?? []
         buysOnly = d.bool(forKey: "buysOnly")
         minValue = d.double(forKey: "minValue")
         watching = d.dictionary(forKey: "watching") as? [String: Bool] ?? [:]
@@ -241,11 +244,12 @@ final class AppModel: ObservableObject {
 
         // ----- news about watchlist stocks -----
         var newsToPost: [NewsItem] = []
-        if newsAlerts && !watch.isEmpty {
+        let newsWatch = Set(tickers + watchlist)
+        if newsAlerts && !newsWatch.isEmpty {
             var items: [NewsItem] = []
             let ciks = await cikMap()
-            if let f = try? await News.filings(ua: ua, ciks: ciks) { items += f.filter { watch.contains($0.ticker) } }
-            if let n = try? await News.forTickers(Array(watch)) { items += n.filter { !$0.ticker.isEmpty } }
+            if let f = try? await News.filings(ua: ua, ciks: ciks) { items += f.filter { newsWatch.contains($0.ticker) } }
+            if let n = try? await News.forTickers(Array(newsWatch)) { items += n.filter { !$0.ticker.isEmpty } }
             for n in items where !seenSet.contains("news:" + n.url) && Date().timeIntervalSince(n.time) < 6 * 3600 {
                 markSeen("news:" + n.url)
                 newsToPost.append(n)
@@ -368,7 +372,7 @@ final class AppModel: ObservableObject {
     }
 
     /// SEC name -> ticker map, cached for a week.
-    private func tickerMap(ua: String) async -> [String: String] {
+    func tickerMap(ua: String) async -> [String: String] {
         let url = Self.dir.appendingPathComponent("tickers.json")
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
            let modified = attrs[.modificationDate] as? Date,

@@ -38,6 +38,16 @@ struct StockSheet: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
+                    let watching = model.watchlist.contains(target.ticker.uppercased())
+                    Button {
+                        if watching { model.watchlist.removeAll { $0 == target.ticker.uppercased() } }
+                        else { model.watchlist.append(target.ticker.uppercased()) }
+                    } label: {
+                        Label(watching ? "On your watchlist (tap to remove)" : "Add to watchlist",
+                              systemImage: watching ? "star.fill" : "star")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                     if summary == nil {
                         ProgressView().frame(maxWidth: .infinity)
                     } else if let price = summary?.price {
