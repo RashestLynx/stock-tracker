@@ -29,14 +29,7 @@ struct FeedView: View {
     var body: some View {
         NavigationStack {
             List {
-                // First thing on screen: today's top buy and sale.
-                if model.isSetUp && query.isEmpty {
-                    Section {
-                        TodayCard(highlights: Highlights.compute(moves: model.moves, picks: model.picks))
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
-                }
+                // Today's buy & sale lives on Home now.
 
                 Section {
                     Picker("Section", selection: $section) {
@@ -97,7 +90,7 @@ struct FeedView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Stock Tracker")
+            .navigationTitle("Sections")
             .searchable(text: $query, prompt: "Search \(section.label.lowercased())")
             .refreshable { await model.check() }
             .toolbar {

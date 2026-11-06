@@ -6,24 +6,21 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            FeedView(goToSettings: { model.showSettings = true })
-                .tabItem { Label("Feed", systemImage: "bell.fill") }
+            HomeView()
+                .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
+            FeedView(goToSettings: { model.showSettings = true })
+                .tabItem { Label("Sections", systemImage: "bell.fill") }
+                .tag(1)
             NewsView()
                 .tabItem { Label("News", systemImage: "newspaper.fill") }
-                .tag(5)
+                .tag(2)
             CryptoView()
                 .tabItem { Label("Crypto", systemImage: "bitcoinsign.circle.fill") }
-                .tag(6)
-            WsbView()
-                .tabItem { Label("WSB", systemImage: "flame.fill") }
-                .tag(4)
-            MoversView()
-                .tabItem { Label("Movers", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(3)
-            PicksView()
-                .tabItem { Label("Picks", systemImage: "star.fill") }
-                .tag(1)
+            MarketsView()
+                .tabItem { Label("Markets", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(4)
         }
         .onAppear { if !model.isSetUp { model.showSettings = true } }
         .sheet(item: $model.openStock) { target in
