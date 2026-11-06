@@ -28,6 +28,8 @@ data class Form4(
     val ownerCiks: List<String>,
     val roles: List<String>,
     val trades: List<Trade>,
+    val ownedAfter: Double = 0.0,   // common shares held after this filing (all ownership lines added up)
+    val lastPrice: Double = 0.0,
 )
 
 /** Talks to SEC EDGAR. All calls block, so run them off the main thread. */
@@ -143,10 +145,20 @@ object Edgar {
             )
         }
 
+        // Shares held afterwards: the last reported figure for each way they hold it (directly, by trust, ...).
+        val held = LinkedHashMap<String, Double>()
+        val table = root.child("nonDerivativeTable")
+        (table?.children("nonDerivativeTransaction").orEmpty() + table?.children("nonDerivativeHolding").orEmpty()).forEach { r ->
+            val after = r.text("postTransactionAmounts/sharesOwnedFollowingTransaction")?.toDoubleOrNull() ?: return@forEach
+            val how = (r.text("ownershipNature/directOrIndirectOwnership") ?: "") + "|" + (r.text("ownershipNature/natureOfOwnership") ?: "")
+            held[how] = after
+        }
         return Form4(
             ticker = (root.text("issuer/issuerTradingSymbol") ?: "").uppercase(Locale.US),
             issuer = root.text("issuer/issuerName") ?: "",
             owners = owners, ownerCiks = ownerCiks, roles = roles, trades = trades,
+            ownedAfter = held.values.sum(),
+            lastPrice = trades.lastOrNull { it.price > 0 }?.price ?: 0.0,
         )
     }
 

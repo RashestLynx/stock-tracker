@@ -237,7 +237,12 @@ object Following {
         return found
     }
 
-    data class InsiderFiling(val date: String, val ticker: String, val company: String, val lines: List<String>, val link: String)
+    data class InsiderFiling(val date: String, val ticker: String, val company: String, val lines: List<String>, val link: String,
+                             val ownedAfter: Double = 0.0, val price: Double = 0.0)
+
+    /** Newest share count per company from their Form 4s. */
+    fun latestHoldings(filings: List<InsiderFiling>): List<InsiderFiling> =
+        filings.filter { it.ownedAfter > 0 && it.ticker.isNotEmpty() }.distinctBy { it.ticker }
 
     /** Their latest SEC Form 4 insider filings (any company). Blocking. */
     fun insiderFilings(f: Followed, store: Store, max: Int = 6): List<InsiderFiling> {
@@ -254,7 +259,8 @@ object Following {
             val filing = Filing(acc, "4", f.name, folder + "$acc-index.htm")
             val info = try { Edgar.parseForm4(filing, ua) } catch (_: Exception) { null } ?: continue
             out.add(InsiderFiling(dates.getString(i), info.ticker, info.issuer,
-                Edgar.summarize(info.trades).ifEmpty { listOf("Options/derivatives only") }, filing.link))
+                Edgar.summarize(info.trades).ifEmpty { listOf("Options/derivatives only") }, filing.link,
+                info.ownedAfter, info.lastPrice))
             if (out.size >= max) break
         }
         return out

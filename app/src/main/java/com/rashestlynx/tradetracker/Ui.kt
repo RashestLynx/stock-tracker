@@ -1947,7 +1947,8 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
             }
             val owns = (known?.owns.orEmpty() + disclosed).distinctBy { it.ticker.ifEmpty { it.name } }
             if (owns.isNotEmpty()) {
-                Text("What they own (in their own words)", style = MaterialTheme.typography.labelLarge,
+                Text(if (f.insider.isNotEmpty()) "Other reported holdings" else "Latest holdings (in their own words)",
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold)
                 owns.forEach { h ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2301,14 +2302,34 @@ private fun InsiderBlock(f: Followed, store: Store) {
     val openStock = LocalOpenStock.current
     var filings by remember(f.name) { mutableStateOf<List<Following.InsiderFiling>?>(null) }
     LaunchedEffect(f.name) {
-        filings = withContext(Dispatchers.IO) { runCatching { Following.insiderFilings(f, store) }.getOrDefault(emptyList()) }
+        filings = withContext(Dispatchers.IO) { runCatching { Following.insiderFilings(f, store, 15) }.getOrDefault(emptyList()) }
     }
-    Text("SEC insider filings", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+    val holdings = Following.latestHoldings(filings.orEmpty())
+    if (holdings.isNotEmpty()) {
+        Text("Latest holdings (from SEC filings)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        holdings.forEach { h ->
+            Row(Modifier.fillMaxWidth().clickable { openStock(StockTarget(h.ticker, h.company, "", "", emptyList(), "", 0.0)) }
+                .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${h.ticker} · ${h.company}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("As of their filing on ${h.date}", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(shareCount(h.ownedAfter) + " shares", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    if (h.price > 0) Text("≈ " + money(h.ownedAfter * h.price) + " at trade price",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+    Text("Recent SEC insider filings", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
     when {
         filings == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
         filings!!.isEmpty() -> Text("No recent company-insider filings found.", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else -> filings!!.forEach { x ->
+        else -> filings!!.take(6).forEach { x ->
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(listOf(x.ticker, x.company).filter { it.isNotBlank() }.joinToString(" · "),
@@ -2529,4 +2550,11 @@ private fun MarketsScreen(
             else -> WsbScreen(store, onOpen = onOpen)
         }
     }
+}
+
+
+private fun shareCount(v: Double): String = when {
+    v >= 1e9 -> String.format(java.util.Locale.US, "%.2fB", v / 1e9)
+    v >= 1e6 -> String.format(java.util.Locale.US, "%.1fM", v / 1e6)
+    else -> String.format(java.util.Locale.US, "%,.0f", v)
 }
