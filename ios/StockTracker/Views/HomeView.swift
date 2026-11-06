@@ -269,7 +269,9 @@ struct WatchlistView: View {
     @Environment(\.openURL) private var openURL
     @State private var input = ""
     @State private var prices: [String: Double] = [:]
+    @State private var live: [String: LiveQuote] = [:]
     @State private var loaded = false
+    private var hasLive: Bool { !Live.key.isEmpty }
 
     var body: some View {
         NavigationStack {
@@ -281,7 +283,8 @@ struct WatchlistView: View {
                         Button(action: add) { Image(systemName: "plus.circle.fill") }.disabled(input.isEmpty)
                     }
                 } footer: {
-                    Text("You'll also get news and SEC filing alerts for these (Settings → News alerts).")
+                    Text(hasLive ? "Live prices refresh every 15 seconds. You'll also get news and SEC filing alerts for these."
+                         : "Showing latest closing prices. Add a free Finnhub key in Settings → Live prices for live prices.")
                 }
                 if model.watchlist.isEmpty {
                     EmptyStateView(title: "Your watchlist is empty",
@@ -297,11 +300,21 @@ struct WatchlistView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .task(id: model.watchlist) {
                 while !Task.isCancelled {
-                    var got: [String: Double] = [:]
-                    for t in model.watchlist { if let p = await StockInfo.price(t) { got[t] = p } }
-                    prices = got
-                    loaded = true
-                    try? await Task.sleep(nanoseconds: 300_000_000_000)
+                    if hasLive {
+                        // Live: every 15 seconds, staying inside Finnhub's free 60 requests a minute.
+                        var got: [String: LiveQuote] = [:]
+                        for t in model.watchlist { if let q = await Live.quote(t) { got[t] = q } }
+                        live = got
+                        loaded = true
+                        let wait = max(15.0, Double(model.watchlist.count) * 1.1)
+                        try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                    } else {
+                        var got: [String: Double] = [:]
+                        for t in model.watchlist { if let p = await StockInfo.price(t) { got[t] = p } }
+                        prices = got
+                        loaded = true
+                        try? await Task.sleep(nanoseconds: 300_000_000_000)
+                    }
                 }
             }
         }
@@ -317,9 +330,18 @@ struct WatchlistView: View {
                     TickerBadge(text: t, color: .green)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(t).font(.headline)
-                        Text(prices[t].map { "$" + Format.number($0, decimals: 2) + " latest close" }
-                             ?? (loaded ? "Price unavailable" : "Price loading…"))
-                            .font(.caption).foregroundStyle(.secondary)
+                        if let q = live[t] {
+                            HStack(spacing: 6) {
+                                Text("$" + Format.number(q.price, decimals: 2)).font(.subheadline.weight(.bold))
+                                Text(changeText(q)).font(.caption.weight(.semibold)).foregroundStyle(q.change >= 0 ? .green : .red)
+                                Circle().fill(.red).frame(width: 6, height: 6)
+                                Text("LIVE").font(.caption2.weight(.bold))
+                            }
+                        } else {
+                            Text(prices[t].map { "$" + Format.number($0, decimals: 2) + " latest close" }
+                                 ?? (loaded ? "Price unavailable" : "Price loading…"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
                 }

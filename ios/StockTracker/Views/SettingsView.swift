@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var email = ""
     @State private var key = ""
     @State private var massiveKey = ""
+    @State private var finnhubKey = Live.key
     @State private var broker = Broker.name
     @State private var customLink = Broker.customTemplate
     @State private var newTicker = ""
@@ -118,6 +119,16 @@ struct SettingsView: View {
                     Text(broker == Broker.custom
                          ? "Open any stock on your brokerage's website, copy the address, and replace the ticker with {T}."
                          : "Stock summaries get a button that opens the ticker in this app. If the app is installed it opens there, otherwise in Safari.")
+                }
+
+                Section {
+                    SecureField("Finnhub API key", text: $finnhubKey)
+                    Button("Save key") { Live.key = finnhubKey }
+                    Link("Get a free key", destination: URL(string: Live.signup)!)
+                } header: {
+                    Text("Live prices")
+                } footer: {
+                    Text("Live stock prices for your watchlist and stock summaries use a free key from Finnhub.")
                 }
 
                 Section {

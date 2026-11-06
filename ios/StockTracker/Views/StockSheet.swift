@@ -7,6 +7,7 @@ struct StockSheet: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @State private var summary: StockSummary?
+    @State private var live: LiveQuote?
 
     private var bought: [Pick] { unique(model.picks.filter { $0.ticker == target.ticker && $0.action == "buy" }) }
     private var held: [Pick] { unique(model.picks.filter { $0.ticker == target.ticker && $0.action == "hold" }) }
@@ -50,12 +51,19 @@ struct StockSheet: View {
                     .buttonStyle(.bordered)
                     if summary == nil {
                         ProgressView().frame(maxWidth: .infinity)
-                    } else if let price = summary?.price {
+                    } else if let price = live?.price ?? summary?.price {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(String(format: "$%.2f", price)).font(.largeTitle.weight(.bold))
-                                Text(summary?.priceDate.isEmpty == false ? "close \(summary!.priceDate)" : "latest")
+                                Text(live != nil ? "live" : summary?.priceDate.isEmpty == false ? "close \(summary!.priceDate)" : "latest")
                                     .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let q = live {
+                                HStack(spacing: 4) {
+                                    Circle().fill(.red).frame(width: 7, height: 7)
+                                    Text("LIVE · " + changeText(q) + " today").font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(q.change >= 0 ? .green : .red)
+                                }
                             }
                             if let tp = target.tradePrice, tp > 0 {
                                 let pct = (price - tp) / tp * 100
@@ -116,6 +124,12 @@ struct StockSheet: View {
             }
             .task(id: target.ticker) {
                 summary = await StockInfo.load(ticker: target.ticker, company: target.company, model: model)
+            }
+            .task(id: target.ticker + "live") {
+                while !Task.isCancelled && !Live.key.isEmpty {
+                    live = await Live.quote(target.ticker)
+                    try? await Task.sleep(nanoseconds: 15_000_000_000)
+                }
             }
         }
         .presentationDragIndicator(.visible)
