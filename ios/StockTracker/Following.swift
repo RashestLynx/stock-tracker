@@ -9,6 +9,7 @@ struct Followed: Codable, Identifiable, Hashable {
     var businesses: [String]
     var links: [[String]]        // [label, url]
     var cik: String? = nil       // SEC filer number for investment firms (13F holdings)
+    var insider: String? = nil   // SEC filer number, or EDGAR name like "Musk Elon", for company-insider filings
     var id: String { name }
 }
 
@@ -61,19 +62,90 @@ enum Following {
                  links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1350694&type=13F"]], cik: "1350694"),
     ]
 
+    /// Famous rich people in the public eye.
+    static let publicFigures: [Followed] = [
+        Followed(name: "Elon Musk", youtube: "", newsQuery: "\"Elon Musk\" (Tesla OR SpaceX OR xAI) stock",
+                 businesses: ["CEO of Tesla and SpaceX; founder of xAI"],
+                 links: [["SEC insider filings", "https://www.sec.gov/cgi-bin/own-disp?action=getowner&CIK=1494730"]], insider: "1494730"),
+        Followed(name: "Sam Altman", youtube: "", newsQuery: "\"Sam Altman\" (stake OR investment OR shares)",
+                 businesses: ["CEO of OpenAI (holds no OpenAI equity)", "Investor in Helion, Stripe, Oklo and hundreds of startups"],
+                 links: [], insider: "Altman Samuel H"),
+        Followed(name: "Donald Trump", youtube: "", newsQuery: "\"Trump\" (\"278-T\" OR \"financial disclosure\" OR \"stock trades\")",
+                 businesses: ["President of the United States", "Largest shareholder of Trump Media & Technology Group (DJT)"],
+                 links: [["Office of Government Ethics filings", "https://www.oge.gov/web/OGE.nsf/Officials%20Individual%20Disclosures%20Search%20Collection?OpenForm"]],
+                 insider: "Trump Donald J."),
+        Followed(name: "Jeff Bezos", youtube: "", newsQuery: "\"Jeff Bezos\" (Amazon OR shares OR stake)",
+                 businesses: ["Founder and executive chair of Amazon; founder of Blue Origin"], links: [], insider: "Bezos Jeffrey P"),
+        Followed(name: "Mark Zuckerberg", youtube: "", newsQuery: "\"Zuckerberg\" (shares OR stake OR sold)",
+                 businesses: ["Founder and CEO of Meta Platforms"], links: [], insider: "Zuckerberg Mark"),
+        Followed(name: "Jensen Huang", youtube: "", newsQuery: "\"Jensen Huang\" (shares OR sold OR stake)",
+                 businesses: ["Co-founder and CEO of Nvidia"], links: [], insider: "Huang Jen Hsun"),
+        Followed(name: "Bill Gates", youtube: "", newsQuery: "\"Bill Gates\" (stake OR shares OR foundation)",
+                 businesses: ["Co-founder of Microsoft; his foundation trust reports its stock holdings"],
+                 links: [["Foundation trust 13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1166559&type=13F"]], cik: "1166559"),
+    ]
+
+    struct InsiderFiling: Identifiable { let date: String; let ticker: String; let company: String; let lines: [String]; let link: String; var id: String { link } }
+
+    /// Resolve an SEC filer number from a number or an EDGAR name ("Musk Elon"). Cached.
+    static func insiderCik(_ f: Followed, ua: String) async -> String? {
+        guard let q = f.insider?.trimmingCharacters(in: .whitespaces), !q.isEmpty else { return nil }
+        if q.allSatisfy(\.isNumber) { return q }
+        let key = "insider_cik_" + q
+        if let c = UserDefaults.standard.string(forKey: key) { return c }
+        guard let enc = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let data = try? await Edgar.get("https://efts.sec.gov/LATEST/search-index?keysTyped=\(enc)", ua: ua),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hits = (j["hits"] as? [String: Any])?["hits"] as? [[String: Any]] else { return nil }
+        let first = q.lowercased().split(separator: " ").first.map(String.init) ?? q.lowercased()
+        for h in hits {
+            let ent = ((h["_source"] as? [String: Any])?["entity"] as? String ?? "").lowercased()
+            if ent.hasPrefix(first), let id = h["_id"] as? String {
+                let cik = String(id.drop(while: { $0 == "0" }))
+                UserDefaults.standard.set(cik, forKey: key)
+                return cik
+            }
+        }
+        return nil
+    }
+
+    /// Their latest SEC Form 4 insider filings (any company).
+    static func insiderFilings(_ f: Followed, ua: String, max: Int = 6) async -> [InsiderFiling] {
+        guard let cik = await insiderCik(f, ua: ua), let n = Int(cik),
+              let data = try? await Edgar.get(String(format: "https://data.sec.gov/submissions/CIK%010d.json", n), ua: ua),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let r = (j["filings"] as? [String: Any])?["recent"] as? [String: Any],
+              let forms = r["form"] as? [String], let accs = r["accessionNumber"] as? [String],
+              let dates = r["filingDate"] as? [String] else { return [] }
+        var out: [InsiderFiling] = []
+        for i in forms.indices where (forms[i] == "4" || forms[i] == "4/A") && i < accs.count {
+            let acc = accs[i]
+            let link = "https://www.sec.gov/Archives/edgar/data/\(n)/\(acc.replacingOccurrences(of: "-", with: ""))/\(acc)-index.htm"
+            let filing = Filing(accession: acc, form: "4", title: f.name, link: link)
+            guard let info = try? await Edgar.parseForm4(filing, ua: ua) else { continue }
+            let lines = Edgar.summarize(info.trades)
+            out.append(InsiderFiling(date: i < dates.count ? dates[i] : "", ticker: info.ticker, company: info.issuer,
+                                     lines: lines.isEmpty ? ["Options/derivatives only"] : lines, link: link))
+            if out.count >= max { break }
+        }
+        return out
+    }
+
     static func load() -> [Followed] {
         let d = UserDefaults.standard
         var list: [Followed]
         if let data = d.data(forKey: "following"), let l = try? JSONDecoder().decode([Followed].self, from: data) {
             list = l
         } else {
-            list = defaults + funds
+            list = defaults + funds + publicFigures
         }
-        // One-time: add the famous funds to existing lists too.
-        if d.integer(forKey: "following_v") < 2 {
-            list += funds.filter { f in !list.contains { $0.name == f.name } }
+        // One-time: add new built-in groups to existing lists too.
+        let v = d.integer(forKey: "following_v")
+        if v < 3 {
+            let add = (v < 2 ? funds : []) + publicFigures
+            list += add.filter { f in !list.contains { $0.name == f.name } }
             save(list)
-            d.set(2, forKey: "following_v")
+            d.set(3, forKey: "following_v")
         }
         return list
     }

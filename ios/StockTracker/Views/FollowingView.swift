@@ -134,10 +134,13 @@ struct FollowedSection: View {
             } else {
                 ProgressView()
             }
+            if let ins = person.insider, !ins.isEmpty {
+                InsiderRows(person: person)
+            }
             if let cik = person.cik, !cik.isEmpty {
                 FundHoldingsRows(cik: cik)
             }
-            if person.cik?.isEmpty ?? true {
+            if !person.youtube.isEmpty {
             Text("Latest videos").font(.subheadline.weight(.semibold))
             if let v = videos {
                 if v.isEmpty {
@@ -235,5 +238,39 @@ struct FundHoldingsRows: View {
             snap = await Following.fundSnapshot(cik: cik, ua: model.userAgent)
             loaded = true
         }
+    }
+}
+
+
+/// A public figure's latest SEC Form 4 insider filings.
+struct InsiderRows: View {
+    let person: Followed
+    @EnvironmentObject var model: AppModel
+    @State private var filings: [Following.InsiderFiling]?
+
+    var body: some View {
+        Group {
+            Text("SEC insider filings").font(.subheadline.weight(.semibold))
+            if let fs = filings {
+                if fs.isEmpty { Text("No recent company-insider filings found.").font(.footnote).foregroundStyle(.secondary) }
+                ForEach(fs) { x in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Button([x.ticker, x.company].filter { !$0.isEmpty }.joined(separator: " · ")) {
+                                if !x.ticker.isEmpty { model.openStock = StockTarget(ticker: x.ticker, company: x.company) }
+                            }
+                            .buttonStyle(.borderless).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                            Spacer()
+                            Text(x.date).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        ForEach(x.lines, id: \.self) { TradeLine(line: $0) }
+                        if let u = URL(string: x.link) { Link("View filing", destination: u).font(.caption) }
+                    }
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: person.name) { filings = await Following.insiderFilings(person, ua: model.userAgent) }
     }
 }

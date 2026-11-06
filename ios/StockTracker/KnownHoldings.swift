@@ -37,6 +37,27 @@ enum Known {
             recommends: ["SCHD", "VUG", "QQQ", "VIG", "GLD", "SMH", "VTI", "SPY"],
             recommendsSource: briefsETF,
             disclosureFeed: "https://www.briefs.co/feed/"),
+        "Elon Musk": KnownInfo(
+            owns: [
+                Holding(name: "Tesla", ticker: "TSLA", note: "Largest individual shareholder. In June 2026 he exercised 303,960,630 Tesla options from his 2018 pay package; no shares were sold",
+                        source: "Teslarati", sourceURL: "https://www.teslarati.com/?p=302443"),
+                Holding(name: "SpaceX", ticker: "", note: "CEO and largest shareholder; SpaceX went public in June 2026", source: "Teslarati", sourceURL: "https://www.teslarati.com/?p=302443"),
+            ], recommends: [], recommendsSource: ""),
+        "Sam Altman": KnownInfo(
+            owns: [
+                Holding(name: "OpenAI", ticker: "", note: "Holds no equity in OpenAI", source: "Reuters via Layer3", sourceURL: "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+                Holding(name: "Helion Energy (private)", ticker: "", note: "Stake valued around $1.7 billion in a May 2026 court document", source: "Layer3", sourceURL: "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+                Holding(name: "Stripe (private)", ticker: "", note: "Stake valued around $633 million in the same court document", source: "Layer3", sourceURL: "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+                Holding(name: "Oklo", ticker: "OKLO", note: "Public nuclear company he chaired until April 2025; holds shares", source: "BingX", sourceURL: "https://bingx.com/en/learn/article/what-is-sam-altman-s-net-worth"),
+                Holding(name: "Reddit", ticker: "RDDT", note: "Was one of his biggest holdings; a court document says he sold out by the end of 2025", source: "Layer3", sourceURL: "https://www.layer3labs.io/guides/sam-altman-net-worth"),
+            ], recommends: [], recommendsSource: ""),
+        "Donald Trump": KnownInfo(
+            owns: [
+                Holding(name: "Stock trades on his behalf", ticker: "", note: "Ethics filings show 3,642 trades in Q1 2026 worth $220M-$750M; they don't say who directed them",
+                        source: "Moneywise", sourceURL: "https://moneywise.com/news/top-stories/trump-eric-trump-nvidia-palantir-stock-trades-insider-trading-accusations"),
+                Holding(name: "Nvidia", ticker: "NVDA", note: "15 transactions in Q1 2026 (9 purchases, 6 sales)", source: "CBS News", sourceURL: "https://cbsnews.com/news/trump-stock-trades-2026"),
+                Holding(name: "Trump Media & Technology Group", ticker: "DJT", note: "His media company, listed on Nasdaq", source: "SEC", sourceURL: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=trump+media"),
+            ], recommends: [], recommendsSource: ""),
         "Mark Tilbury": KnownInfo(
             owns: [
                 Holding(name: "S&P 500 index funds", ticker: "", note: "Says index funds hold the majority of his money; the S&P 500 is \"part of my portfolio\"",
