@@ -85,7 +85,17 @@ enum Following {
                  links: [["Foundation trust 13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1166559&type=13F"]], cik: "1166559"),
     ]
 
-    struct InsiderFiling: Identifiable { let date: String; let ticker: String; let company: String; let lines: [String]; let link: String; var id: String { link } }
+    struct InsiderFiling: Identifiable {
+        let date: String; let ticker: String; let company: String; let lines: [String]; let link: String
+        var ownedAfter: Double = 0; var price: Double = 0
+        var id: String { link }
+    }
+
+    /// Newest share count per company from their Form 4s.
+    static func latestHoldings(_ filings: [InsiderFiling]) -> [InsiderFiling] {
+        var seen = Set<String>()
+        return filings.filter { $0.ownedAfter > 0 && !$0.ticker.isEmpty && seen.insert($0.ticker).inserted }
+    }
 
     /// Resolve an SEC filer number from a number or an EDGAR name ("Musk Elon"). Cached.
     static func insiderCik(_ f: Followed, ua: String) async -> String? {
@@ -125,7 +135,8 @@ enum Following {
             guard let info = try? await Edgar.parseForm4(filing, ua: ua) else { continue }
             let lines = Edgar.summarize(info.trades)
             out.append(InsiderFiling(date: i < dates.count ? dates[i] : "", ticker: info.ticker, company: info.issuer,
-                                     lines: lines.isEmpty ? ["Options/derivatives only"] : lines, link: link))
+                                     lines: lines.isEmpty ? ["Options/derivatives only"] : lines, link: link,
+                                     ownedAfter: info.ownedAfter, price: info.lastPrice))
             if out.count >= max { break }
         }
         return out

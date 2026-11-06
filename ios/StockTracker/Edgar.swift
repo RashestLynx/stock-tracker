@@ -23,6 +23,8 @@ struct Form4 {
     var ownerCiks: [String] = []
     let roles: [String]
     let trades: [Trade]
+    var ownedAfter: Double = 0   // common shares held after this filing (all ownership lines added up)
+    var lastPrice: Double = 0
 }
 
 /// SEC EDGAR access: insider trades (Form 4) and fund holdings (13F).
@@ -119,10 +121,20 @@ enum Edgar {
                 price: Double(t.text("transactionAmounts/transactionPricePerShare/value") ?? "") ?? 0
             )
         }
+        // Shares held afterwards: the last reported figure for each way they hold it (directly, by trust, ...).
+        var held: [String: Double] = [:]
+        let table = root.child("nonDerivativeTable")
+        for r in (table?.all("nonDerivativeTransaction") ?? []) + (table?.all("nonDerivativeHolding") ?? []) {
+            guard let after = Double(r.text("postTransactionAmounts/sharesOwnedFollowingTransaction") ?? "") else { continue }
+            let how = (r.text("ownershipNature/directOrIndirectOwnership") ?? "") + "|" + (r.text("ownershipNature/natureOfOwnership") ?? "")
+            held[how] = after
+        }
         return Form4(
             ticker: (root.text("issuer/issuerTradingSymbol") ?? "").uppercased(),
             issuer: root.text("issuer/issuerName") ?? "",
-            owners: owners, ownerCiks: ownerCiks, roles: roles, trades: trades
+            owners: owners, ownerCiks: ownerCiks, roles: roles, trades: trades,
+            ownedAfter: held.values.reduce(0, +),
+            lastPrice: trades.last(where: { $0.price > 0 })?.price ?? 0
         )
     }
 
