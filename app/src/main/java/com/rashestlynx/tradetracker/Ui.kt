@@ -1877,6 +1877,7 @@ private fun FollowingList(store: Store) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
     val context = LocalContext.current
@@ -1910,6 +1911,46 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
             if (f.businesses.isNotEmpty()) {
                 Text("Businesses", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 f.businesses.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+            }
+            val known = Following.KNOWN[f.name]
+            var disclosed by remember(f.name) { mutableStateOf<List<Holding>>(emptyList()) }
+            LaunchedEffect(f.name) {
+                val feed = known?.disclosureFeed.orEmpty()
+                if (feed.isNotEmpty()) disclosed = withContext(Dispatchers.IO) {
+                    runCatching { Following.disclosures(feed, f.name, store) }.getOrDefault(emptyList())
+                }
+            }
+            val owns = (known?.owns.orEmpty() + disclosed).distinctBy { it.ticker.ifEmpty { it.name } }
+            if (owns.isNotEmpty()) {
+                Text("What they own (in their own words)", style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold)
+                owns.forEach { h ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable(enabled = h.ticker.isNotEmpty()) {
+                            openStock(StockTarget(h.ticker, h.name, "", "", emptyList(), "", 0.0))
+                        }) {
+                            Text(if (h.ticker.isNotEmpty()) "${h.ticker} · ${h.name}" else h.name,
+                                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(h.note, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { open(h.sourceUrl) }) { Text(h.source, maxLines = 1) }
+                    }
+                }
+            }
+            if (known != null && known.recommends.isNotEmpty()) {
+                Text("Funds they recommend (not disclosed as owned)", style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    known.recommends.forEach { t ->
+                        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(50),
+                            modifier = Modifier.clickable { openStock(StockTarget(t, "", "", "", emptyList(), "", 0.0)) }) {
+                            Text(t, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
+                    }
+                }
+                TextButton(onClick = { open(known.recommendsSource) }) { Text("Source") }
             }
             if (reported.isNotEmpty()) {
                 Text("Reported trades", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)

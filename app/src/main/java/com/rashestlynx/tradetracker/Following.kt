@@ -28,7 +28,94 @@ data class Video(val title: String, val url: String, val time: Long, val id: Str
 /** A stock someone talked about publicly. stance = "buying", "selling" or "mentioned". */
 data class Mention(val ticker: String, val company: String, val stance: String, val count: Int, val latest: Long, val url: String)
 
+/** Something a person has publicly said they own, with where they said it. */
+data class Holding(val name: String, val ticker: String, val note: String, val source: String, val sourceUrl: String)
+
+/** Public statements gathered from interviews, articles and their own company's write-ups. */
+data class KnownInfo(val owns: List<Holding>, val recommends: List<String>, val recommendsSource: String, val disclosureFeed: String = "")
+
 object Following {
+    private const val BRIEFS_ETF = "https://www.briefs.co/best-etfs-to-buy-three-etf-portfolios/"
+    private const val MARK_TRANSCRIPT = "https://singjupost.com/transcript-of-how-to-invest-for-beginners-in-2025-by-mark-tilbury/"
+
+    val KNOWN = mapOf(
+        "Jaspreet Singh" to KnownInfo(
+            owns = listOf(
+                Holding("Vanguard S&P 500 ETF", "VOO", "Briefs says he personally invests in VOO", "Briefs", BRIEFS_ETF),
+                Holding("Vanguard international high-dividend ETF", "", "Briefs says he personally invests in it (ticker not named)", "Briefs", BRIEFS_ETF),
+                Holding("Bitcoin", "", "Bought since 2017; later sold a large portion to reinvest in real estate", "Yahoo Finance",
+                    "https://finance.yahoo.com/news/jaspreet-singh-cuts-bitcoin-why-120039231.html"),
+                Holding("Physical gold", "", "Buys a little every month, about 2% of his portfolio", "Yahoo Finance",
+                    "https://finance.yahoo.com/news/jaspreet-singh-says-rich-people-172918130.html"),
+                Holding("Fundrise (real estate)", "", "Has discussed his position in Fundrise", "People & Media",
+                    "https://www.peopleandmedia.com/jaspreet-singh-net-worth/"),
+            ),
+            recommends = listOf("SCHD", "VUG", "QQQ", "VIG", "GLD", "SMH", "VTI", "SPY"),
+            recommendsSource = BRIEFS_ETF,
+            disclosureFeed = "https://www.briefs.co/feed/",
+        ),
+        "Mark Tilbury" to KnownInfo(
+            owns = listOf(
+                Holding("S&P 500 index funds", "", "Says index funds hold the majority of his money; the S&P 500 is \"part of my portfolio\"",
+                    "Mark Tilbury on X", "https://x.com/marktilbury/status/1890400994409734435"),
+                Holding("Nvidia", "NVDA", "Named with Apple and Microsoft: \"luckily I have some of those in my personal portfolio\" (didn't say which)",
+                    "Video transcript", MARK_TRANSCRIPT),
+                Holding("Apple", "AAPL", "Same statement as Nvidia above, so he owns at least some of these three", "Video transcript", MARK_TRANSCRIPT),
+                Holding("Microsoft", "MSFT", "Same statement as Nvidia above", "Video transcript", MARK_TRANSCRIPT),
+                Holding("Bitcoin and Ethereum", "", "Keeps a small percentage of his portfolio in crypto", "Mark Tilbury on X",
+                    "https://x.com/marktilbury/status/1966849360534401375"),
+            ),
+            recommends = listOf("AAPL"),
+            recommendsSource = "https://x.com/marktilbury/status/1959964001850560980",
+        ),
+    )
+
+    /** New "he personally invests in X" lines from the person's own company articles (Briefs for Jaspreet). Blocking. */
+    fun disclosures(feedUrl: String, name: String, store: Store): List<Holding> {
+        if (feedUrl.isBlank()) return emptyList()
+        val xml = get(feedUrl)
+        val p = Xml.newPullParser()
+        p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+        p.setInput(StringReader(xml))
+        val first = name.split(" ").first()
+        val out = LinkedHashMap<String, Holding>()
+        var inItem = false
+        var title = ""; var link = ""; var body = ""
+        var e = p.eventType
+        while (e != XmlPullParser.END_DOCUMENT) {
+            if (e == XmlPullParser.START_TAG) when (p.name) {
+                "item" -> { inItem = true; title = ""; link = ""; body = "" }
+                "title" -> if (inItem) title = p.nextText().trim()
+                "link" -> if (inItem) link = p.nextText().trim()
+                "description", "content:encoded" -> if (inItem) body += " " + p.nextText()
+            } else if (e == XmlPullParser.END_TAG && p.name == "item") {
+                inItem = false
+                val text = android.text.Html.fromHtml(body, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+                    .replace(Regex("\\s+"), " ")
+                val sentences = text.split(Regex("(?<=[.!?])\\s+"))
+                sentences.forEachIndexed { i, sent ->
+                    val low = sent.lowercase(Locale.US)
+                    val disclosed = first.lowercase(Locale.US) in low &&
+                        listOf("personally invest", "personally own", "is invested in", "he owns", "he holds").any { it in low }
+                    if (!disclosed) return@forEachIndexed
+                    var tickers = TICKER.findAll(sent).map { it.groupValues[1] }.filter { it !in STOP_TICK }.toList()
+                    if (tickers.isEmpty() && i > 0) tickers = TICKER.findAll(sentences[i - 1]).map { it.groupValues[1] }
+                        .filter { it !in STOP_TICK }.toList()
+                    if (tickers.isEmpty()) {
+                        out.putIfAbsent(sent, Holding(sent.take(80), "", "Disclosed in \"$title\"", "Briefs", link))
+                    } else tickers.forEach { t ->
+                        out.putIfAbsent(t, Holding(t, t, "Disclosed in \"$title\"", "Briefs", link))
+                    }
+                }
+            }
+            e = p.next()
+        }
+        return out.values.toList()
+    }
+
+    private val TICKER = Regex("\\b([A-Z]{2,5})\\b")
+    private val STOP_TICK = setOf("ETF", "ETFS", "AI", "US", "USA", "CEO", "IPO", "SPDR", "GDP", "FED", "IRA", "VC", "OK")
+
     val DEFAULTS = listOf(
         Followed(
             name = "Jaspreet Singh",
