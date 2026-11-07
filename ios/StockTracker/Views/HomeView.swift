@@ -270,6 +270,8 @@ struct WatchlistView: View {
     @State private var live: [String: LiveQuote] = [:]
     @State private var loaded = false
     @State private var sel = ""            // "" = All
+    @State private var followed: [Followed] = Following.load()
+    @State private var whoMap: [String: [WhoEntry]]? = WhoTraded.cached(Following.load())
     @State private var newName = ""
     @State private var showNew = false
     @State private var showEdit = false
@@ -345,6 +347,10 @@ struct WatchlistView: View {
                 Button("Delete group", role: .destructive) { model.watchGroups.removeAll { $0.name == sel }; sel = "" }
                 Button("Cancel", role: .cancel) {}
             }
+            .task {
+                followed = Following.load()
+                if whoMap == nil { whoMap = await WhoTraded.build(followed, model: model) }
+            }
             .task(id: shown) {
                 while !Task.isCancelled {
                     if hasLive {
@@ -369,8 +375,6 @@ struct WatchlistView: View {
 
     @ViewBuilder
     private func row(_ t: String) -> some View {
-        let who = Array(Set(model.picks.filter { $0.ticker == t }.map { "\($0.who) (\($0.action == "hold" ? "holds" : "bought"))" }
-            + model.moves.filter { $0.ticker == t && $0.side == "sell" }.map { "\($0.who) (sold)" })).sorted()
         VStack(alignment: .leading, spacing: 6) {
             Button { model.openStock = StockTarget(ticker: t, company: "") } label: {
                 HStack(spacing: 12) {
@@ -397,10 +401,8 @@ struct WatchlistView: View {
             .buttonStyle(.borderless)
             WatchInfo(ticker: t)
             PriceChartView(ticker: t, live: live[t])
-            Text(who.isEmpty ? "No one you track has bought, sold or held it recently."
-                 : "\(who.count) tracked \(who.count == 1 ? "person" : "people"): " + who.prefix(4).joined(separator: ", ")
-                    + (who.count > 4 ? " and \(who.count - 4) more" : ""))
-                .font(.caption).foregroundStyle(who.isEmpty ? .secondary : .primary)
+            WhoBlock(ticker: t, following: whoMap?[t] ?? [], tracked: WhoTraded.others(model.moves, ticker: t, followed: Set(followed.map(\.name))),
+                     followedNames: Set(followed.map(\.name)), loading: whoMap == nil)
             HStack {
                 if let url = Broker.link(t) {
                     Button("Open in \(Broker.name)") { openURL(url) }.buttonStyle(.borderless).font(.caption)
@@ -547,5 +549,70 @@ struct GroupCheckupView: View {
                 info[t] = await StockInfo.load(ticker: t, company: "", model: model)
             }
         }
+    }
+}
+
+
+/// "Who's in it": people you follow, then others the app tracks (Congress, insiders), with what they did.
+struct WhoBlock: View {
+    let ticker: String
+    let following: [WhoEntry]
+    let tracked: [WhoEntry]
+    let followedNames: Set<String>
+    let loading: Bool
+    @EnvironmentObject var model: AppModel
+    @State private var all = false
+    @State private var looked: [WhoEntry]?
+    @Environment(\.openURL) private var openURL
+
+    private var others: [WhoEntry] {
+        var seen = Set<String>()
+        return (tracked + (looked ?? []).filter { !followedNames.contains($0.who) })
+            .filter { seen.insert($0.who.lowercased() + $0.action + $0.date).inserted }
+            .sorted { $0.date > $1.date }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("People you follow").font(.subheadline.weight(.bold))
+            if !following.isEmpty {
+                ForEach(all ? following : Array(following.prefix(4))) { row($0) }
+            } else {
+                Text(loading ? "Checking SEC filings for everyone you follow… (first time takes a minute)"
+                     : "No one you follow has bought, sold or reported holding it.").font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Others who bought or sold (Congress, company insiders)").font(.subheadline.weight(.bold))
+            if !others.isEmpty {
+                ForEach(all ? others : Array(others.prefix(3))) { row($0) }
+            } else {
+                Text(looked == nil ? "Looking up Congress trades and SEC insider filings…" : "No Congress trades or insider buys/sells reported recently.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if following.count > 4 || others.count > 3 {
+                Button(all ? "Show less" : "Show all \(following.count + others.count)") { all.toggle() }
+                    .buttonStyle(.borderless).font(.caption)
+            }
+        }
+        .task(id: ticker) { looked = await WhoTraded.lookup(ticker, model: model) }
+    }
+
+    private func row(_ e: WhoEntry) -> some View {
+        Button { if let u = URL(string: e.link), !e.link.isEmpty { openURL(u) } } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Avatar(name: e.who, size: 28, fund: Following.funds.contains { $0.name == e.who })
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text(e.who).font(.caption.weight(.bold)).lineLimit(1)
+                        Text(e.action).font(.caption.weight(.bold))
+                            .foregroundStyle(e.side == "buy" ? .green : e.side == "sell" ? .red : .blue)
+                        if !e.date.isEmpty { Text("· \(e.date)").font(.caption2).foregroundStyle(.secondary) }
+                    }
+                    if !e.detail.isEmpty { Text(e.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.primary)
+        }
+        .buttonStyle(.borderless)
     }
 }

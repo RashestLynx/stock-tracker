@@ -2641,6 +2641,12 @@ private fun shareCount(v: Double): String = when {
 private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Unit) {
     var list by remember { mutableStateOf(store.watchlist) }
     var groups by remember { mutableStateOf(store.loadGroups()) }
+    val followed = remember { Following.load(store) }
+    val followedNames = remember(followed) { followed.map { it.name }.toSet() }
+    var whoMap by remember { mutableStateOf(WhoTraded.cached(store, followed)) }
+    LaunchedEffect(followed) {
+        if (whoMap == null) whoMap = withContext(Dispatchers.IO) { runCatching { WhoTraded.build(store, followed) }.getOrNull() ?: emptyMap() }
+    }
     var sel by rememberSaveable { mutableStateOf("") } // "" = All
     var newGroup by remember { mutableStateOf<String?>(null) }
     var editGroup by remember { mutableStateOf<String?>(null) }
@@ -2742,8 +2748,6 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 onOpen = { onOpen(StockTarget(it, "", "", "", emptyList(), "", 0.0)) })
         }
         items(shown, key = { it }) { t ->
-            val who = (picks.filter { it.ticker == t }.map { "${it.who} (${if (it.action == "hold") "holds" else "bought"})" } +
-                moves.filter { it.ticker == t && it.side == "sell" }.map { "${it.who} (sold)" }).distinct()
             ElevatedCard(onClick = { onOpen(StockTarget(t, "", "", "", emptyList(), "", 0.0)) },
                 shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2801,13 +2805,13 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     PriceChartBlock(t, store, live[t])
-                    if (who.isEmpty()) {
-                        Text("No one you track has bought, sold or held it recently.", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Text("${who.size} tracked ${if (who.size == 1) "person" else "people"}: " + who.take(4).joinToString(", ") +
-                            if (who.size > 4) " and ${who.size - 4} more" else "", style = MaterialTheme.typography.bodySmall)
+                    var looked by remember(t) { mutableStateOf<List<WhoEntry>?>(null) }
+                    LaunchedEffect(t) { looked = withContext(Dispatchers.IO) { runCatching { WhoTraded.lookup(store, t) }.getOrNull() ?: emptyList() } }
+                    val others = remember(t, tick, looked) {
+                        (WhoTraded.others(store, t, followedNames) + looked.orEmpty().filter { it.who !in followedNames })
+                            .distinctBy { it.who.lowercase() + it.action + it.date }.sortedByDescending { it.date }
                     }
+                    WhoBlock(whoMap?.get(t), others, loading = whoMap == null, othersLoading = looked == null)
                     Broker.link(store, t)?.let { url ->
                         val context = LocalContext.current
                         TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
@@ -2819,6 +2823,55 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
     }
 }
 
+
+/** "Who's in it": people you follow, then others the app tracks (Congress, insiders), with what they did. */
+@Composable
+private fun WhoBlock(following: List<WhoEntry>?, others: List<WhoEntry>, loading: Boolean, othersLoading: Boolean) {
+    val context = LocalContext.current
+    var all by remember { mutableStateOf(false) }
+    @Composable
+    fun row(e: WhoEntry) {
+        val color = when (e.side) { "buy" -> TradeColors.buy(); "sell" -> TradeColors.sell(); else -> MaterialTheme.colorScheme.primary }
+        Row(Modifier.fillMaxWidth().clickable(enabled = e.link.isNotBlank()) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(e.link))) } }.padding(vertical = 2.dp),
+            verticalAlignment = Alignment.Top) {
+            Avatar(e.who, 28, fund = Following.FUNDS.any { it.name == e.who })
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(e.who, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.width(6.dp))
+                    Text(e.action, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = color)
+                    if (e.date.isNotBlank()) Text(" · ${e.date}", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (e.detail.isNotBlank()) Text(e.detail, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+    val f = following.orEmpty()
+    Text("People you follow", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+    when {
+        f.isNotEmpty() -> (if (all) f else f.take(4)).forEach { row(it) }
+        loading -> Text("Checking SEC filings for everyone you follow… (first time takes a minute)", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else -> Text("No one you follow has bought, sold or reported holding it.", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Text("Others who bought or sold (Congress, company insiders)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+    when {
+        others.isNotEmpty() -> (if (all) others else others.take(3)).forEach { row(it) }
+        othersLoading -> Text("Looking up Congress trades and SEC insider filings…", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else -> Text("No Congress trades or insider buys/sells reported recently.", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (f.size > 4 || others.size > 3) TextButton(onClick = { all = !all }, contentPadding = PaddingValues(0.dp)) {
+        Text(if (all) "Show less" else "Show all ${f.size + others.size}")
+    }
+}
 
 @Composable
 private fun AssistChipLike(label: String, onClick: () -> Unit) {

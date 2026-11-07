@@ -37,8 +37,9 @@ object Congress {
     const val SOURCE_URL = "https://www.bargo.ai/free-apis/congress"
     private const val TRADES = "https://www.bargo.ai/free-apis/congress/v1/trades"
 
-    fun recent(limit: Int, apiKey: String): List<CongressTrade> {
-        val conn = URL("$TRADES?limit=$limit").openConnection() as HttpURLConnection
+    fun recent(limit: Int, apiKey: String, ticker: String = ""): List<CongressTrade> {
+        val q = if (ticker.isBlank()) "" else "&ticker=" + java.net.URLEncoder.encode(ticker.uppercase(), "UTF-8")
+        val conn = URL("$TRADES?limit=$limit$q").openConnection() as HttpURLConnection
         conn.setRequestProperty("User-Agent", "StockTracker-Android/2.0")
         conn.setRequestProperty("Accept", "application/json")
         if (apiKey.isNotBlank()) conn.setRequestProperty("X-Api-Key", apiKey.trim())
