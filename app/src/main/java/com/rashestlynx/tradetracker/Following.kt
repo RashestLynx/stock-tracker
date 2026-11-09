@@ -194,7 +194,7 @@ object Following {
 
     /** The U.S. government itself, which has taken stakes in companies since 2025. */
     val GOVERNMENT = listOf(
-        Followed(US_GOV, "", ""equity stake" ("Commerce Department" OR Pentagon OR "U.S. government" OR "Energy Department")",
+        Followed(US_GOV, "", "\"equity stake\" (\"Commerce Department\" OR Pentagon OR \"U.S. government\" OR \"Energy Department\")",
             listOf("Since 2025 the federal government has taken stakes in companies, mostly through the Commerce Department (CHIPS Act), the Pentagon and the Energy Department",
                 "There's no official list; these come from company announcements and news reports"),
             listOf("Cato Institute: government equity stakes" to "https://www.cato.org/blog/rare-earths-vulcan-government-equity-stakes",

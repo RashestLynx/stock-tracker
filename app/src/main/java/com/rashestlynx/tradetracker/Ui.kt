@@ -134,6 +134,7 @@ private const val TAB_CRYPTO = 6
 private const val TAB_HOME = 7
 private const val TAB_MARKETS = 8
 private const val TAB_WATCH = 9
+private const val TAB_SOURCES = 10
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
@@ -189,6 +190,7 @@ fun StockTrackerApp(store: Store) {
                                 TAB_NEWS -> "Live news"
                                 TAB_CRYPTO -> "Bitcoin & Ethereum"
                                 TAB_PICKS -> "Common picks"
+                                TAB_SOURCES -> "Sources"
                                 else -> "Settings"
                             },
                             fontWeight = FontWeight.SemiBold,
@@ -236,6 +238,8 @@ fun StockTrackerApp(store: Store) {
                 NavigationBarItem(selected = tab == TAB_MARKETS || tab == TAB_MOVERS || tab == TAB_PICKS || tab == TAB_WSB,
                     onClick = { tab = TAB_MARKETS },
                     icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") }, alwaysShowLabel = false)
+                NavigationBarItem(selected = tab == TAB_SOURCES, onClick = { tab = TAB_SOURCES },
+                    icon = { Icon(Icons.Filled.List, contentDescription = null) }, label = { Text("Sources") }, alwaysShowLabel = false)
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -251,6 +255,7 @@ fun StockTrackerApp(store: Store) {
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
                 TAB_CRYPTO -> CryptoScreen(store, onOpen = { stock = it })
                 TAB_NEWS -> NewsScreen(store, onOpen = { stock = it })
+                TAB_SOURCES -> SourcesScreen(store)
                 TAB_WSB -> WsbScreen(store, onOpen = { stock = it })
                 TAB_MOVERS -> MoversScreen(store, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },

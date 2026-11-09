@@ -24,6 +24,9 @@ struct ContentView: View {
             MarketsView()
                 .tabItem { Label("Markets", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(4)
+            SourcesView()
+                .tabItem { Label("Sources", systemImage: "list.bullet.rectangle") }
+                .tag(6)
         }
         .onAppear { if !model.isSetUp { model.showSettings = true } }
         .sheet(item: $model.openStock) { target in
