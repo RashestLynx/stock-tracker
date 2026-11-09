@@ -1998,7 +1998,7 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
             }
             val owns = (known?.owns.orEmpty() + disclosed).distinctBy { it.ticker.ifEmpty { it.name } }
             if (owns.isNotEmpty()) {
-                Text(if (f.insider.isNotEmpty()) "Other reported holdings" else "Latest holdings (in their own words)",
+                Text(known?.ownsTitle?.ifEmpty { null } ?: if (f.insider.isNotEmpty()) "Other reported holdings" else "Latest holdings (in their own words)",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold)
                 owns.forEach { h ->

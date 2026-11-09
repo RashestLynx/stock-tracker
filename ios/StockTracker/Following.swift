@@ -46,6 +46,18 @@ enum Following {
                          ["UK company register", "https://find-and-update.company-information.service.gov.uk/search?q=Mark+Tilbury"]]),
     ]
 
+    static let usGov = "United States"
+
+    /// The U.S. government itself, which has taken stakes in companies since 2025.
+    static let government: [Followed] = [
+        Followed(name: usGov, youtube: "",
+                 newsQuery: ""equity stake" ("Commerce Department" OR Pentagon OR "U.S. government" OR "Energy Department")",
+                 businesses: ["Since 2025 the federal government has taken stakes in companies, mostly through the Commerce Department (CHIPS Act), the Pentagon and the Energy Department",
+                              "There's no official list; these come from company announcements and news reports"],
+                 links: [["Cato Institute: government equity stakes", "https://www.cato.org/blog/rare-earths-vulcan-government-equity-stakes"],
+                         ["Commerce CHIPS announcements", "https://www.nist.gov/chips"]]),
+    ]
+
     /// Famous investment firms, followed through their quarterly 13F holdings.
     static let funds: [Followed] = [
         Followed(name: "Berkshire Hathaway", youtube: "", newsQuery: "\"Berkshire Hathaway\" stocks",
@@ -148,15 +160,15 @@ enum Following {
         if let data = d.data(forKey: "following"), let l = try? JSONDecoder().decode([Followed].self, from: data) {
             list = l
         } else {
-            list = defaults + funds + publicFigures
+            list = defaults + funds + publicFigures + government
         }
         // One-time: add new built-in groups to existing lists too.
         let v = d.integer(forKey: "following_v")
-        if v < 3 {
-            let add = (v < 2 ? funds : []) + publicFigures
+        if v < 4 {
+            let add = (v < 2 ? funds : []) + (v < 3 ? publicFigures : []) + government
             list += add.filter { f in !list.contains { $0.name == f.name } }
             save(list)
-            d.set(3, forKey: "following_v")
+            d.set(4, forKey: "following_v")
         }
         return list
     }

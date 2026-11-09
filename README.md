@@ -18,6 +18,7 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **Today's buy & sale**: the first thing on the home screen, the day's most notable open-market buy and sale, ranked by size, who made it, and how many others also bought the stock
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
+- **United States**: companies the U.S. government owns a stake in (Intel, MP Materials, Lithium Americas, USA Rare Earth, quantum and chip companies and more), shown on each stock's summary and kept in the Following list
 - **Common picks**: stocks that two or more of these people bought or hold in the last 90 days, with ones shared across different groups (say, a senator and a hedge fund) ranked first
 
 Every push to `main` rebuilds the apps automatically (see the **Actions** tab) and posts them to **Releases → Latest build**.

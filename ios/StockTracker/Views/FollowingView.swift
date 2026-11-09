@@ -63,7 +63,7 @@ struct FollowedSection: View {
                 }
             }
             if !owns.isEmpty {
-                Text((person.insider ?? "").isEmpty ? "Latest holdings (in their own words)" : "Other reported holdings")
+                Text(!(known?.ownsTitle ?? "").isEmpty ? known!.ownsTitle : (person.insider ?? "").isEmpty ? "Latest holdings (in their own words)" : "Other reported holdings")
                     .font(.subheadline.weight(.semibold))
                 ForEach(owns) { h in
                     HStack(alignment: .top) {

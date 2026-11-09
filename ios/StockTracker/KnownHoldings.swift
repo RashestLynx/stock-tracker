@@ -16,6 +16,7 @@ struct KnownInfo {
     let recommends: [String]
     let recommendsSource: String
     var disclosureFeed = ""
+    var ownsTitle = ""
 }
 
 enum Known {
@@ -71,6 +72,28 @@ enum Known {
             ],
             recommends: ["AAPL"],
             recommendsSource: "https://x.com/marktilbury/status/1959964001850560980"),
+        Following.usGov: KnownInfo(
+            owns: [
+                Holding(name: "Intel", ticker: "INTC", note: "Commerce Department bought about 9.9% (433.3 million shares at $20.47) in August 2025, the government's biggest stake", source: "CNN", sourceURL: "https://www.cnn.com/2025/11/17/investing/equity-stakes-government-stock-market"),
+                Holding(name: "MP Materials", ticker: "MP", note: "Pentagon holds preferred stock and warrants for about 15%, making it the largest shareholder (July 2025)", source: "Columbia CGEP", sourceURL: "https://www.energypolicy.columbia.edu/qa-how-the-us-is-using-equity-stakes-to-support-domestic-critical-minerals-development/"),
+                Holding(name: "Lithium Americas", ticker: "LAC", note: "Energy Department holds 5% of the company and 5% of its Thacker Pass lithium project with GM (October 2025)", source: "Columbia CGEP", sourceURL: "https://www.energypolicy.columbia.edu/qa-how-the-us-is-using-equity-stakes-to-support-domestic-critical-minerals-development/"),
+                Holding(name: "Trilogy Metals", ticker: "TMQ", note: "Government holds 10% plus warrants for 7.5% more (October 2025)", source: "Columbia CGEP", sourceURL: "https://www.energypolicy.columbia.edu/qa-how-the-us-is-using-equity-stakes-to-support-domestic-critical-minerals-development/"),
+                Holding(name: "USA Rare Earth", ticker: "USAR", note: "Commerce agreed to invest $1.6 billion for about a 10% stake (January 2026); 8% to 16% depending on warrants", source: "Yahoo Finance", sourceURL: "https://finance.yahoo.com/news/trump-admin-invest-1-6bn-112926262.html"),
+                Holding(name: "GlobalFoundries", ticker: "GFS", note: "Commerce stakes tied to CHIPS awards: quantum foundry (May 2026) and up to $300 million for co-packaged optics (July 2026)", source: "NIST", sourceURL: "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
+                Holding(name: "IBM", ticker: "IBM", note: "Quantum foundry CHIPS award with a minority, non-controlling government stake (May 2026)", source: "DCD", sourceURL: "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding(name: "D-Wave Quantum", ticker: "QBTS", note: "$100 million CHIPS award for a minority, non-controlling government stake (finalized 2026)", source: "DCD", sourceURL: "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding(name: "Rigetti Computing", ticker: "RGTI", note: "CHIPS award for a minority, non-controlling government stake (finalized 2026)", source: "DCD", sourceURL: "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding(name: "Aeluma", ticker: "ALMU", note: "Letter of intent for up to $30 million in CHIPS funding for a minority stake (July 2026)", source: "NIST", sourceURL: "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
+                Holding(name: "U.S. Steel (owned by Nippon Steel)", ticker: "", note: "Government holds a \"golden share\" with veto rights from the Nippon Steel deal (June 2025)", source: "CNBC", sourceURL: "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding(name: "Westinghouse (private)", ticker: "", note: "Participation interest from the $80 billion nuclear deal (October 2025); can require an IPO", source: "CNBC", sourceURL: "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding(name: "Vulcan Elements (private)", ticker: "", note: "Commerce $50 million equity stake plus Pentagon warrants (November 2025)", source: "Cato Institute", sourceURL: "https://www.cato.org/blog/rare-earths-vulcan-government-equity-stakes"),
+                Holding(name: "xLight (private)", ticker: "", note: "Commerce $150 million equity stake (December 2025)", source: "CNBC", sourceURL: "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding(name: "Korea Zinc (Tennessee smelter)", ticker: "", note: "Pentagon-backed smelter project with a conditional stake (December 2025)", source: "CNBC", sourceURL: "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding(name: "Quantinuum, PsiQuantum, Atom Computing, Infleqtion, Diraq", ticker: "", note: "Quantum computing companies in the May 2026 CHIPS awards, each with a government stake", source: "DCD", sourceURL: "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding(name: "Kepler, Multibeam, Extropic, Thintronics, OBSIDIA", ticker: "", note: "Chip startups in the July 2026 CHIPS letters of intent, each with a minority stake", source: "NIST", sourceURL: "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
+            ],
+            recommends: [], recommendsSource: "",
+            ownsTitle: "Companies the U.S. government owns a stake in"),
     ]
 
     private static let stop: Set<String> = ["ETF", "ETFS", "AI", "US", "USA", "CEO", "IPO", "SPDR", "GDP", "FED", "IRA", "VC", "OK"]

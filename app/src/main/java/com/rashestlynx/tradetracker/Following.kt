@@ -34,7 +34,8 @@ data class Mention(val ticker: String, val company: String, val stance: String, 
 data class Holding(val name: String, val ticker: String, val note: String, val source: String, val sourceUrl: String)
 
 /** Public statements gathered from interviews, articles and their own company's write-ups. */
-data class KnownInfo(val owns: List<Holding>, val recommends: List<String>, val recommendsSource: String, val disclosureFeed: String = "")
+data class KnownInfo(val owns: List<Holding>, val recommends: List<String>, val recommendsSource: String, val disclosureFeed: String = "",
+                     val ownsTitle: String = "")
 
 object Following {
     private const val BRIEFS_ETF = "https://www.briefs.co/best-etfs-to-buy-three-etf-portfolios/"
@@ -90,6 +91,29 @@ object Following {
             ),
             recommends = listOf("AAPL"),
             recommendsSource = "https://x.com/marktilbury/status/1959964001850560980",
+        ),
+        US_GOV to KnownInfo(
+            owns = listOf(
+                Holding("Intel", "INTC", "Commerce Department bought about 9.9% (433.3 million shares at \$20.47) in August 2025, the government's biggest stake", "CNN", "https://www.cnn.com/2025/11/17/investing/equity-stakes-government-stock-market"),
+                Holding("MP Materials", "MP", "Pentagon holds preferred stock and warrants for about 15%, making it the largest shareholder (July 2025)", "Columbia CGEP", "https://www.energypolicy.columbia.edu/qa-how-the-us-is-using-equity-stakes-to-support-domestic-critical-minerals-development/"),
+                Holding("Lithium Americas", "LAC", "Energy Department holds 5% of the company and 5% of its Thacker Pass lithium project with GM (October 2025)", "Columbia CGEP", "https://www.energypolicy.columbia.edu/qa-how-the-us-is-using-equity-stakes-to-support-domestic-critical-minerals-development/"),
+                Holding("Trilogy Metals", "TMQ", "Government holds 10% plus warrants for 7.5% more (October 2025)", "Columbia CGEP", "https://www.energypolicy.columbia.edu/qa-how-the-us-is-using-equity-stakes-to-support-domestic-critical-minerals-development/"),
+                Holding("USA Rare Earth", "USAR", "Commerce agreed to invest \$1.6 billion for about a 10% stake (January 2026); 8% to 16% depending on warrants", "Yahoo Finance", "https://finance.yahoo.com/news/trump-admin-invest-1-6bn-112926262.html"),
+                Holding("GlobalFoundries", "GFS", "Commerce stakes tied to CHIPS awards: quantum foundry (May 2026) and up to \$300 million for co-packaged optics (July 2026)", "NIST", "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
+                Holding("IBM", "IBM", "Quantum foundry CHIPS award with a minority, non-controlling government stake (May 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("D-Wave Quantum", "QBTS", "\$100 million CHIPS award for a minority, non-controlling government stake (finalized 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("Rigetti Computing", "RGTI", "CHIPS award for a minority, non-controlling government stake (finalized 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("Aeluma", "ALMU", "Letter of intent for up to \$30 million in CHIPS funding for a minority stake (July 2026)", "NIST", "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
+                Holding("U.S. Steel (owned by Nippon Steel)", "", "Government holds a \"golden share\" with veto rights from the Nippon Steel deal (June 2025)", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding("Westinghouse (private)", "", "Participation interest from the \$80 billion nuclear deal (October 2025); can require an IPO", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding("Vulcan Elements (private)", "", "Commerce \$50 million equity stake plus Pentagon warrants (November 2025)", "Cato Institute", "https://www.cato.org/blog/rare-earths-vulcan-government-equity-stakes"),
+                Holding("xLight (private)", "", "Commerce \$150 million equity stake (December 2025)", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding("Korea Zinc (Tennessee smelter)", "", "Pentagon-backed smelter project with a conditional stake (December 2025)", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
+                Holding("Quantinuum, PsiQuantum, Atom Computing, Infleqtion, Diraq", "", "Quantum computing companies in the May 2026 CHIPS awards, each with a government stake", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("Kepler, Multibeam, Extropic, Thintronics, OBSIDIA", "", "Chip startups in the July 2026 CHIPS letters of intent, each with a minority stake", "NIST", "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
+            ),
+            recommends = emptyList(), recommendsSource = "",
+            ownsTitle = "Companies the U.S. government owns a stake in",
         ),
     )
 
@@ -166,6 +190,17 @@ object Following {
         ),
     )
 
+    const val US_GOV = "United States"
+
+    /** The U.S. government itself, which has taken stakes in companies since 2025. */
+    val GOVERNMENT = listOf(
+        Followed(US_GOV, "", ""equity stake" ("Commerce Department" OR Pentagon OR "U.S. government" OR "Energy Department")",
+            listOf("Since 2025 the federal government has taken stakes in companies, mostly through the Commerce Department (CHIPS Act), the Pentagon and the Energy Department",
+                "There's no official list; these come from company announcements and news reports"),
+            listOf("Cato Institute: government equity stakes" to "https://www.cato.org/blog/rare-earths-vulcan-government-equity-stakes",
+                "Commerce CHIPS announcements" to "https://www.nist.gov/chips")),
+    )
+
     /** Famous investment firms, followed through their quarterly 13F holdings. */
     val FUNDS = listOf(
         Followed("Berkshire Hathaway", "", "\"Berkshire Hathaway\" stocks", listOf("Warren Buffett's company, run by Greg Abel since 2026"),
@@ -203,11 +238,11 @@ object Following {
     fun load(store: Store): List<Followed> {
         // One-time: add new built-in groups to existing lists too.
         val v = store.prefs.getInt("following_v", 1)
-        if (v < 3) {
+        if (v < 4) {
             val current = loadRaw(store)
-            val add = (if (v < 2) FUNDS else emptyList()) + PUBLIC
+            val add = (if (v < 2) FUNDS else emptyList()) + (if (v < 3) PUBLIC else emptyList()) + GOVERNMENT
             save(store, current + add.filter { f -> current.none { it.name == f.name } })
-            store.prefs.edit().putInt("following_v", 3).apply()
+            store.prefs.edit().putInt("following_v", 4).apply()
         }
         return loadRaw(store)
     }
