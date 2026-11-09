@@ -90,6 +90,7 @@ struct FeedView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("Sections")
             .searchable(text: $query, prompt: "Search \(section.label.lowercased())")
             .refreshable { await model.check() }

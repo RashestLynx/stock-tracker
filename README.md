@@ -19,6 +19,8 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
 - **United States**: companies the U.S. government owns a stake in (Intel, MP Materials, Lithium Americas, USA Rare Earth, quantum and chip companies and more), shown on each stock's summary and kept in the Following list
+- **Countries**: the U.S. stocks owned by other countries' government investment funds, from their quarterly SEC 13F filings: Norway (Norges Bank), Saudi Arabia (PIF), United Arab Emirates (Mubadala), Switzerland (Swiss National Bank), South Korea (Korea Investment Corporation) and Canada (CPP Investments)
+- **Market color and dark mode**: the background turns green when the S&P 500 is up today and red when it's down (can be turned off), and Settings has System, Light and Dark appearance
 - **Sources**: a tab listing every source the app uses, the live data feeds plus the article or filing behind each person's reported holdings, searchable and tappable
 - **Common picks**: stocks that two or more of these people bought or hold in the last 90 days, with ones shared across different groups (say, a senator and a hedge fund) ranked first
 

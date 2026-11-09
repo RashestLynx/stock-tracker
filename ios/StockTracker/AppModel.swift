@@ -35,6 +35,16 @@ final class AppModel: ObservableObject {
     @Published var openPerson: PersonTarget?
     @Published var showSettings = false
     @Published var newsAlerts: Bool { didSet { d.set(newsAlerts, forKey: "newsAlerts") } }
+    /// "system", "light" or "dark".
+    @Published var appearance: String { didSet { d.set(appearance, forKey: "appearance") } }
+    /// Tint the background green when the S&P 500 is up today, red when it's down.
+    @Published var marketBackground: Bool { didSet { d.set(marketBackground, forKey: "marketBackground") } }
+    /// Today's S&P 500 move (via SPY). Nil until loaded.
+    @Published var market: LiveQuote?
+
+    func refreshMarket() async {
+        if let q = await Live.quote("SPY") { market = q }
+    }
     private var seen: [String]
 
     var isSetUp: Bool { userAgent.contains("@") }
@@ -57,6 +67,8 @@ final class AppModel: ObservableObject {
         let savedMassive = d.string(forKey: "massiveKey") ?? ""
         massiveKey = savedMassive.isEmpty ? "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" : savedMassive
         newsAlerts = d.object(forKey: "newsAlerts") as? Bool ?? true
+        appearance = d.string(forKey: "appearance") ?? "system"
+        marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
         movers = Self.load("movers.json")
         status = d.string(forKey: "status") ?? "Not checked yet"
         lastCongressCheck = d.object(forKey: "lastCongress") as? Date ?? .distantPast

@@ -142,6 +142,24 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Appearance", selection: $model.appearance) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle(isOn: $model.marketBackground) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Market color background")
+                            Text("Green when the S&P 500 is up today, red when it's down. Checked every 5 minutes.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Appearance")
+                }
+
+                Section {
                     Toggle(isOn: $model.newsAlerts) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Watchlist news")

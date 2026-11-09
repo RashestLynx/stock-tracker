@@ -118,6 +118,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -1083,6 +1084,24 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
                 OutlinedButton(onClick = {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MASSIVE_SIGNUP)))
                 }) { Text("Get a free key") }
+            }
+        }
+
+        var themeMode by remember { mutableStateOf(Appearance.mode(store)) }
+        var marketBg by remember { mutableStateOf(Appearance.marketBg(store)) }
+        Section("Appearance") {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEachIndexed { i, (key, label) ->
+                    SegmentedButton(
+                        selected = themeMode == key,
+                        onClick = { themeMode = key; store.prefs.edit().putString(Appearance.MODE, key).apply() },
+                        shape = SegmentedButtonDefaults.itemShape(i, 3),
+                    ) { Text(label) }
+                }
+            }
+            SwitchRow("Market color background",
+                "Green when the S&P 500 is up today, red when it's down. Checked every 5 minutes.", marketBg) {
+                marketBg = it; store.prefs.edit().putBoolean(Appearance.MARKET_BG, it).apply()
             }
         }
 
@@ -2430,7 +2449,21 @@ private data class Post(
     val key get() = who + "|" + time + "|" + text.hashCode()
 }
 
-private val FEED_FILTERS = listOf("For you", "Following", "Congress", "Insiders", "Funds", "Liked")
+/** "S&P 500 ▲ +0.84% today", explaining the market-color background. */
+@Composable
+private fun MarketPill(q: LiveQuote, on: Boolean) {
+    val up = q.changePct >= 0
+    val color = if (up) TradeColors.buy() else TradeColors.sell()
+    Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        .background(if (up) TradeColors.buyContainer() else TradeColors.sellContainer(), RoundedCornerShape(50))
+        .padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(String.format(java.util.Locale.US, "S&P 500 %s %+.2f%% today", if (up) "▲" else "▼", q.changePct),
+            color = color, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        if (on) Text(if (up) "  ·  market's up" else "  ·  market's down", color = color, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+private val FEED_FILTERS = listOf("For you", "Following", "Countries", "Congress", "Insiders", "Funds", "Liked")
 
 /** A post in the Home feed, laid out like a social app: avatar, name and time, text, stock card, actions. */
 @Composable
@@ -2519,6 +2552,13 @@ private fun isFund(f: Followed) = Following.FUNDS.any { it.name == f.name }
 
 @Composable
 private fun Avatar(name: String, size: Int = 44, fund: Boolean = false) {
+    Following.FLAGS[name]?.let { flag ->
+        Box(Modifier.size(size.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape),
+            contentAlignment = Alignment.Center) {
+            Text(flag, fontSize = (size * 0.55f).sp)
+        }
+        return
+    }
     if (fund) {
         Box(Modifier.size(size.dp).background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape),
             contentAlignment = Alignment.Center) {
@@ -2605,9 +2645,11 @@ private fun HomeScreen(
         followedPosts = out.toList()
     }
 
+    val market = LocalMarket.current
     val posts = (followedPosts + alertPosts).sortedByDescending { it.time }.filter { p ->
         when (filter) {
             "Following" -> p.followed != null
+            "Countries" -> Following.FLAGS.containsKey(p.who)
             "Congress" -> p.category == Category.SENATE || p.category == Category.HOUSE
             "Insiders" -> p.category == Category.INSIDER || (p.followed?.insider?.isNotEmpty() ?: false)
             "Funds" -> p.category == Category.FUND || (p.followed?.let { isFund(it) } ?: false)
@@ -2622,6 +2664,9 @@ private fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
+            market?.let { q ->
+                item(key = "market") { MarketPill(q, on = Appearance.marketBg(store)) }
+            }
             item(key = "today") {
                 Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                     if (!store.isSetUp) SetupCard(onSetup) else TodayCard(highlights, onOpen)

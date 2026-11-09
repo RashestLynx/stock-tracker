@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
         if (store.isSetUp && store.backgroundOn) CheckWorker.schedule(this)
 
         setContent {
-            AppTheme { StockTrackerApp(store) }
+            AppTheme(store) { StockTrackerApp(store) }
         }
     }
 }

@@ -60,7 +60,7 @@ object Sources {
 
     /** Sources for every built-in person plus anyone the user added. */
     fun people(followed: List<Followed>): List<Group> {
-        val all = (Following.DEFAULTS + Following.FUNDS + Following.PUBLIC + Following.GOVERNMENT + followed).distinctBy { it.name }
+        val all = (Following.DEFAULTS + Following.FUNDS + Following.PUBLIC + Following.GOVERNMENT + Following.COUNTRIES + followed).distinctBy { it.name }
         return all.mapNotNull { f ->
             val out = LinkedHashMap<String, Source>()
             Following.KNOWN[f.name]?.let { k ->

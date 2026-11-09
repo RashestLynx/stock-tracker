@@ -64,6 +64,7 @@ struct PicksView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("Common picks")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .searchable(text: $query, prompt: "Search ticker, company or person")

@@ -59,6 +59,7 @@ struct WsbView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("WallStreetBets")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .refreshable { await load() }

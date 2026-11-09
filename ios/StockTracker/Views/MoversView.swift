@@ -62,6 +62,7 @@ struct MoversView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("This week's movers")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .refreshable { await load(force: true) }

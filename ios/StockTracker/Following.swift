@@ -58,6 +58,32 @@ enum Following {
                          ["Commerce CHIPS announcements", "https://www.nist.gov/chips"]]),
     ]
 
+    /// Other countries, followed through their government investment funds' quarterly 13F filings,
+    /// which list the U.S. stocks they hold.
+    static let countries: [Followed] = [
+        Followed(name: "Norway", youtube: "", newsQuery: "\"Norges Bank Investment Management\" OR \"Norway wealth fund\" stake",
+                 businesses: ["Norway's oil fund (Government Pension Fund Global), run by Norges Bank, one of the world's largest stock owners"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1374170&type=13F"]], cik: "1374170"),
+        Followed(name: "Saudi Arabia", youtube: "", newsQuery: "\"Public Investment Fund\" Saudi stake",
+                 businesses: ["Public Investment Fund (PIF), Saudi Arabia's sovereign wealth fund"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1767640&type=13F"]], cik: "1767640"),
+        Followed(name: "United Arab Emirates", youtube: "", newsQuery: "Mubadala stake",
+                 businesses: ["Mubadala Investment Company, a sovereign wealth fund of Abu Dhabi"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1704268&type=13F"]], cik: "1704268"),
+        Followed(name: "Switzerland", youtube: "", newsQuery: "\"Swiss National Bank\" stocks",
+                 businesses: ["Swiss National Bank, the central bank, which invests part of its reserves in U.S. stocks"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1582202&type=13F"]], cik: "1582202"),
+        Followed(name: "South Korea", youtube: "", newsQuery: "\"Korea Investment Corporation\" stake",
+                 businesses: ["Korea Investment Corporation, South Korea's sovereign wealth fund"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1441689&type=13F"]], cik: "1441689"),
+        Followed(name: "Canada", youtube: "", newsQuery: "\"CPP Investments\" stake",
+                 businesses: ["CPP Investments, which manages the national Canada Pension Plan"],
+                 links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1283718&type=13F"]], cik: "1283718"),
+    ]
+
+    /// Flags shown as the avatar for countries.
+    static let flags: [String: String] = [usGov: "🇺🇸", "Norway": "🇳🇴", "Saudi Arabia": "🇸🇦", "United Arab Emirates": "🇦🇪", "Switzerland": "🇨🇭", "South Korea": "🇰🇷", "Canada": "🇨🇦"]
+
     /// Famous investment firms, followed through their quarterly 13F holdings.
     static let funds: [Followed] = [
         Followed(name: "Berkshire Hathaway", youtube: "", newsQuery: "\"Berkshire Hathaway\" stocks",
@@ -160,15 +186,15 @@ enum Following {
         if let data = d.data(forKey: "following"), let l = try? JSONDecoder().decode([Followed].self, from: data) {
             list = l
         } else {
-            list = defaults + funds + publicFigures + government
+            list = defaults + funds + publicFigures + government + countries
         }
         // One-time: add new built-in groups to existing lists too.
         let v = d.integer(forKey: "following_v")
-        if v < 4 {
-            let add = (v < 2 ? funds : []) + (v < 3 ? publicFigures : []) + government
+        if v < 5 {
+            let add = (v < 2 ? funds : []) + (v < 3 ? publicFigures : []) + (v < 4 ? government : []) + countries
             list += add.filter { f in !list.contains { $0.name == f.name } }
             save(list)
-            d.set(4, forKey: "following_v")
+            d.set(5, forKey: "following_v")
         }
         return list
     }

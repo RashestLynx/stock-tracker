@@ -43,7 +43,7 @@ enum Sources {
     /// Sources for every built-in person plus anyone the user added.
     static func people(_ followed: [Followed]) -> [Group] {
         var seenNames = Set<String>()
-        let all = (Following.defaults + Following.funds + Following.publicFigures + Following.government + followed)
+        let all = (Following.defaults + Following.funds + Following.publicFigures + Following.government + Following.countries + followed)
             .filter { seenNames.insert($0.name).inserted }
         return all.compactMap { f in
             var out: [Source] = []
@@ -119,6 +119,7 @@ struct SourcesView: View {
                 }
             }
             .searchable(text: $query, prompt: "Search sources, people or tickers")
+            .marketBackground()
             .navigationTitle("Sources")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .onAppear { groups = Sources.people(Following.load()) }

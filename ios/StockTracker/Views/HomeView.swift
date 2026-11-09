@@ -25,7 +25,7 @@ enum Brand {
     static let like = Color(red: 0.94, green: 0.22, blue: 0.42)
 }
 
-let feedFilters = ["For you", "Following", "Congress", "Insiders", "Funds", "Liked"]
+let feedFilters = ["For you", "Following", "Countries", "Congress", "Insiders", "Funds", "Liked"]
 
 /// Funds show a ticker (or "13F") instead of initials.
 func fundBadge(_ name: String) -> String {
@@ -48,7 +48,11 @@ struct Avatar: View {
         return s.isEmpty ? "?" : s.uppercased()
     }
     var body: some View {
-        if fund {
+        if let flag = Following.flags[name] {
+            Text(flag).font(.system(size: size * 0.55))
+                .frame(width: size, height: size)
+                .background(Color(.tertiarySystemFill), in: Circle())
+        } else if fund {
             Text(fundBadge(name))
                 .font(size >= 50 ? .caption.weight(.heavy) : .caption2.weight(.heavy))
                 .minimumScaleFactor(0.6).lineLimit(1)
@@ -106,6 +110,7 @@ struct HomeView: View {
         (followedPosts + alertPosts).sorted { $0.time > $1.time }.filter { p in
             switch filter {
             case "Following": return p.followed != nil
+            case "Countries": return Following.flags[p.who] != nil
             case "Congress": return p.category == .senate || p.category == .house
             case "Insiders": return p.category == .insider || !(p.followed?.insider ?? "").isEmpty
             case "Funds": return p.category == .fund || (p.followed.map(isFund) ?? false)
@@ -119,6 +124,9 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if let q = model.market {
+                        MarketPill(quote: q).padding(.horizontal, 12).padding(.vertical, 4)
+                    }
                     if model.isSetUp {
                         TodayCard(highlights: Highlights.compute(moves: model.moves, picks: model.picks))
                             .padding(.horizontal, 12).padding(.top, 4)
@@ -174,6 +182,7 @@ struct HomeView: View {
                     }
                 }
             }
+            .marketBackground()
             .navigationTitle("Stock Tracker")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SettingsButton() }
@@ -443,6 +452,7 @@ struct WatchlistView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("Watchlist")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .alert("New group", isPresented: $showNew) {

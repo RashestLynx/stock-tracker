@@ -86,6 +86,7 @@ struct NewsView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("Live news")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .refreshable { await load() }

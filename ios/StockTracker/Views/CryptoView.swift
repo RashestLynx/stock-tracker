@@ -124,6 +124,7 @@ struct CryptoView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .marketBackground()
             .navigationTitle("Bitcoin & Ethereum")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
             .refreshable { prices = await Crypto.prices() }

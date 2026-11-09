@@ -201,6 +201,28 @@ object Following {
                 "Commerce CHIPS announcements" to "https://www.nist.gov/chips")),
     )
 
+    /**
+     * Other countries, followed through their government investment funds' quarterly 13F filings,
+     * which list the U.S. stocks they hold.
+     */
+    val COUNTRIES = listOf(
+        Followed("Norway", "", "\"Norges Bank Investment Management\" OR \"Norway wealth fund\" stake", listOf("Norway's oil fund (Government Pension Fund Global), run by Norges Bank, one of the world's largest stock owners"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1374170&type=13F"), cik = "1374170"),
+        Followed("Saudi Arabia", "", "\"Public Investment Fund\" Saudi stake", listOf("Public Investment Fund (PIF), Saudi Arabia's sovereign wealth fund"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1767640&type=13F"), cik = "1767640"),
+        Followed("United Arab Emirates", "", "Mubadala stake", listOf("Mubadala Investment Company, a sovereign wealth fund of Abu Dhabi"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1704268&type=13F"), cik = "1704268"),
+        Followed("Switzerland", "", "\"Swiss National Bank\" stocks", listOf("Swiss National Bank, the central bank, which invests part of its reserves in U.S. stocks"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1582202&type=13F"), cik = "1582202"),
+        Followed("South Korea", "", "\"Korea Investment Corporation\" stake", listOf("Korea Investment Corporation, South Korea's sovereign wealth fund"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1441689&type=13F"), cik = "1441689"),
+        Followed("Canada", "", "\"CPP Investments\" stake", listOf("CPP Investments, which manages the national Canada Pension Plan"),
+            listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1283718&type=13F"), cik = "1283718"),
+    )
+
+    /** Flags shown as the avatar for countries. */
+    val FLAGS = mapOf(US_GOV to "🇺🇸", "Norway" to "🇳🇴", "Saudi Arabia" to "🇸🇦", "United Arab Emirates" to "🇦🇪", "Switzerland" to "🇨🇭", "South Korea" to "🇰🇷", "Canada" to "🇨🇦")
+
     /** Famous investment firms, followed through their quarterly 13F holdings. */
     val FUNDS = listOf(
         Followed("Berkshire Hathaway", "", "\"Berkshire Hathaway\" stocks", listOf("Warren Buffett's company, run by Greg Abel since 2026"),
@@ -238,11 +260,12 @@ object Following {
     fun load(store: Store): List<Followed> {
         // One-time: add new built-in groups to existing lists too.
         val v = store.prefs.getInt("following_v", 1)
-        if (v < 4) {
+        if (v < 5) {
             val current = loadRaw(store)
-            val add = (if (v < 2) FUNDS else emptyList()) + (if (v < 3) PUBLIC else emptyList()) + GOVERNMENT
+            val add = (if (v < 2) FUNDS else emptyList()) + (if (v < 3) PUBLIC else emptyList()) +
+                (if (v < 4) GOVERNMENT else emptyList()) + COUNTRIES
             save(store, current + add.filter { f -> current.none { it.name == f.name } })
-            store.prefs.edit().putInt("following_v", 4).apply()
+            store.prefs.edit().putInt("following_v", 5).apply()
         }
         return loadRaw(store)
     }
