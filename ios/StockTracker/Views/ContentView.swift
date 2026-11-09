@@ -28,6 +28,7 @@ struct ContentView: View {
                 .tabItem { Label("Sources", systemImage: "list.bullet.rectangle") }
                 .tag(6)
         }
+        .tint(Brand.accent)
         .onAppear { if !model.isSetUp { model.showSettings = true } }
         .sheet(item: $model.openStock) { target in
             StockSheet(target: target).environmentObject(model)

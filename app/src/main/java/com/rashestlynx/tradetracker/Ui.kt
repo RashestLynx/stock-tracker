@@ -6,6 +6,7 @@ import android.net.Uri
 import android.text.format.DateUtils
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
@@ -54,6 +59,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -98,6 +104,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
@@ -2418,7 +2426,84 @@ private data class Post(
     val link: String,
     val person: PersonTarget?,
     val followed: Followed?,
-)
+) {
+    val key get() = who + "|" + time + "|" + text.hashCode()
+}
+
+private val FEED_FILTERS = listOf("For you", "Following", "Congress", "Insiders", "Funds", "Liked")
+
+/** A post in the Home feed, laid out like a social app: avatar, name and time, text, stock card, actions. */
+@Composable
+private fun PostItem(
+    p: Post, liked: Boolean, watching: Boolean,
+    onAuthor: () -> Unit, onStock: () -> Unit, onLike: () -> Unit, onWatch: () -> Unit, onShare: () -> Unit, onSource: () -> Unit,
+) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 4.dp)) {
+        Box(Modifier.clickable(onClick = onAuthor)) {
+            Avatar(p.who, 46, fund = p.category == Category.FUND || (p.followed?.let { isFund(it) } ?: false))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(onClick = onAuthor)) {
+                Text(p.who, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Spacer(Modifier.width(4.dp))
+                val badge = p.category?.let { categoryColors(it).first } ?: MaterialTheme.colorScheme.primary
+                Box(Modifier.size(16.dp).background(badge, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = categoryColors(p.category ?: Category.INSIDER).second,
+                        modifier = Modifier.size(11.dp))
+                }
+                if (p.time > 0) Text("  ·  " + timeAgo(p.time), style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1)
+            }
+            Text(listOf(p.category?.label ?: "Following", p.about).filter { it.isNotBlank() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Text(p.text, style = MaterialTheme.typography.bodyLarge,
+                color = when {
+                    p.text.startsWith("Bought") -> TradeColors.buy()
+                    p.text.startsWith("Sold") -> TradeColors.sell()
+                    else -> MaterialTheme.colorScheme.onSurface
+                })
+            if (p.ticker.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onStock)) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(40.dp).background(Brush.linearGradient(Brand.story), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center) {
+                            Text(p.ticker.take(4), color = Color.White, fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("$" + p.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            if (p.company.isNotBlank()) Text(p.company, style = MaterialTheme.typography.bodySmall, color = muted,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Text("Chart ›", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                IconButton(onClick = onLike) {
+                    Icon(if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, contentDescription = "Like",
+                        tint = if (liked) Brand.like else muted)
+                }
+                if (p.ticker.isNotEmpty()) IconButton(onClick = onWatch) {
+                    Icon(if (watching) Icons.Filled.Check else Icons.Filled.Add,
+                        contentDescription = if (watching) "On your watchlist" else "Add to watchlist",
+                        tint = if (watching) MaterialTheme.colorScheme.primary else muted)
+                }
+                IconButton(onClick = onShare) { Icon(Icons.Filled.Share, contentDescription = "Share", tint = muted) }
+                if (p.link.isNotEmpty()) TextButton(onClick = onSource) { Text("Source", color = muted) }
+                else Spacer(Modifier.width(48.dp))
+            }
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+}
 
 /** Funds show a ticker (or "13F") instead of initials. */
 private fun fundBadge(name: String): String {
@@ -2464,6 +2549,9 @@ private fun HomeScreen(
     var showFollowed by remember { mutableStateOf<Followed?>(null) }
     var followedPosts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var reload by remember { mutableIntStateOf(0) }
+    var filter by rememberSaveable { mutableStateOf(FEED_FILTERS.first()) }
+    var liked by remember { mutableStateOf(store.prefs.getStringSet("liked_posts", emptySet())!!.toSet()) }
+    var watchlist by remember { mutableStateOf(store.watchlist) }
 
     // Posts from the app's tracked filings (Congress, insiders, funds).
     val alertPosts = remember(tick) {
@@ -2517,28 +2605,42 @@ private fun HomeScreen(
         followedPosts = out.toList()
     }
 
-    val posts = (followedPosts + alertPosts).sortedByDescending { it.time }
+    val posts = (followedPosts + alertPosts).sortedByDescending { it.time }.filter { p ->
+        when (filter) {
+            "Following" -> p.followed != null
+            "Congress" -> p.category == Category.SENATE || p.category == Category.HOUSE
+            "Insiders" -> p.category == Category.INSIDER || (p.followed?.insider?.isNotEmpty() ?: false)
+            "Funds" -> p.category == Category.FUND || (p.followed?.let { isFund(it) } ?: false)
+            "Liked" -> p.key in liked
+            else -> true
+        }
+    }
     val context = LocalContext.current
 
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { onRefresh(); reload++ }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            if (!store.isSetUp) item { SetupCard(onSetup) } else item(key = "today") { TodayCard(highlights, onOpen) }
+            item(key = "today") {
+                Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    if (!store.isSetUp) SetupCard(onSetup) else TodayCard(highlights, onOpen)
+                }
+            }
 
             // "Stories" row of people you follow.
             item(key = "stories") {
                 val follows = remember(reload) { Following.load(store) }
-                Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     follows.forEach { f ->
                         Column(horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(68.dp).clickable { showFollowed = f }) {
-                            Box(Modifier.size(62.dp).background(TradeColors.buy(), CircleShape), contentAlignment = Alignment.Center) {
-                                Avatar(f.name, 56, fund = isFund(f))
+                            modifier = Modifier.width(72.dp).clickable { showFollowed = f }) {
+                            Box(Modifier.size(68.dp).border(3.dp, Brush.linearGradient(Brand.story), CircleShape).padding(5.dp),
+                                contentAlignment = Alignment.Center) {
+                                Avatar(f.name, 58, fund = isFund(f))
                             }
+                            Spacer(Modifier.height(4.dp))
                             Text(f.name.substringBefore(" ("), style = MaterialTheme.typography.labelSmall, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                         }
@@ -2546,48 +2648,51 @@ private fun HomeScreen(
                 }
             }
 
-            if (posts.isEmpty()) item { EmptyState("Your feed is warming up", "Pull down to check for new filings.") }
-            items(posts.take(200), key = { it.who + it.time + it.text.hashCode() }) { p ->
-                ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable {
-                                when {
-                                    p.followed != null -> showFollowed = p.followed
-                                    p.person != null -> openPerson(p.person)
-                                }
-                            }) {
-                            Avatar(p.who, fund = p.category == Category.FUND || (p.followed?.let { isFund(it) } ?: false))
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(p.who, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(listOf(p.about, if (p.time > 0) timeAgo(p.time) else "").filter { it.isNotBlank() }.joinToString(" · "),
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            p.category?.let { CategoryPill(it) }
-                        }
-                        Text(p.text, style = MaterialTheme.typography.bodyMedium,
-                            color = when {
-                                p.text.startsWith("Bought") -> TradeColors.buy()
-                                p.text.startsWith("Sold") -> TradeColors.sell()
-                                else -> MaterialTheme.colorScheme.onSurface
-                            })
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (p.ticker.isNotEmpty()) {
-                                OutlinedButton(onClick = { onOpen(StockTarget(p.ticker, p.company, "", "", emptyList(), "", 0.0)) }) {
-                                    Text("$${p.ticker}")
-                                }
-                            }
-                            if (p.link.isNotEmpty()) {
-                                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.link))) }) {
-                                    Text("Source")
-                                }
-                            }
-                        }
+            // Feed tabs, like "For you" / "Following" on social apps.
+            item(key = "filters") {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FEED_FILTERS.forEach { f ->
+                        FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) },
+                            shape = RoundedCornerShape(50))
                     }
                 }
+                HorizontalDivider(Modifier.padding(top = 8.dp))
+            }
+
+            if (posts.isEmpty()) item {
+                Box(Modifier.padding(16.dp)) {
+                    if (filter == "Liked") EmptyState("No liked posts yet", "Tap the heart on a post to keep it here.")
+                    else EmptyState("Your feed is warming up", "Pull down to check for new filings.")
+                }
+            }
+            items(posts.take(200), key = { it.key }) { p ->
+                PostItem(
+                    p, liked = p.key in liked, watching = p.ticker.isNotEmpty() && p.ticker.uppercase() in watchlist,
+                    onAuthor = {
+                        when {
+                            p.followed != null -> showFollowed = p.followed
+                            p.person != null -> openPerson(p.person)
+                        }
+                    },
+                    onStock = { onOpen(StockTarget(p.ticker, p.company, "", "", emptyList(), "", 0.0)) },
+                    onLike = {
+                        liked = if (p.key in liked) liked - p.key else liked + p.key
+                        store.prefs.edit().putStringSet("liked_posts", liked).apply()
+                    },
+                    onWatch = {
+                        val t = p.ticker.uppercase()
+                        watchlist = if (t in watchlist) watchlist - t else watchlist + t
+                        store.watchlist = watchlist
+                    },
+                    onShare = {
+                        val text = "${p.who}: ${p.text}" + (if (p.ticker.isNotEmpty()) " \$${p.ticker}" else "") +
+                            (if (p.link.isNotEmpty()) "\n${p.link}" else "")
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, text), null))
+                    },
+                    onSource = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.link))) },
+                )
             }
             item { Spacer(Modifier.height(8.dp)) }
         }

@@ -27,7 +27,7 @@ struct TodayCard: View {
                           emptyText: "No open-market sales yet.")
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 

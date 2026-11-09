@@ -12,8 +12,20 @@ struct Post: Identifiable {
     let link: String
     var person: PersonTarget?
     var followed: Followed?
-    var id: String { who + "|" + String(time.timeIntervalSince1970) + "|" + String(text.hashValue) }
+    var id: String { who + "|" + String(time.timeIntervalSince1970) + "|" + text }
+    /// Stable across launches, for remembering likes.
+    var key: String { who + "|" + String(Int(time.timeIntervalSince1970)) + "|" + String(text.prefix(80)) }
 }
+
+/// Accent colors shared across the app: the story-ring gradient and the like heart.
+enum Brand {
+    static let accent = Color(red: 0.36, green: 0.24, blue: 0.96)
+    static let story: [Color] = [Color(red: 1, green: 0.54, blue: 0.24), Color(red: 0.91, green: 0.21, blue: 0.56),
+                                 Color(red: 0.48, green: 0.25, blue: 0.95), Color(red: 0.24, green: 0.48, blue: 1)]
+    static let like = Color(red: 0.94, green: 0.22, blue: 0.42)
+}
+
+let feedFilters = ["For you", "Following", "Congress", "Insiders", "Funds", "Liked"]
 
 /// Funds show a ticker (or "13F") instead of initials.
 func fundBadge(_ name: String) -> String {
@@ -65,6 +77,8 @@ struct HomeView: View {
     @State private var followedPosts: [Post] = []
     @State private var follows: [Followed] = Following.load()
     @State private var showFollowed: Followed?
+    @State private var filter = "For you"
+    @State private var liked: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "likedPosts") ?? [])
 
     private static let dayFmt: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f
@@ -88,48 +102,78 @@ struct HomeView: View {
         }
     }
 
-    private var posts: [Post] { (followedPosts + alertPosts).sorted { $0.time > $1.time } }
+    private var posts: [Post] {
+        (followedPosts + alertPosts).sorted { $0.time > $1.time }.filter { p in
+            switch filter {
+            case "Following": return p.followed != nil
+            case "Congress": return p.category == .senate || p.category == .house
+            case "Insiders": return p.category == .insider || !(p.followed?.insider ?? "").isEmpty
+            case "Funds": return p.category == .fund || (p.followed.map(isFund) ?? false)
+            case "Liked": return liked.contains(p.key)
+            default: return true
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                if model.isSetUp {
-                    Section {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if model.isSetUp {
                         TodayCard(highlights: Highlights.compute(moves: model.moves, picks: model.picks))
-                            .listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
+                            .padding(.horizontal, 12).padding(.top, 4)
                     }
-                }
-                Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 14) {
                             ForEach(follows) { f in
                                 Button { showFollowed = f } label: {
-                                    VStack(spacing: 4) {
-                                        Avatar(name: f.name, size: 56, fund: isFund(f))
-                                            .padding(3).overlay(Circle().stroke(Color.green, lineWidth: 3))
+                                    VStack(spacing: 5) {
+                                        Avatar(name: f.name, size: 58, fund: isFund(f))
+                                            .padding(4)
+                                            .overlay(Circle().stroke(LinearGradient(colors: Brand.story, startPoint: .bottomLeading,
+                                                                                    endPoint: .topTrailing), lineWidth: 3))
                                         Text(f.name.components(separatedBy: " (").first ?? f.name)
-                                            .font(.caption2).lineLimit(1).frame(width: 70)
+                                            .font(.caption2).lineLimit(1).frame(width: 72)
                                             .foregroundStyle(.primary)
                                     }
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
                     }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-                }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(feedFilters, id: \.self) { f in
+                                Button { withAnimation(.snappy) { filter = f } } label: {
+                                    Text(f).font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 14).padding(.vertical, 7)
+                                        .foregroundStyle(filter == f ? Color(.systemBackground) : .primary)
+                                        .background(filter == f ? Color.primary : Color(.secondarySystemFill), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                    }
+                    Divider().padding(.top, 10)
 
-                if posts.isEmpty {
-                    EmptyStateView(title: "Your feed is warming up", message: "Pull down to check for new filings.", systemImage: "person.2")
-                        .listRowBackground(Color.clear)
-                }
-                ForEach(posts.prefix(200)) { p in
-                    Section { postView(p) }
+                    if posts.isEmpty {
+                        Group {
+                            if filter == "Liked" {
+                                EmptyStateView(title: "No liked posts yet", message: "Tap the heart on a post to keep it here.", systemImage: "heart")
+                            } else {
+                                EmptyStateView(title: "Your feed is warming up", message: "Pull down to check for new filings.", systemImage: "person.2")
+                            }
+                        }
+                        .frame(maxWidth: .infinity).padding(.top, 40)
+                    }
+                    ForEach(posts.prefix(200)) { p in
+                        postView(p)
+                        Divider()
+                    }
                 }
             }
-            .listStyle(.insetGrouped)
             .navigationTitle("Stock Tracker")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SettingsButton() }
@@ -161,38 +205,109 @@ struct HomeView: View {
         }
     }
 
+    private func toggleLike(_ p: Post) {
+        if liked.contains(p.key) { liked.remove(p.key) } else { liked.insert(p.key) }
+        UserDefaults.standard.set(Array(liked), forKey: "likedPosts")
+    }
+
+    private func toggleWatch(_ ticker: String) {
+        let t = ticker.uppercased()
+        if let i = model.watchlist.firstIndex(of: t) { model.watchlist.remove(at: i) } else { model.watchlist.append(t) }
+    }
+
+    private func openAuthor(_ p: Post) {
+        if let f = p.followed { showFollowed = f } else if let t = p.person { model.openPerson = t }
+    }
+
+    /// A post laid out like a social app: avatar, name and time, text, stock card, actions.
     @ViewBuilder
     private func postView(_ p: Post) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                if let f = p.followed { showFollowed = f } else if let t = p.person { model.openPerson = t }
-            } label: {
-                HStack(spacing: 10) {
-                    Avatar(name: p.who, fund: p.category == .fund || (p.followed.map(isFund) ?? false))
+        let isLiked = liked.contains(p.key)
+        let watching = !p.ticker.isEmpty && model.watchlist.contains(p.ticker.uppercased())
+        HStack(alignment: .top, spacing: 12) {
+            Button { openAuthor(p) } label: {
+                Avatar(name: p.who, size: 46, fund: p.category == .fund || (p.followed.map(isFund) ?? false))
+            }
+            .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 6) {
+                Button { openAuthor(p) } label: {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(p.who).font(.subheadline.weight(.bold)).lineLimit(1)
-                        Text([p.about, Format.ago(p.time)].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        HStack(spacing: 4) {
+                            Text(p.who).font(.subheadline.weight(.bold)).lineLimit(1)
+                            Image(systemName: "checkmark.seal.fill").font(.caption)
+                                .foregroundStyle(p.category?.color ?? Brand.accent)
+                            Text("· " + Format.ago(p.time)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Text([p.category?.label ?? "Following", p.about].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+
+                Text(p.text).font(.body)
+                    .foregroundStyle(p.text.hasPrefix("Bought") ? .green : p.text.hasPrefix("Sold") ? .red : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !p.ticker.isEmpty {
+                    Button { model.openStock = StockTarget(ticker: p.ticker, company: p.company) } label: {
+                        HStack(spacing: 12) {
+                            Text(String(p.ticker.prefix(4))).font(.caption.weight(.heavy)).foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(LinearGradient(colors: Brand.story, startPoint: .bottomLeading, endPoint: .topTrailing),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("$" + p.ticker).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                                if !p.company.isEmpty {
+                                    Text(p.company).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            Spacer()
+                            Text("Chart").font(.caption.weight(.semibold)).foregroundStyle(Brand.accent)
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
+
+                HStack {
+                    Button { withAnimation(.snappy) { toggleLike(p) } } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .foregroundStyle(isLiked ? Brand.like : .secondary)
+                            .symbolEffect(.bounce, value: isLiked)
                     }
                     Spacer()
-                    if let c = p.category { CategoryPill(category: c) }
+                    if !p.ticker.isEmpty {
+                        Button { toggleWatch(p.ticker) } label: {
+                            Image(systemName: watching ? "star.fill" : "star")
+                                .foregroundStyle(watching ? Brand.accent : .secondary)
+                        }
+                        .accessibilityLabel(watching ? "On your watchlist" : "Add to watchlist")
+                        Spacer()
+                    }
+                    ShareLink(item: "\(p.who): \(p.text)" + (p.ticker.isEmpty ? "" : " $\(p.ticker)") + (p.link.isEmpty ? "" : "\n\(p.link)")) {
+                        Image(systemName: "square.and.arrow.up").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let u = URL(string: p.link), !p.link.isEmpty {
+                        Button { openURL(u) } label: {
+                            Label("Source", systemImage: "link").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Color.clear.frame(width: 60, height: 1)
+                    }
                 }
-                .foregroundStyle(.primary)
-            }
-            .buttonStyle(.borderless)
-            Text(p.text).font(.subheadline)
-                .foregroundStyle(p.text.hasPrefix("Bought") ? .green : p.text.hasPrefix("Sold") ? .red : .primary)
-            HStack(spacing: 12) {
-                if !p.ticker.isEmpty {
-                    Button("$\(p.ticker)") { model.openStock = StockTarget(ticker: p.ticker, company: p.company) }
-                        .buttonStyle(.bordered).controlSize(.small)
-                }
-                if let u = URL(string: p.link), !p.link.isEmpty {
-                    Button("Source") { openURL(u) }.buttonStyle(.borderless).font(.caption)
-                }
+                .font(.title3)
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .padding(.trailing, 8)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
     private func loadFollowed() async {

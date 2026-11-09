@@ -1,35 +1,59 @@
 package com.rashestlynx.tradetracker
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF146C2E),
+    primary = Color(0xFF5B3DF5),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFA3F5B0),
-    onPrimaryContainer = Color(0xFF002109),
-    secondary = Color(0xFF516351),
-    tertiary = Color(0xFF39656C),
-    tertiaryContainer = Color(0xFFBCEBF3),
+    primaryContainer = Color(0xFFE6E0FF),
+    onPrimaryContainer = Color(0xFF1A0B66),
+    secondary = Color(0xFF5E5A72),
+    secondaryContainer = Color(0xFFE7E3F5),
+    onSecondaryContainer = Color(0xFF1B1830),
+    tertiary = Color(0xFFD6336C),
+    tertiaryContainer = Color(0xFFFFE0EA),
+    onTertiaryContainer = Color(0xFF3E0019),
+    background = Color.White,
+    surface = Color.White,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF8F7FB),
+    surfaceContainer = Color(0xFFF3F2F8),
+    surfaceContainerHigh = Color(0xFFEFEEF5),
+    surfaceContainerHighest = Color(0xFFE8E6F0),
+    outlineVariant = Color(0xFFDDDAE6),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF88D896),
-    onPrimary = Color(0xFF003914),
-    primaryContainer = Color(0xFF005321),
-    onPrimaryContainer = Color(0xFFA3F5B0),
-    secondary = Color(0xFFB8CCB6),
-    tertiary = Color(0xFFA1CED6),
-    tertiaryContainer = Color(0xFF1F4D54),
+    primary = Color(0xFFB1A2FF),
+    onPrimary = Color(0xFF22107A),
+    primaryContainer = Color(0xFF3B26B8),
+    onPrimaryContainer = Color(0xFFE6E0FF),
+    secondary = Color(0xFFC9C4DD),
+    secondaryContainer = Color(0xFF2E2B40),
+    onSecondaryContainer = Color(0xFFE7E3F5),
+    tertiary = Color(0xFFFF8FB4),
+    tertiaryContainer = Color(0xFF5C1131),
+    onTertiaryContainer = Color(0xFFFFE0EA),
+    background = Color(0xFF0B0B10),
+    surface = Color(0xFF0B0B10),
+    surfaceContainerLowest = Color(0xFF07070A),
+    surfaceContainerLow = Color(0xFF121218),
+    surfaceContainer = Color(0xFF16161D),
+    surfaceContainerHigh = Color(0xFF1D1D26),
+    surfaceContainerHighest = Color(0xFF25252F),
+    outlineVariant = Color(0xFF34333F),
 )
+
+/** Accent colors shared across the app: the story-ring gradient and the like heart. */
+object Brand {
+    val story = listOf(Color(0xFFFF8A3D), Color(0xFFE8358E), Color(0xFF7B3FF2), Color(0xFF3D7BFF))
+    val like = Color(0xFFF0386B)
+}
 
 /** Green for buys, red for sells, tuned for light and dark backgrounds. */
 object TradeColors {
@@ -41,14 +65,6 @@ object TradeColors {
 
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val context = LocalContext.current
-    val colors = when {
-        // Android 12+: match the phone's wallpaper colors
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> DarkColors
-        else -> LightColors
-    }
-    MaterialTheme(colorScheme = colors, content = content)
+    // One fixed brand look in light and dark, rather than wallpaper-based colors.
+    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, content = content)
 }
