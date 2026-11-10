@@ -49,6 +49,11 @@ object WhoTraded {
                     add(h.ticker, WhoEntry(f.name, "hold", "Disclosed owning", h.note, "", h.sourceUrl))
                 }
             }
+            // Congress members followed from their profile: their captured trades.
+            if (f.person.startsWith("cg:")) store.moves().filter { it.person == f.person }.forEach { m ->
+                add(m.ticker, WhoEntry(f.name, m.side, if (m.side == "buy") "Bought" else "Sold", m.valueLabel,
+                    java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(m.time)), m.link))
+            }
             // SEC Form 4: company insiders' buys and sells.
             if (f.insider.isNotBlank()) runCatching { Following.insiderFilings(f, store, 12) }.getOrNull()?.forEach { x ->
                 val text = x.lines.joinToString(" · ")

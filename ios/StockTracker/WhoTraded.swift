@@ -29,7 +29,15 @@ enum WhoTraded {
         let ua = model.userAgent
         let names = await model.tickerMap(ua: ua)
 
+        let dayFmt = DateFormatter(); dayFmt.locale = Locale(identifier: "en_US_POSIX"); dayFmt.dateFormat = "yyyy-MM-dd"
         for f in followed {
+            // Congress members followed from their profile: their captured trades.
+            if let p = f.person, p.hasPrefix("cg:") {
+                for m in model.moves where m.person == p {
+                    add(m.ticker, WhoEntry(who: f.name, side: m.side, action: m.side == "buy" ? "Bought" : "Sold",
+                                           detail: m.valueLabel, date: dayFmt.string(from: m.time), link: m.link))
+                }
+            }
             if let k = Known.people[f.name] {
                 for h in k.owns { add(h.ticker, WhoEntry(who: f.name, side: "hold", action: "Owns", detail: h.note, date: "", link: h.sourceURL)) }
                 if !k.disclosureFeed.isEmpty {

@@ -1743,6 +1743,18 @@ private fun PersonSheet(t: PersonTarget, store: Store, onDismiss: () -> Unit) {
                     Text(p?.subtitle ?: t.category.label, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                // Follow: adds them to People you follow, with their trades in the Following feed.
+                var followed by remember(t.key, t.name) {
+                    mutableStateOf(Following.load(store).any { (t.key.isNotEmpty() && it.person == t.key) || it.name.equals(t.name, true) })
+                }
+                if (followed) OutlinedButton(onClick = {
+                    Following.save(store, Following.load(store).filterNot { (t.key.isNotEmpty() && it.person == t.key) || it.name.equals(t.name, true) })
+                    followed = false
+                }) { Text("Following") }
+                else Button(onClick = {
+                    Following.save(store, Following.load(store) + Following.fromProfile(t, p?.name ?: t.name, p?.subtitle ?: t.category.label))
+                    followed = true
+                }) { Text("Follow") }
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
@@ -2596,8 +2608,10 @@ private fun HomeScreen(
     var liked by remember { mutableStateOf(store.prefs.getStringSet("liked_posts", emptySet())!!.toSet()) }
     var watchlist by remember { mutableStateOf(store.watchlist) }
 
+    // People followed from their profile: their filings count as "Following" posts.
+    val byPerson = remember(tick, reload) { Following.load(store).filter { it.person.isNotEmpty() }.associateBy { it.person } }
     // Posts from the app's tracked filings (Congress, insiders, funds).
-    val alertPosts = remember(tick) {
+    val alertPosts = remember(tick, byPerson) {
         store.alerts().filter { it.category != Category.CHARGES }.take(150).map { a ->
             val isFund = a.category == Category.FUND
             val name = if (isFund) a.headline else cleanName(a.headline).substringBefore(", ")
@@ -2609,7 +2623,7 @@ private fun HomeScreen(
             }
             Post(name, about, a.category, a.time,
                 if (isFund) "Filed new quarterly holdings. " + a.lines.joinToString(" · ") else a.lines.joinToString(" · "),
-                a.ticker, a.company, a.link, personOf(a), null)
+                a.ticker, a.company, a.link, personOf(a), byPerson[a.person])
         }
     }
 
@@ -2649,7 +2663,7 @@ private fun HomeScreen(
     }
 
     val market = LocalMarket.current
-    val posts = (followedPosts + alertPosts).sortedByDescending { it.time }.filter { p ->
+    val posts = (alertPosts + followedPosts).distinctBy { it.link.ifEmpty { it.key } }.sortedByDescending { it.time }.filter { p ->
         when (filter) {
             "Following" -> p.followed != null
             "Countries" -> Following.FLAGS.containsKey(p.who)
@@ -2719,8 +2733,8 @@ private fun HomeScreen(
                     p, liked = p.key in liked, watching = p.ticker.isNotEmpty() && p.ticker.uppercase() in watchlist,
                     onAuthor = {
                         when {
-                            p.followed != null -> showFollowed = p.followed
                             p.person != null -> openPerson(p.person)
+                            p.followed != null -> showFollowed = p.followed
                         }
                     },
                     onStock = { onOpen(StockTarget(p.ticker, p.company, "", "", emptyList(), "", 0.0)) },

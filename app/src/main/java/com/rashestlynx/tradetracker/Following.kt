@@ -23,6 +23,7 @@ data class Followed(
     val links: List<Pair<String, String>>,
     val cik: String = "",           // SEC filer number for investment firms (13F holdings)
     val insider: String = "",       // SEC filer number, or EDGAR name like "Musk Elon", for company-insider filings
+    val person: String = "",        // profile id when followed from a senator, representative, insider or fund profile
 )
 
 data class Video(val title: String, val url: String, val time: Long, val id: String, val description: String = "")
@@ -257,6 +258,18 @@ object Following {
             listOf("Foundation trust 13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1166559&type=13F"), cik = "1166559"),
     )
 
+    /** A senator, representative, insider or fund to follow from their profile. */
+    fun fromProfile(t: PersonTarget, displayName: String, subtitle: String): Followed {
+        val id = t.key.substringAfter(":")
+        return when {
+            t.key.startsWith("ins:") -> Followed(displayName, "", "\"$displayName\" (shares OR stock)", listOf(subtitle), emptyList(),
+                insider = id, person = t.key)
+            t.key.startsWith("fund:") -> Followed(displayName, "", "\"$displayName\" holdings", listOf(subtitle),
+                listOf("13F filings" to "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=$id&type=13F"), cik = id, person = t.key)
+            else -> Followed(displayName, "", "\"$displayName\" stock trades", listOf(subtitle), emptyList(), person = t.key)
+        }
+    }
+
     fun load(store: Store): List<Followed> {
         // One-time: add new built-in groups to existing lists too.
         val v = store.prefs.getInt("following_v", 1)
@@ -338,6 +351,7 @@ object Following {
                     List(l.length()) { i -> l.getJSONArray(i).let { p -> p.getString(0) to p.getString(1) } },
                     o.optString("cik"),
                     o.optString("insider"),
+                    o.optString("person"),
                 )
             }
         } catch (e: Exception) {
@@ -349,7 +363,7 @@ object Following {
         val arr = JSONArray()
         list.forEach { f ->
             arr.put(JSONObject().put("name", f.name).put("yt", f.youtube).put("q", f.newsQuery)
-                .put("biz", JSONArray(f.businesses)).put("cik", f.cik).put("insider", f.insider)
+                .put("biz", JSONArray(f.businesses)).put("cik", f.cik).put("insider", f.insider).put("person", f.person)
                 .put("links", JSONArray(f.links.map { JSONArray(listOf(it.first, it.second)) })))
         }
         store.prefs.edit().putString("following", arr.toString()).apply()

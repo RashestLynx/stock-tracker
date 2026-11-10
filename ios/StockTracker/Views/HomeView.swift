@@ -89,7 +89,10 @@ struct HomeView: View {
     }()
 
     private var alertPosts: [Post] {
-        model.alerts.filter { $0.category != .charges }.prefix(150).map { a in
+        // People followed from their profile: their filings count as "Following" posts.
+        var byPerson: [String: Followed] = [:]
+        for f in follows { if let p = f.person, !p.isEmpty { byPerson[p] = f } }
+        return model.alerts.filter { $0.category != .charges }.prefix(150).map { a in
             let isFund = a.category == .fund
             let name = isFund ? a.headline : (cleanName(a.headline).components(separatedBy: ", ").first ?? a.headline)
             let after = a.headline.components(separatedBy: " · ").dropFirst().joined(separator: " · ")
@@ -102,12 +105,15 @@ struct HomeView: View {
             }
             return Post(who: name, about: about, category: a.category, time: a.time,
                         text: (isFund ? "Filed new quarterly holdings. " : "") + a.lines.joined(separator: " · "),
-                        ticker: a.ticker, company: a.company, link: a.link, person: personOf(a))
+                        ticker: a.ticker, company: a.company, link: a.link, person: personOf(a),
+                        followed: a.person.flatMap { byPerson[$0] })
         }
     }
 
     private var posts: [Post] {
-        (followedPosts + alertPosts).sorted { $0.time > $1.time }.filter { p in
+        var seenLinks = Set<String>()
+        return (alertPosts + followedPosts).filter { seenLinks.insert($0.link.isEmpty ? $0.key : $0.link).inserted }
+            .sorted { $0.time > $1.time }.filter { p in
             switch filter {
             case "Following": return p.followed != nil
             case "Countries": return Following.flags[p.who] != nil
@@ -225,7 +231,7 @@ struct HomeView: View {
     }
 
     private func openAuthor(_ p: Post) {
-        if let f = p.followed { showFollowed = f } else if let t = p.person { model.openPerson = t }
+        if let t = p.person { model.openPerson = t } else if let f = p.followed { showFollowed = f }
     }
 
     /// A post laid out like a social app: avatar, name and time, text, stock card, actions.

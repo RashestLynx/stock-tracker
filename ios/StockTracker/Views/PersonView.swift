@@ -6,6 +6,7 @@ struct PersonView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openURL) private var openURL
     @State private var profile: PersonProfile?
+    @State private var following = false
 
     private func mine(_ person: String?, _ who: String) -> Bool {
         if !target.key.isEmpty, let p = person, !p.isEmpty { return p == target.key }
@@ -27,6 +28,13 @@ struct PersonView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(profile?.name ?? target.name).font(.title3.weight(.bold))
                         Text(profile?.subtitle ?? target.category.label).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    // Follow: adds them to People you follow, with their trades in the Following feed.
+                    if following {
+                        Button("Following") { toggleFollow() }.buttonStyle(.bordered)
+                    } else {
+                        Button("Follow") { toggleFollow() }.buttonStyle(.borderedProminent)
                     }
                 }
                 if profile == nil { ProgressView().frame(maxWidth: .infinity) }
@@ -106,8 +114,20 @@ struct PersonView: View {
         .navigationTitle(target.category.label)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: target.id) {
+            following = Following.isFollowing(target)
             profile = await People.load(target, ua: model.userAgent, bargoKey: model.bargoKey)
         }
+    }
+
+    private func toggleFollow() {
+        var list = Following.load()
+        if following {
+            list.removeAll { (!target.key.isEmpty && $0.person == target.key) || $0.name.caseInsensitiveCompare(target.name) == .orderedSame }
+        } else {
+            list.append(Following.fromProfile(target, name: profile?.name ?? target.name, subtitle: profile?.subtitle ?? target.category.label))
+        }
+        Following.save(list)
+        withAnimation(.snappy) { following.toggle() }
     }
 
     private func initials(_ name: String) -> String {

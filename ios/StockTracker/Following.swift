@@ -10,6 +10,7 @@ struct Followed: Codable, Identifiable, Hashable {
     var links: [[String]]        // [label, url]
     var cik: String? = nil       // SEC filer number for investment firms (13F holdings)
     var insider: String? = nil   // SEC filer number, or EDGAR name like "Musk Elon", for company-insider filings
+    var person: String? = nil    // profile id when followed from a senator, representative, insider or fund profile
     var id: String { name }
 }
 
@@ -178,6 +179,26 @@ enum Following {
             if out.count >= max { break }
         }
         return out
+    }
+
+    /// A senator, representative, insider or fund to follow from their profile.
+    static func fromProfile(_ t: PersonTarget, name: String, subtitle: String) -> Followed {
+        let id = String(t.key.drop(while: { $0 != ":" }).dropFirst())
+        if t.key.hasPrefix("ins:") {
+            return Followed(name: name, youtube: "", newsQuery: "\"\(name)\" (shares OR stock)", businesses: [subtitle], links: [],
+                            insider: id, person: t.key)
+        }
+        if t.key.hasPrefix("fund:") {
+            return Followed(name: name, youtube: "", newsQuery: "\"\(name)\" holdings", businesses: [subtitle],
+                            links: [["13F filings", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=\(id)&type=13F"]],
+                            cik: id, person: t.key)
+        }
+        return Followed(name: name, youtube: "", newsQuery: "\"\(name)\" stock trades", businesses: [subtitle], links: [],
+                        person: t.key.isEmpty ? nil : t.key)
+    }
+
+    static func isFollowing(_ t: PersonTarget) -> Bool {
+        load().contains { (!t.key.isEmpty && $0.person == t.key) || $0.name.caseInsensitiveCompare(t.name) == .orderedSame }
     }
 
     static func load() -> [Followed] {
