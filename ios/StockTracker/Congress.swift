@@ -29,8 +29,10 @@ struct CongressTrade {
 enum Congress {
     static let sourceURL = "https://www.bargo.ai/free-apis/congress"
 
-    static func recent(limit: Int, apiKey: String, ticker: String = "") async throws -> [CongressTrade] {
-        let q = ticker.isEmpty ? "" : "&ticker=" + (ticker.uppercased().addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "")
+    /// Newest trades first. `page` 2 and up loads older trades.
+    static func recent(limit: Int, apiKey: String, ticker: String = "", page: Int = 1) async throws -> [CongressTrade] {
+        let q = (ticker.isEmpty ? "" : "&ticker=" + (ticker.uppercased().addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""))
+            + (page > 1 ? "&page=\(page)" : "")
         guard let url = URL(string: "https://www.bargo.ai/free-apis/congress/v1/trades?limit=\(limit)\(q)") else { return [] }
         var req = URLRequest(url: url)
         req.setValue("StockTracker-iOS/1.0", forHTTPHeaderField: "User-Agent")

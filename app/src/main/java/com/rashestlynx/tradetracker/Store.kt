@@ -169,7 +169,7 @@ class Store(context: Context) {
         val list = seenList()
         val existing = list.toHashSet()
         keys.forEach { if (existing.add(it)) list.add(it) }
-        prefs.edit().putString("seen", JSONArray(list.takeLast(5000)).toString()).apply()
+        prefs.edit().putString("seen", JSONArray(list.takeLast(40000)).toString()).apply()
     }
 
     // ---------------- alerts ----------------
@@ -199,9 +199,10 @@ class Store(context: Context) {
     fun addAlerts(new: List<Alert>) {
         if (new.isEmpty()) return
         val newKeys = new.map { it.key }.toHashSet()
-        val list = new.sortedByDescending { it.time } + alerts().filter { it.key !in newKeys }
+        // Keep everything newest first, so older history slots in at the right place.
+        val list = (new + alerts().filter { it.key !in newKeys }).distinctBy { it.key }.sortedByDescending { it.time }
         val arr = JSONArray()
-        list.take(600).forEach {
+        list.take(4000).forEach {
             arr.put(
                 JSONObject()
                     .put("t", it.time).put("cat", it.category.id).put("ticker", it.ticker)

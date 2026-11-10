@@ -322,7 +322,7 @@ private fun FeedScreen(
 ) {
     val alerts = remember(tick) { store.alerts() }
     val moves = remember(tick) { store.moves() }
-    val highlights = remember(tick) { Highlights.compute(store.moves(), store.picks()) }
+    val histStatus = remember(tick) { History(store).status() }
     var section by rememberSaveable { mutableIntStateOf(0) }
     var filter by rememberSaveable { mutableStateOf("All") }
     var query by rememberSaveable { mutableStateOf("") }
@@ -373,6 +373,9 @@ private fun FeedScreen(
                     }
                 }
                 item { SearchField(query, { query = it }, "Search ${category.label.lowercase()}") }
+                if (histStatus.isNotEmpty()) item {
+                    Text(histStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (category != Category.FUND && category != Category.CHARGES) {
                     item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -112,43 +112,142 @@ final class AppModel: ObservableObject {
         }
         func markSeen(_ k: String) { seenSet.insert(k); newSeen.append(k) }
 
+        var histAlerts: [Alert] = []
+        func post(_ a: Alert, _ history: Bool) { if history { histAlerts.append(a) } else { newAlerts.append(a) } }
+
+        // Turns Congress trades into posts, moves and picks. History posts use the disclosure date.
+        func handleCongress(_ trades: [CongressTrade], history: Bool) {
+            for t in trades where !seenSet.contains(t.key) {
+                markSeen(t.key)
+                let cat: Category = t.chamber == "senate" ? .senate : .house
+                let pk = People.congressKey(slug: t.memberSlug, chamber: t.chamber, state: t.state, member: t.member)
+                if t.isBuy && !t.ticker.isEmpty {
+                    newPicks.append(Pick(time: Format.day(t.transactionDate), ticker: t.ticker,
+                                         company: t.asset, who: t.member, category: cat, action: "buy", person: pk))
+                }
+                if (t.isBuy || t.isSell) && !t.ticker.isEmpty && t.estValue > 0 {
+                    newMoves.append(Move(
+                        // Use the disclosure day so it counts as "today" when it's made public.
+                        time: t.disclosureDate.isEmpty ? Date() : Format.day(t.disclosureDate),
+                        category: cat, ticker: t.ticker, company: t.asset,
+                        who: (cat == .senate ? "Sen. " : "Rep. ") + t.member,
+                        role: cat == .senate ? "Senator" : "Representative",
+                        side: t.isBuy ? "buy" : "sell", value: t.estValue,
+                        valueLabel: t.amountRange.isEmpty ? Format.money(t.estValue) : t.amountRange,
+                        link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key,
+                        price: t.estPrice > 0 ? t.estPrice : nil, person: pk))
+                }
+                guard isWatching(cat), passes(t.ticker, isBuy: t.isBuy, amount: t.amountLow) else { continue }
+                let action = t.isBuy ? "Bought" : t.isSell ? "Sold" : (t.type.isEmpty ? "Traded" : t.type.capitalized)
+                let who = (cat == .senate ? "Sen. " : "Rep. ") + t.member + (t.state.isEmpty ? "" : " · \(t.state)")
+                let when = history ? Format.day(t.disclosureDate.isEmpty ? t.transactionDate : t.disclosureDate) : Date()
+                post(Alert(
+                    time: when, category: cat, ticker: t.ticker, company: t.asset, headline: who,
+                    lines: ["\(action) \(t.amountRange)".trimmingCharacters(in: .whitespaces),
+                            "Traded \(t.transactionDate) · disclosed \(t.disclosureDate)"],
+                    link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key, person: pk), history)
+            }
+        }
+
+        // Reads each Form 4 and turns it into a post, moves and picks, dated with `time`.
+        func handleForm4(_ filings: [Filing], time: (Filing) -> Date, history: Bool) async {
+            for f in filings {
+                markSeen(f.accession)
+                guard let info = try? await Edgar.parseForm4(f, ua: ua) else { continue }
+                let when = time(f)
+                let who = info.owners.isEmpty ? "Unknown" : info.owners.joined(separator: ", ")
+                let pk = info.ownerCiks.first.map { "ins:\($0)" }
+                if info.trades.contains(where: { $0.code == "P" }) && !info.ticker.isEmpty {
+                    newPicks.append(Pick(time: when, ticker: info.ticker, company: info.issuer,
+                                         who: who, category: .insider, action: "buy", person: pk))
+                }
+                if !info.ticker.isEmpty {
+                    for (code, side) in [("P", "buy"), ("S", "sell")] {
+                        let these = info.trades.filter { $0.code == code }
+                        let v = these.reduce(0) { $0 + $1.value }
+                        let shares = these.reduce(0) { $0 + $1.shares }
+                        if v > 0 {
+                            newMoves.append(Move(
+                                time: when, category: .insider, ticker: info.ticker, company: info.issuer,
+                                who: who, role: info.roles.joined(separator: ", "), side: side, value: v,
+                                valueLabel: Format.money(v), link: f.link, key: "\(f.accession)|\(side)",
+                                price: shares > 0 ? v / shares : nil, person: pk))
+                        }
+                    }
+                }
+                if !watch.isEmpty && !watch.contains(info.ticker) { continue }
+                var trades = info.trades
+                if buysOnly { trades = trades.filter { $0.code == "P" } }
+                if minValue > 0 { trades = trades.filter { $0.value >= minValue } }
+                if trades.isEmpty && (buysOnly || minValue > 0) { continue }
+                let role = info.roles.isEmpty ? "" : " · " + info.roles.joined(separator: ", ")
+                let lines = Edgar.summarize(trades)
+                post(Alert(
+                    time: when, category: .insider, ticker: info.ticker, company: info.issuer,
+                    headline: who + role, lines: lines.isEmpty ? ["Options/derivatives only"] : lines,
+                    link: f.link, key: f.accession, person: pk), history)
+            }
+        }
+
+        // Reads each 13F and turns it into a post, picks and crypto positions, dated with `time`.
+        func handle13F(_ fresh: [Filing], time: (Filing) -> Date, history: Bool) async {
+            guard !fresh.isEmpty else { return }
+            let map = await tickerMap(ua: ua)
+            for f in fresh {
+                markSeen(f.accession)
+                let when = time(f)
+                let fund = f.title
+                    .replacingOccurrences(of: #"^13F-HR\s*-\s*"#, with: "", options: .regularExpression)
+                    .replacingOccurrences(of: #"\s*\(\d+\)\s*\(Filer\)\s*$"#, with: "", options: .regularExpression)
+                let fundCik = f.title.range(of: #"\((\d+)\)"#, options: .regularExpression)
+                    .map { String(f.title[$0].dropFirst().dropLast().drop(while: { $0 == "0" })) }
+                let pk = fundCik.map { "fund:\($0)" }
+                let rows = (try? await Edgar.rows13F(f, ua: ua)) ?? []
+                let holdings = Edgar.top13F(rows)
+                var cryptoTotals: [String: Double] = [:]
+                for r in rows where !r.option && Crypto.assetOf(r.name) != nil { cryptoTotals[r.name, default: 0] += r.value }
+                CryptoStore.add(cryptoTotals.map { CryptoPos(fund: fund, asset: Crypto.assetOf($0.key)!, product: $0.key, value: $0.value, time: when) })
+                let total = holdings.reduce(0) { $0 + $1.1 }
+                let mapped: [(ticker: String, name: String)] = holdings.compactMap { h in
+                    map[Edgar.normalizeName(h.0)].map { (ticker: $0, name: h.0.capitalized) }
+                }
+                for m in mapped {
+                    newPicks.append(Pick(time: when, ticker: m.ticker, company: m.name,
+                                         who: fund, category: .fund, action: "hold", person: pk))
+                }
+                if !watch.isEmpty && !mapped.contains(where: { watch.contains($0.ticker) }) { continue }
+                var lines: [String] = []
+                if !mapped.isEmpty {
+                    lines.append("Top holdings: " + mapped.prefix(6).map(\.ticker).joined(separator: ", "))
+                }
+                if total > 0 { lines.append("Top \(holdings.count) positions worth \(Format.money(total))") }
+                post(Alert(
+                    time: when, category: .fund, ticker: "", company: "Quarterly holdings report",
+                    headline: fund, lines: lines, link: f.link, key: f.accession, person: pk), history)
+            }
+        }
+
+        func handleCharges(_ cases: [Charge], history: Bool) {
+            for c in cases where !seenSet.contains(c.key) {
+                markSeen(c.key)
+                post(Alert(
+                    time: history ? History.chargeDate(c.date) : Date(), category: .charges, ticker: "",
+                    company: "SEC enforcement action" + (c.date.isEmpty ? "" : " · \(c.date)"),
+                    headline: c.title, lines: c.summary.isEmpty ? [] : [c.summary],
+                    link: c.link.isEmpty ? "https://www.sec.gov/enforcement-litigation/litigation-releases" : c.link,
+                    key: c.key), history)
+            }
+        }
+
         // ----- Congress (throttled to stay inside the free daily limit) -----
         if isWatching(.senate) || isWatching(.house) {
             let hasKey = !bargoKey.isEmpty
             let every: TimeInterval = hasKey ? 3600 : 5 * 3600
             if Date().timeIntervalSince(lastCongressCheck) >= every {
                 do {
-                    let trades = try await Congress.recent(limit: hasKey ? 40 : 20, apiKey: bargoKey)
+                    let trades = try await Congress.recent(limit: hasKey ? 25 : 20, apiKey: bargoKey)
                     lastCongressCheck = Date()
-                    for t in trades where !seenSet.contains(t.key) {
-                        markSeen(t.key)
-                        let cat: Category = t.chamber == "senate" ? .senate : .house
-                        let pk = People.congressKey(slug: t.memberSlug, chamber: t.chamber, state: t.state, member: t.member)
-                        if t.isBuy && !t.ticker.isEmpty {
-                            newPicks.append(Pick(time: Format.day(t.transactionDate), ticker: t.ticker,
-                                                 company: t.asset, who: t.member, category: cat, action: "buy", person: pk))
-                        }
-                        if (t.isBuy || t.isSell) && !t.ticker.isEmpty && t.estValue > 0 {
-                            newMoves.append(Move(
-                                // Use the disclosure day so it counts as "today" when it's made public.
-                                time: t.disclosureDate.isEmpty ? Date() : Format.day(t.disclosureDate),
-                                category: cat, ticker: t.ticker, company: t.asset,
-                                who: (cat == .senate ? "Sen. " : "Rep. ") + t.member,
-                                role: cat == .senate ? "Senator" : "Representative",
-                                side: t.isBuy ? "buy" : "sell", value: t.estValue,
-                                valueLabel: t.amountRange.isEmpty ? Format.money(t.estValue) : t.amountRange,
-                                link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key,
-                                price: t.estPrice > 0 ? t.estPrice : nil, person: pk))
-                        }
-                        guard isWatching(cat), passes(t.ticker, isBuy: t.isBuy, amount: t.amountLow) else { continue }
-                        let action = t.isBuy ? "Bought" : t.isSell ? "Sold" : (t.type.isEmpty ? "Traded" : t.type.capitalized)
-                        let who = (cat == .senate ? "Sen. " : "Rep. ") + t.member + (t.state.isEmpty ? "" : " · \(t.state)")
-                        newAlerts.append(Alert(
-                            time: Date(), category: cat, ticker: t.ticker, company: t.asset, headline: who,
-                            lines: ["\(action) \(t.amountRange)".trimmingCharacters(in: .whitespaces),
-                                    "Traded \(t.transactionDate) · disclosed \(t.disclosureDate)"],
-                            link: t.portal.isEmpty ? Congress.sourceURL : t.portal, key: t.key, person: pk))
-                    }
+                    handleCongress(trades, history: false)
                 } catch {
                     errors.append(error.localizedDescription)
                 }
@@ -159,41 +258,7 @@ final class AppModel: ObservableObject {
         if isWatching(.insider) {
             do {
                 let filings = try await Edgar.feed("4", ua: ua).filter { !seenSet.contains($0.accession) }
-                for f in filings.prefix(firstRun ? 40 : 100) {
-                    markSeen(f.accession)
-                    guard let info = try? await Edgar.parseForm4(f, ua: ua) else { continue }
-                    let who = info.owners.isEmpty ? "Unknown" : info.owners.joined(separator: ", ")
-                    let pk = info.ownerCiks.first.map { "ins:\($0)" }
-                    if info.trades.contains(where: { $0.code == "P" }) && !info.ticker.isEmpty {
-                        newPicks.append(Pick(time: Date(), ticker: info.ticker, company: info.issuer,
-                                             who: who, category: .insider, action: "buy", person: pk))
-                    }
-                    if !info.ticker.isEmpty {
-                        for (code, side) in [("P", "buy"), ("S", "sell")] {
-                            let these = info.trades.filter { $0.code == code }
-                            let v = these.reduce(0) { $0 + $1.value }
-                            let shares = these.reduce(0) { $0 + $1.shares }
-                            if v > 0 {
-                                newMoves.append(Move(
-                                    time: Date(), category: .insider, ticker: info.ticker, company: info.issuer,
-                                    who: who, role: info.roles.joined(separator: ", "), side: side, value: v,
-                                    valueLabel: Format.money(v), link: f.link, key: "\(f.accession)|\(side)",
-                                    price: shares > 0 ? v / shares : nil, person: pk))
-                            }
-                        }
-                    }
-                    if !watch.isEmpty && !watch.contains(info.ticker) { continue }
-                    var trades = info.trades
-                    if buysOnly { trades = trades.filter { $0.code == "P" } }
-                    if minValue > 0 { trades = trades.filter { $0.value >= minValue } }
-                    if trades.isEmpty && (buysOnly || minValue > 0) { continue }
-                    let role = info.roles.isEmpty ? "" : " · " + info.roles.joined(separator: ", ")
-                    let lines = Edgar.summarize(trades)
-                    newAlerts.append(Alert(
-                        time: Date(), category: .insider, ticker: info.ticker, company: info.issuer,
-                        headline: who + role, lines: lines.isEmpty ? ["Options/derivatives only"] : lines,
-                        link: f.link, key: f.accession, person: pk))
-                }
+                await handleForm4(Array(filings.prefix(firstRun ? 40 : 100)), time: { _ in Date() }, history: false)
             } catch {
                 errors.append("Insiders: \(error.localizedDescription)")
             }
@@ -203,41 +268,7 @@ final class AppModel: ObservableObject {
         if isWatching(.fund) {
             do {
                 let filings = try await Edgar.feed("13F-HR", ua: ua).filter { !seenSet.contains($0.accession) }
-                let fresh = Array(filings.prefix(firstRun ? 12 : 40))
-                if !fresh.isEmpty {
-                    let map = await tickerMap(ua: ua)
-                    for f in fresh {
-                        markSeen(f.accession)
-                        let fund = f.title
-                            .replacingOccurrences(of: #"^13F-HR\s*-\s*"#, with: "", options: .regularExpression)
-                            .replacingOccurrences(of: #"\s*\(\d+\)\s*\(Filer\)\s*$"#, with: "", options: .regularExpression)
-                        let fundCik = f.title.range(of: #"\((\d+)\)"#, options: .regularExpression)
-                            .map { String(f.title[$0].dropFirst().dropLast().drop(while: { $0 == "0" })) }
-                        let pk = fundCik.map { "fund:\($0)" }
-                        let rows = (try? await Edgar.rows13F(f, ua: ua)) ?? []
-                        let holdings = Edgar.top13F(rows)
-                        var cryptoTotals: [String: Double] = [:]
-                        for r in rows where !r.option && Crypto.assetOf(r.name) != nil { cryptoTotals[r.name, default: 0] += r.value }
-                        CryptoStore.add(cryptoTotals.map { CryptoPos(fund: fund, asset: Crypto.assetOf($0.key)!, product: $0.key, value: $0.value, time: Date()) })
-                        let total = holdings.reduce(0) { $0 + $1.1 }
-                        let mapped: [(ticker: String, name: String)] = holdings.compactMap { h in
-                            map[Edgar.normalizeName(h.0)].map { (ticker: $0, name: h.0.capitalized) }
-                        }
-                        for m in mapped {
-                            newPicks.append(Pick(time: Date(), ticker: m.ticker, company: m.name,
-                                                 who: fund, category: .fund, action: "hold", person: pk))
-                        }
-                        if !watch.isEmpty && !mapped.contains(where: { watch.contains($0.ticker) }) { continue }
-                        var lines: [String] = []
-                        if !mapped.isEmpty {
-                            lines.append("Top holdings: " + mapped.prefix(6).map(\.ticker).joined(separator: ", "))
-                        }
-                        if total > 0 { lines.append("Top \(holdings.count) positions worth \(Format.money(total))") }
-                        newAlerts.append(Alert(
-                            time: Date(), category: .fund, ticker: "", company: "Quarterly holdings report",
-                            headline: fund, lines: lines, link: f.link, key: f.accession, person: pk))
-                    }
-                }
+                await handle13F(Array(filings.prefix(firstRun ? 12 : 40)), time: { _ in Date() }, history: false)
             } catch {
                 errors.append("Funds: \(error.localizedDescription)")
             }
@@ -246,17 +277,55 @@ final class AppModel: ObservableObject {
         // ----- SEC insider trading cases -----
         if isWatching(.charges) {
             do {
-                for c in try await Enforcement.insiderTradingCases(ua: ua) where !seenSet.contains(c.key) {
-                    markSeen(c.key)
-                    newAlerts.append(Alert(
-                        time: Date(), category: .charges, ticker: "",
-                        company: "SEC enforcement action" + (c.date.isEmpty ? "" : " · \(c.date)"),
-                        headline: c.title, lines: c.summary.isEmpty ? [] : [c.summary],
-                        link: c.link.isEmpty ? "https://www.sec.gov/enforcement-litigation/litigation-releases" : c.link,
-                        key: c.key))
-                }
+                handleCharges(try await Enforcement.insiderTradingCases(ua: ua), history: false)
             } catch {
                 errors.append("SEC charges: \(error.localizedDescription)")
+            }
+        }
+
+        // ----- History: one batch of older filings per section (never notifies) -----
+        if isWatching(.charges) && !History.chargesDone {
+            for _ in 0..<3 where !History.chargesDone {
+                let page = History.chargesPage
+                guard let cases = try? await History.chargesPage(page, ua: ua) else { break }
+                if cases.isEmpty || page >= 80 { History.chargesDone = true }
+                else { handleCharges(cases, history: true); History.chargesPage = page + 1 }
+            }
+        }
+        // Older Congress pages need a Bargo key (keyless allows only 100 rows a day). Up to 3 pages a day.
+        if (isWatching(.senate) || isWatching(.house)) && !History.congressDone && !bargoKey.isEmpty && History.congressPagesToday < 3 {
+            let page = History.congressPage
+            if let trades = try? await Congress.recent(limit: 100, apiKey: bargoKey, page: page) {
+                History.countCongressPage()
+                if trades.isEmpty { History.congressDone = true }
+                else { handleCongress(trades, history: true); History.congressPage = page + 1 }
+            }
+        }
+        // Insiders and funds: walk back through the SEC's daily index. A 13F costs more (it's a big file).
+        if isWatching(.insider) || isWatching(.fund) {
+            var budget = 60   // kept small: iOS gives background checks only about 30 seconds
+            var skipped = 0
+            dayLoop: while budget > 0 && !History.filingsDone && skipped < 6 {
+                let day = History.day
+                let entries: [History.Entry]?
+                do { entries = try await History.dailyIndex(day, ua: ua) } catch { break dayLoop }
+                guard let entries else { History.day = History.shift(day, -1); History.offset = 0; skipped += 1; continue }
+                let todo = entries.dropFirst(History.offset)
+                var used = 0
+                var f4: [Filing] = [], f13: [Filing] = []
+                var times: [String: Date] = [:]
+                for e in todo {
+                    let cost = e.form == "13F-HR" ? 6 : 1
+                    if cost > budget { break }
+                    used += 1
+                    if seenSet.contains(e.filing.accession) { continue }
+                    if e.form == "4" && isWatching(.insider) { f4.append(e.filing); times[e.filing.accession] = e.time; budget -= cost }
+                    if e.form == "13F-HR" && isWatching(.fund) { f13.append(e.filing); times[e.filing.accession] = e.time; budget -= cost }
+                }
+                await handleForm4(f4, time: { times[$0.accession] ?? Date() }, history: true)
+                await handle13F(f13, time: { times[$0.accession] ?? Date() }, history: true)
+                if History.offset + used >= entries.count { History.day = History.shift(day, -1); History.offset = 0 }
+                else { History.offset += used; break dayLoop }
             }
         }
 
@@ -288,9 +357,11 @@ final class AppModel: ObservableObject {
         // ----- save -----
         addMoves(newMoves)
         addPicks(newPicks)
-        let newKeys = Set(newAlerts.map(\.key))
-        alerts = Array((newAlerts + alerts.filter { !newKeys.contains($0.key) }).prefix(600))
-        seen = Array((seen + newSeen).suffix(5000))
+        // Keep everything newest first, so older history slots in at the right place.
+        let added = newAlerts + histAlerts
+        let newKeys = Set(added.map(\.key))
+        alerts = Array((added + alerts.filter { !newKeys.contains($0.key) }).sorted { $0.time > $1.time }.prefix(4000))
+        seen = Array((seen + newSeen).suffix(40000))
         Self.save(alerts, "alerts.json")
         Self.save(seen, "seen.json")
         if !firstRun && notify {

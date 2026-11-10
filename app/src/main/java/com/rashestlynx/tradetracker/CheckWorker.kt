@@ -56,11 +56,12 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
 
         if (store.newsAlerts && (store.tickers.isNotEmpty() || store.watchlist.isNotEmpty())) checkNews(seen, firstRun)
         checkFollowing(seen, firstRun)
+        runCatching { runHistory(ua, seen) }
 
         store.addCryptoPositions(newCrypto)
         store.addMoves(newMoves)
         store.addPicks(newPicks)
-        store.addAlerts(newAlerts)
+        store.addAlerts(newAlerts + histAlerts)
         store.markSeen(newSeen)
         if (!firstRun) notifyAll(newAlerts)
 
@@ -74,12 +75,71 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         return Result.success()
     }
 
+    // ------------------------------------------------------------ History (older filings)
+    private val histAlerts = mutableListOf<Alert>()
+
+    /** Loads one batch of older filings for each section. Never notifies. */
+    private fun runHistory(ua: String, seen: Set<String>) {
+        val h = History(store)
+
+        if (store.watching(Category.CHARGES) && !h.chargesDone) {
+            repeat(3) {
+                if (h.chargesDone) return@repeat
+                val page = h.chargesPage
+                val cases = runCatching { History.chargesPage(page, ua) }.getOrNull() ?: return@repeat
+                if (cases.isEmpty() || page >= 80) h.chargesDone = true
+                else { processCharges(cases, seen, histAlerts, history = true); h.chargesPage = page + 1 }
+            }
+        }
+
+        // Older Congress pages need a Bargo key (keyless allows only 100 rows a day). Up to 3 pages a day.
+        if ((store.watching(Category.SENATE) || store.watching(Category.HOUSE)) && !h.congressDone &&
+            store.bargoKey.isNotBlank() && h.congressPagesToday() < 3) {
+            val page = h.congressPage
+            runCatching { Congress.recent(100, store.bargoKey, page = page) }.getOrNull()?.let { trades ->
+                h.countCongressPage()
+                if (trades.isEmpty()) h.congressDone = true
+                else { processCongress(trades, seen, histAlerts, history = true); h.congressPage = page + 1 }
+            }
+        }
+
+        // Insiders and funds: walk back through the SEC's daily index. A 13F costs more (it's a big file).
+        val wantForm4 = store.watching(Category.INSIDER)
+        val want13F = store.watching(Category.FUND)
+        if (!wantForm4 && !want13F) return
+        var budget = 180
+        var skipped = 0
+        while (budget > 0 && !h.filingsDone && skipped < 6) {
+            val day = h.day
+            val entries = try { History.dailyIndex(day, ua) } catch (_: Exception) { return }
+            if (entries == null) { h.day = History.shift(day, -1); h.offset = 0; skipped++; continue }
+            val todo = entries.drop(h.offset)
+            var used = 0
+            val f4 = mutableListOf<Pair<Filing, Long>>()
+            val f13 = mutableListOf<Pair<Filing, Long>>()
+            for (e in todo) {
+                val cost = if (e.form == "13F-HR") 6 else 1
+                if (cost > budget) break
+                used++
+                if (e.filing.accession in seen || e.filing.accession in newSeen) continue
+                if (e.form == "4" && wantForm4) { f4.add(e.filing to e.time); budget -= cost }
+                if (e.form == "13F-HR" && want13F) { f13.add(e.filing to e.time); budget -= cost }
+            }
+            val times = (f4 + f13).associate { it.first.accession to it.second }
+            processForm4(f4.map { it.first }, ua, histAlerts) { times[it.accession] ?: System.currentTimeMillis() }
+            process13F(f13.map { it.first }, ua, histAlerts) { times[it.accession] ?: System.currentTimeMillis() }
+            newSeen.addAll(times.keys)
+            if (h.offset + used >= entries.size) { h.day = History.shift(day, -1); h.offset = 0 }
+            else { h.offset = h.offset + used; break }
+        }
+    }
+
     // ------------------------------------------------------------ Congress
     private fun checkCongress(seen: Set<String>) {
         // Stay inside the free daily limits: keyless allows ~100 rows a day.
         val hasKey = store.bargoKey.isNotBlank()
         val every = if (hasKey) 60 * 60_000L else 5 * 60 * 60_000L
-        val limit = if (hasKey) 40 else 20
+        val limit = if (hasKey) 25 else 20
         if (System.currentTimeMillis() - store.lastCongressCheck < every) return
 
         val trades = try {
@@ -89,7 +149,11 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             return
         }
         store.lastCongressCheck = System.currentTimeMillis()
+        processCongress(trades, seen, newAlerts, history = false)
+    }
 
+    /** Turns Congress trades into feed posts, moves and picks. History posts use the disclosure date. */
+    private fun processCongress(trades: List<CongressTrade>, seen: Set<String>, into: MutableList<Alert>, history: Boolean) {
         for (t in trades) {
             if (t.key in seen || t.key in newSeen) continue
             newSeen.add(t.key)
@@ -123,9 +187,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                 t.isSell -> "Sold"
                 else -> t.type.replaceFirstChar { it.uppercase() }.ifEmpty { "Traded" }
             }
-            newAlerts.add(
+            into.add(
                 Alert(
-                    time = System.currentTimeMillis(),
+                    time = if (history) parseDate(t.disclosureDate.ifEmpty { t.transactionDate }) else System.currentTimeMillis(),
                     category = cat,
                     ticker = t.ticker,
                     company = t.asset,
@@ -150,13 +214,17 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             errors.add("SEC charges: ${e.message}")
             return
         }
+        processCharges(cases, seen, newAlerts, history = false)
+    }
+
+    private fun processCharges(cases: List<Charge>, seen: Set<String>, into: MutableList<Alert>, history: Boolean) {
         for (c in cases) {
-            if (c.key in seen) continue
+            if (c.key in seen || c.key in newSeen) continue
             newSeen.add(c.key)
             val summary = c.summary.split(Regex("(?<=[.!?])\\s+")).take(2).joinToString(" ")
-            newAlerts.add(
+            into.add(
                 Alert(
-                    time = System.currentTimeMillis(),
+                    time = if (history) History.chargeTime(c.date) else System.currentTimeMillis(),
                     category = Category.CHARGES,
                     ticker = "",
                     company = "SEC enforcement action" + if (c.date.isNotEmpty()) " · ${c.date}" else "",
@@ -177,7 +245,12 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             errors.add("Insiders: ${e.message}")
             return
         }
-        for (f in filings.filter { it.accession !in seen }.take(max)) {
+        processForm4(filings.filter { it.accession !in seen }.take(max), ua, newAlerts) { System.currentTimeMillis() }
+    }
+
+    /** Reads each Form 4 and turns it into a feed post, moves and picks, dated with [timeOf]. */
+    private fun processForm4(filings: List<Filing>, ua: String, into: MutableList<Alert>, timeOf: (Filing) -> Long) {
+        for (f in filings) {
             newSeen.add(f.accession)
             val info = try {
                 Edgar.parseForm4(f, ua)
@@ -190,7 +263,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             val pk = info.ownerCiks.firstOrNull()?.let { "ins:$it" } ?: ""
 
             if (info.trades.any { it.code == "P" } && info.ticker.isNotEmpty()) {
-                newPicks.add(Pick(System.currentTimeMillis(), info.ticker, company, who,
+                newPicks.add(Pick(timeOf(f), info.ticker, company, who,
                     Category.INSIDER, "buy", person = pk))
             }
             if (info.ticker.isNotEmpty()) {
@@ -200,7 +273,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     val v = these.sumOf { it.value }
                     val shares = these.sumOf { it.shares }
                     if (v > 0) newMoves.add(Move(
-                        time = System.currentTimeMillis(), category = Category.INSIDER,
+                        time = timeOf(f), category = Category.INSIDER,
                         ticker = info.ticker, company = company, who = who, role = roleText,
                         side = side, value = v, valueLabel = money(v), link = f.link,
                         key = "${f.accession}|$side",
@@ -216,9 +289,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             if (trades.isEmpty() && (store.buysOnly || store.minValue > 0)) continue
 
             val role = if (info.roles.isNotEmpty()) " · ${info.roles.joinToString(", ")}" else ""
-            newAlerts.add(
+            into.add(
                 Alert(
-                    time = System.currentTimeMillis(),
+                    time = timeOf(f),
                     category = Category.INSIDER,
                     ticker = info.ticker,
                     company = company,
@@ -242,6 +315,12 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         }
         val fresh = filings.filter { it.accession !in seen }.take(max)
         if (fresh.isEmpty()) return
+        process13F(fresh, ua, newAlerts) { System.currentTimeMillis() }
+    }
+
+    /** Reads each 13F and turns it into a feed post, picks and crypto positions, dated with [timeOf]. */
+    private fun process13F(fresh: List<Filing>, ua: String, into: MutableList<Alert>, timeOf: (Filing) -> Long) {
+        if (fresh.isEmpty()) return
         val tickerMap = tickerMap(ua)
 
         for (f in fresh) {
@@ -258,14 +337,14 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             val holdings = Edgar.top13F(rows)
             rows.filter { !it.option }.groupBy { it.name }.forEach { (name, rs) ->
                 val asset = Crypto.assetOf(name) ?: return@forEach
-                newCrypto.add(Store.CryptoPos(fund, pk, asset, name, rs.sumOf { it.value }, System.currentTimeMillis()))
+                newCrypto.add(Store.CryptoPos(fund, pk, asset, name, rs.sumOf { it.value }, timeOf(f)))
             }
             val total = holdings.sumOf { it.second }
             val mapped = holdings.mapNotNull { (name, value) ->
                 tickerMap[Edgar.normalizeName(name)]?.let { Triple(it, name, value) }
             }
             mapped.forEach { (ticker, name, _) ->
-                newPicks.add(Pick(System.currentTimeMillis(), ticker, titleCase(name), fund,
+                newPicks.add(Pick(timeOf(f), ticker, titleCase(name), fund,
                     Category.FUND, "hold", person = pk))
             }
 
@@ -277,9 +356,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                 lines.add("Top holdings: " + mapped.take(6).joinToString(", ") { it.first })
             }
             if (total > 0) lines.add("Top ${holdings.size} positions worth ${money(total)}")
-            newAlerts.add(
+            into.add(
                 Alert(
-                    time = System.currentTimeMillis(),
+                    time = timeOf(f),
                     category = Category.FUND,
                     ticker = "",
                     company = "Quarterly holdings report",

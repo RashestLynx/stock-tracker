@@ -50,7 +50,11 @@ struct FeedView: View {
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
                     }
                 } footer: {
-                    Text(model.status).font(.caption)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.status)
+                        if !History.status.isEmpty { Text(History.status) }
+                    }
+                    .font(.caption)
                 }
 
                 if !model.isSetUp {
