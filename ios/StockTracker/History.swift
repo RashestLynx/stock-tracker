@@ -103,7 +103,7 @@ enum History {
     }
 
     private static let anchor = try! NSRegularExpression(
-        pattern: #"href="((?:https://www\.sec\.gov)?/(?:newsroom/press-releases|enforcement-litigation/litigation-releases)/[^"#?]+)"[^>]*>(.*?)</a>"#,
+        pattern: ##"href="((?:https://www\.sec\.gov)?/(?:newsroom/press-releases|enforcement-litigation/litigation-releases)/[^"#?]+)"[^>]*>(.*?)</a>"##,
         options: [.dotMatchesLineSeparators])
     private static let datetime = try! NSRegularExpression(pattern: #"datetime="(\d{4})-(\d{2})-(\d{2})"#)
     private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

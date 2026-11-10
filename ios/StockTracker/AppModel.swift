@@ -113,7 +113,7 @@ final class AppModel: ObservableObject {
         func markSeen(_ k: String) { seenSet.insert(k); newSeen.append(k) }
 
         var histAlerts: [Alert] = []
-        func post(_ a: Alert, _ history: Bool) { if history { histAlerts.append(a) } else { newAlerts.append(a) } }
+        func emit(_ a: Alert, _ history: Bool) { if history { histAlerts.append(a) } else { newAlerts.append(a) } }
 
         // Turns Congress trades into posts, moves and picks. History posts use the disclosure date.
         func handleCongress(_ trades: [CongressTrade], history: Bool) {
@@ -141,7 +141,7 @@ final class AppModel: ObservableObject {
                 let action = t.isBuy ? "Bought" : t.isSell ? "Sold" : (t.type.isEmpty ? "Traded" : t.type.capitalized)
                 let who = (cat == .senate ? "Sen. " : "Rep. ") + t.member + (t.state.isEmpty ? "" : " · \(t.state)")
                 let when = history ? Format.day(t.disclosureDate.isEmpty ? t.transactionDate : t.disclosureDate) : Date()
-                post(Alert(
+                emit(Alert(
                     time: when, category: cat, ticker: t.ticker, company: t.asset, headline: who,
                     lines: ["\(action) \(t.amountRange)".trimmingCharacters(in: .whitespaces),
                             "Traded \(t.transactionDate) · disclosed \(t.disclosureDate)"],
@@ -182,7 +182,7 @@ final class AppModel: ObservableObject {
                 if trades.isEmpty && (buysOnly || minValue > 0) { continue }
                 let role = info.roles.isEmpty ? "" : " · " + info.roles.joined(separator: ", ")
                 let lines = Edgar.summarize(trades)
-                post(Alert(
+                emit(Alert(
                     time: when, category: .insider, ticker: info.ticker, company: info.issuer,
                     headline: who + role, lines: lines.isEmpty ? ["Options/derivatives only"] : lines,
                     link: f.link, key: f.accession, person: pk), history)
@@ -221,7 +221,7 @@ final class AppModel: ObservableObject {
                     lines.append("Top holdings: " + mapped.prefix(6).map(\.ticker).joined(separator: ", "))
                 }
                 if total > 0 { lines.append("Top \(holdings.count) positions worth \(Format.money(total))") }
-                post(Alert(
+                emit(Alert(
                     time: when, category: .fund, ticker: "", company: "Quarterly holdings report",
                     headline: fund, lines: lines, link: f.link, key: f.accession, person: pk), history)
             }
@@ -230,7 +230,7 @@ final class AppModel: ObservableObject {
         func handleCharges(_ cases: [Charge], history: Bool) {
             for c in cases where !seenSet.contains(c.key) {
                 markSeen(c.key)
-                post(Alert(
+                emit(Alert(
                     time: history ? History.chargeDate(c.date) : Date(), category: .charges, ticker: "",
                     company: "SEC enforcement action" + (c.date.isEmpty ? "" : " · \(c.date)"),
                     headline: c.title, lines: c.summary.isEmpty ? [] : [c.summary],
