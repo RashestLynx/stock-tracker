@@ -184,6 +184,22 @@ fun StockTrackerApp(store: Store) {
         if (refreshing) { delay(120_000); refreshing = false } // don't spin forever offline
     }
 
+    // Check for new filings whenever the app is opened, and every 5 minutes while it's open.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME && store.isSetUp) CheckWorker.runNow(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5 * 60_000L)
+            if (store.isSetUp) CheckWorker.runNow(context)
+        }
+    }
+
     CompositionLocalProvider(LocalOpenPerson provides { person = it }, LocalOpenStock provides { stock = it }) {
     Scaffold(
         topBar = {
@@ -1103,12 +1119,13 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
 
         Section("Background checks") {
             SwitchRow("Check automatically",
-                "About every 15 minutes when you're online. Battery saver can delay this.",
+                "About every 15 minutes when you're online, and you get a notification for each new filing.",
                 background) {
                 background = it
                 store.backgroundOn = it
                 if (it && store.isSetUp) CheckWorker.schedule(context) else CheckWorker.stop(context)
             }
+            NotificationHealth()
         }
 
         Section("History") {
@@ -1169,6 +1186,49 @@ private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChang
         }
         Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/**
+ * Shows what's stopping notifications from arriving on their own, with a button to fix each one:
+ * notifications turned off, or Android's battery saving holding background checks back.
+ */
+@Composable
+private fun NotificationHealth() {
+    val context = LocalContext.current
+    var tick by remember { mutableIntStateOf(0) }
+    // Re-check when coming back from Android's settings screens.
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++ }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
+    val notificationsOn = remember(tick) { androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() }
+    val unrestricted = remember(tick) { CheckAlarm.unrestricted(context) }
+
+    if (!notificationsOn) {
+        Text("Notifications are turned off for this app, so new filings can't alert you.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Button(onClick = {
+            context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+        }, modifier = Modifier.fillMaxWidth()) { Text("Turn on notifications") }
+    }
+    if (!unrestricted) {
+        Text("Android's battery saving is holding back background checks, so alerts can arrive late or only when " +
+            "you open the app. Allow the app to run in the background to get them on time.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Button(onClick = {
+            runCatching {
+                context.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + context.packageName)))
+            }.onFailure { context.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Allow background checks") }
+    }
+    if (notificationsOn && unrestricted) {
+        Text("✓ Notifications are on and background checks aren't limited.",
+            style = MaterialTheme.typography.bodySmall, color = TradeColors.buy())
     }
 }
 

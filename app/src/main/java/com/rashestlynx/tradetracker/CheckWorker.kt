@@ -56,13 +56,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
 
         if (store.newsAlerts && (store.tickers.isNotEmpty() || store.watchlist.isNotEmpty())) checkNews(seen, firstRun)
         checkFollowing(seen, firstRun)
-        runCatching { runHistory(ua, seen) }
 
-        store.addCryptoPositions(newCrypto)
-        store.addMoves(newMoves)
-        store.addPicks(newPicks)
-        store.addAlerts(newAlerts + histAlerts)
-        store.markSeen(newSeen)
+        // Save and notify about new filings right away, before the slower history step.
+        saveAll(newAlerts)
         if (!firstRun) notifyAll(newAlerts)
 
         val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
@@ -72,7 +68,22 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             newAlerts.isEmpty() -> "Up to date · checked $time"
             else -> "${newAlerts.size} new · checked $time"
         }
+
+        // Then load a batch of older filings (never notifies).
+        if (!isStopped) {
+            runCatching { runHistory(ua, store.seenSet()) }
+            saveAll(histAlerts)
+        }
         return Result.success()
+    }
+
+    /** Saves what's been collected so far and clears the buffers, so nothing is saved twice. */
+    private fun saveAll(alerts: List<Alert>) {
+        store.addCryptoPositions(newCrypto.toList()); newCrypto.clear()
+        store.addMoves(newMoves.toList()); newMoves.clear()
+        store.addPicks(newPicks.toList()); newPicks.clear()
+        store.addAlerts(alerts)
+        store.markSeen(newSeen.toList()); newSeen.clear()
     }
 
     // ------------------------------------------------------------ History (older filings)
@@ -522,16 +533,21 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         private val network = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED).build()
 
-        /** Android's minimum for background jobs is 15 minutes. */
+        /**
+         * Android's minimum for background jobs is 15 minutes, and battery saving can hold them back for
+         * hours. An alarm that's allowed to fire while the phone is idle backs it up (see [CheckAlarm]).
+         */
         fun schedule(ctx: Context) {
             val req = PeriodicWorkRequestBuilder<CheckWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(network).build()
             WorkManager.getInstance(ctx)
                 .enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, req)
+            CheckAlarm.arm(ctx)
         }
 
         fun stop(ctx: Context) {
             WorkManager.getInstance(ctx).cancelUniqueWork(PERIODIC)
+            CheckAlarm.cancel(ctx)
         }
 
         fun runNow(ctx: Context) {

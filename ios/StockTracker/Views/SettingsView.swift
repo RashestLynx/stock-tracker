@@ -174,6 +174,19 @@ struct SettingsView: View {
                 Section {
                     Toggle("Check in the background", isOn: $model.backgroundOn)
                         .onChange(of: model.backgroundOn) { _, _ in model.scheduleBackgroundRefresh() }
+                    if !model.notificationsAllowed {
+                        Text("Notifications are turned off for Stock Tracker, so new filings can't alert you.")
+                            .font(.caption).foregroundStyle(.red)
+                    }
+                    if !model.backgroundRefreshAllowed {
+                        Text("Background App Refresh is off (or Low Power Mode is on), so the app can only check while it's open. Turn it on in Settings → General → Background App Refresh.")
+                            .font(.caption).foregroundStyle(.red)
+                    }
+                    if !model.notificationsAllowed || !model.backgroundRefreshAllowed {
+                        Button("Open iPhone Settings") {
+                            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                        }
+                    }
                 } footer: {
                     Text("iOS decides when background checks run, usually every hour or few. Opening the app or pulling down always checks right away.")
                 }

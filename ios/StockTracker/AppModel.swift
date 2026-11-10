@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import UserNotifications
 import BackgroundTasks
 
@@ -86,7 +87,8 @@ final class AppModel: ObservableObject {
     func resetCongressTimer() { lastCongressCheck = .distantPast }
 
     // ---------------- checking ----------------
-    func check(notify: Bool = true) async {
+    /// `background`: iOS woke the app for a short check (about 30 seconds), so skip the slower history step.
+    func check(notify: Bool = true, background: Bool = false) async {
         guard isSetUp else { status = "Add your email in Settings to start"; return }
         guard !isChecking else { return }
         isChecking = true
@@ -258,7 +260,7 @@ final class AppModel: ObservableObject {
         if isWatching(.insider) {
             do {
                 let filings = try await Edgar.feed("4", ua: ua).filter { !seenSet.contains($0.accession) }
-                await handleForm4(Array(filings.prefix(firstRun ? 40 : 100)), time: { _ in Date() }, history: false)
+                await handleForm4(Array(filings.prefix(firstRun ? 40 : background ? 30 : 100)), time: { _ in Date() }, history: false)
             } catch {
                 errors.append("Insiders: \(error.localizedDescription)")
             }
@@ -283,8 +285,8 @@ final class AppModel: ObservableObject {
             }
         }
 
-        // ----- History: one batch of older filings per section (never notifies) -----
-        if isWatching(.charges) && !History.chargesDone {
+        // ----- History: one batch of older filings per section (never notifies; skipped in short background checks) -----
+        if !background && isWatching(.charges) && !History.chargesDone {
             for _ in 0..<3 where !History.chargesDone {
                 let page = History.chargesPage
                 guard let cases = try? await History.chargesPage(page, ua: ua) else { break }
@@ -293,7 +295,7 @@ final class AppModel: ObservableObject {
             }
         }
         // Older Congress pages need a Bargo key (keyless allows only 100 rows a day). Up to 3 pages a day.
-        if (isWatching(.senate) || isWatching(.house)) && !History.congressDone && !bargoKey.isEmpty && History.congressPagesToday < 3 {
+        if !background && (isWatching(.senate) || isWatching(.house)) && !History.congressDone && !bargoKey.isEmpty && History.congressPagesToday < 3 {
             let page = History.congressPage
             if let trades = try? await Congress.recent(limit: 100, apiKey: bargoKey, page: page) {
                 History.countCongressPage()
@@ -302,7 +304,7 @@ final class AppModel: ObservableObject {
             }
         }
         // Insiders and funds: walk back through the SEC's daily index. A 13F costs more (it's a big file).
-        if isWatching(.insider) || isWatching(.fund) {
+        if !background && (isWatching(.insider) || isWatching(.fund)) {
             var budget = 60   // kept small: iOS gives background checks only about 30 seconds
             var skipped = 0
             dayLoop: while budget > 0 && !History.filingsDone && skipped < 6 {
@@ -475,6 +477,15 @@ final class AppModel: ObservableObject {
     }
 
     // ---------------- notifications ----------------
+    /// Whether notifications are allowed and iOS lets the app check in the background, for Settings.
+    @Published var notificationsAllowed = true
+    @Published var backgroundRefreshAllowed = true
+    func refreshNotificationHealth() async {
+        let s = await UNUserNotificationCenter.current().notificationSettings()
+        notificationsAllowed = s.authorizationStatus == .authorized || s.authorizationStatus == .provisional
+        backgroundRefreshAllowed = UIApplication.shared.backgroundRefreshStatus == .available
+    }
+
     func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }

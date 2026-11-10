@@ -31,9 +31,12 @@ struct ContentView: View {
         .tint(Brand.accent)
         .preferredColorScheme(model.appearance == "dark" ? .dark : model.appearance == "light" ? .light : nil)
         .task {
-            // Check the market every 5 minutes while the app is open.
+            // Check the market, and for new filings, every 5 minutes while the app is open.
+            var first = true
             while !Task.isCancelled {
                 await model.refreshMarket()
+                if !first { await model.check() }
+                first = false
                 try? await Task.sleep(for: .seconds(300))
             }
         }

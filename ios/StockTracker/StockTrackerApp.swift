@@ -20,10 +20,12 @@ struct StockTrackerApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.scheduleBackgroundRefresh() }
+            // Check right away whenever the app is opened.
+            if phase == .active { Task { await model.check(); await model.refreshNotificationHealth() } }
         }
         .backgroundTask(.appRefresh(AppModel.refreshTaskID)) {
             await model.scheduleBackgroundRefresh()
-            await model.check()
+            await model.check(background: true)
         }
     }
 }
