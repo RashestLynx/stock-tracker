@@ -387,7 +387,35 @@ object Following {
         }
         val feed = if (channel != null) "https://www.youtube.com/feeds/videos.xml?channel_id=$channel"
         else "https://www.youtube.com/feeds/videos.xml?user=$handle"
-        return parseFeed(get(feed))
+        // YouTube's RSS feed has started returning 404; read the channel's Videos page instead when it does.
+        val fromFeed = try { parseFeed(get(feed)) } catch (_: Exception) { emptyList() }
+        return fromFeed.ifEmpty { videosFromPage(handle) }
+    }
+
+    /** The latest uploads listed on the channel's Videos page (no descriptions; dates are approximate). */
+    private fun videosFromPage(handle: String): List<Video> {
+        val page = get("https://www.youtube.com/@$handle/videos", DESKTOP_UA)
+        val now = System.currentTimeMillis()
+        val out = mutableListOf<Video>()
+        for (chunk in page.split("\"lockupViewModel\":{").drop(1)) {
+            val id = Regex("\"contentId\":\"([\\w-]{11})\",\"contentType\":\"LOCKUP_CONTENT_TYPE_VIDEO\"")
+                .find(chunk)?.groupValues?.get(1) ?: continue
+            val rawTitle = Regex("\"lockupMetadataViewModel\":\\{\"title\":\\{\"content\":\"((?:[^\"\\\\]|\\\\.)*)\"")
+                .find(chunk)?.groupValues?.get(1) ?: continue
+            val title = try { JSONObject("{\"t\":\"$rawTitle\"}").getString("t") } catch (_: Exception) { rawTitle }
+            val ago = Regex("\"accessibilityLabel\":\"(?:Streamed )?(\\d+) (second|minute|hour|day|week|month|year)s? ago\"")
+                .find(chunk)
+            val time = ago?.let {
+                val n = it.groupValues[1].toLong()
+                val unit = when (it.groupValues[2]) {
+                    "second" -> 1_000L; "minute" -> 60_000L; "hour" -> 3_600_000L; "day" -> 86_400_000L
+                    "week" -> 7 * 86_400_000L; "month" -> 30 * 86_400_000L; else -> 365 * 86_400_000L
+                }
+                now - n * unit
+            } ?: (now - out.size * 60_000L)   // keep page order when there's no date
+            if (out.none { it.id == "yt:$id" }) out.add(Video(title, "https://www.youtube.com/watch?v=$id", time, "yt:$id"))
+        }
+        return out
     }
 
     private fun parseFeed(xml: String): List<Video> {
@@ -520,9 +548,13 @@ object Following {
         return FundSnapshot(filings[0].second, a.values.sumOf { it.first }, top, newBuys, sold, crypto)
     }
 
-    private fun get(url: String): String {
+    /** YouTube only lists a channel's videos in the page data it sends to desktop browsers. */
+    private const val DESKTOP_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+
+    private fun get(url: String, userAgent: String = "Mozilla/5.0 (Android) StockTracker/2.0"): String {
         val conn = URL(url).openConnection() as HttpURLConnection
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) StockTracker/2.0")
+        conn.setRequestProperty("User-Agent", userAgent)
         conn.setRequestProperty("Accept-Language", "en-US")
         conn.connectTimeout = 20_000; conn.readTimeout = 20_000
         try {

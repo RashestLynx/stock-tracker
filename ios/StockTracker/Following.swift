@@ -278,9 +278,10 @@ enum Following {
         }
         let feed = channel.map { "https://www.youtube.com/feeds/videos.xml?channel_id=\($0)" }
             ?? "https://www.youtube.com/feeds/videos.xml?user=\(handle)"
-        guard let data = await getData(feed), let root = XNode.parse(data) else { return [] }
+        // YouTube's RSS feed has started returning 404; read the channel's Videos page instead when it does.
+        guard let data = await getData(feed), let root = XNode.parse(data) else { return await videosFromPage(handle) }
         let iso = ISO8601DateFormatter()
-        return root.all("entry").compactMap { e in
+        let fromFeed: [Video] = root.all("entry").compactMap { e in
             let title = (e.child("title")?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let link = e.child("link")?.attrs["href"] ?? ""
             guard !title.isEmpty, !link.isEmpty else { return nil }
@@ -289,6 +290,38 @@ enum Following {
                          id: "yt:" + vid,
                          description: e.child("group")?.child("description")?.text ?? "")
         }
+        return fromFeed.isEmpty ? await videosFromPage(handle) : fromFeed
+    }
+
+    /// The latest uploads listed on the channel's Videos page (no descriptions; dates are approximate).
+    private static func videosFromPage(_ handle: String) async -> [Video] {
+        // YouTube only lists a channel's videos in the page data it sends to desktop browsers.
+        guard let page = await getText("https://www.youtube.com/@\(handle)/videos",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+        else { return [] }
+        let idRe = try! NSRegularExpression(pattern: #""contentId":"([\w-]{11})","contentType":"LOCKUP_CONTENT_TYPE_VIDEO""#)
+        let titleRe = try! NSRegularExpression(pattern: #""lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)""#)
+        let agoRe = try! NSRegularExpression(pattern: #""accessibilityLabel":"(?:Streamed )?(\d+) (second|minute|hour|day|week|month|year)s? ago""#)
+        func first(_ re: NSRegularExpression, _ s: String) -> [String]? {
+            guard let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) else { return nil }
+            return (1..<m.numberOfRanges).compactMap { Range(m.range(at: $0), in: s).map { String(s[$0]) } }
+        }
+        let units: [String: TimeInterval] = ["second": 1, "minute": 60, "hour": 3600, "day": 86_400,
+                                             "week": 7 * 86_400, "month": 30 * 86_400, "year": 365 * 86_400]
+        let now = Date()
+        var out: [Video] = []
+        for chunk in page.components(separatedBy: #""lockupViewModel":{"#).dropFirst() {
+            guard let id = first(idRe, chunk)?.first, let raw = first(titleRe, chunk)?.first else { continue }
+            // Undo the JSON escaping in the title.
+            let title = (try? JSONSerialization.jsonObject(with: Data("\"\(raw)\"".utf8), options: .fragmentsAllowed) as? String) ?? raw
+            var time = now.addingTimeInterval(-Double(out.count) * 60)   // keep page order when there's no date
+            if let a = first(agoRe, chunk), a.count == 2, let n = Double(a[0]), let u = units[a[1]] {
+                time = now.addingTimeInterval(-n * u)
+            }
+            guard !out.contains(where: { $0.id == "yt:" + id }) else { continue }
+            out.append(Video(title: title, url: "https://www.youtube.com/watch?v=\(id)", time: time, id: "yt:" + id, description: ""))
+        }
+        return out
     }
 
     // ---------------- stocks they talk about ----------------
@@ -356,10 +389,10 @@ enum Following {
         }.prefix(15).map { $0 }
     }
 
-    private static func getData(_ url: String) async -> Data? {
+    private static func getData(_ url: String, userAgent: String = "Mozilla/5.0 (iPhone) StockTracker/1.0") async -> Data? {
         guard let u = URL(string: url) else { return nil }
         var req = URLRequest(url: u)
-        req.setValue("Mozilla/5.0 (iPhone) StockTracker/1.0", forHTTPHeaderField: "User-Agent")
+        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         req.setValue("en-US", forHTTPHeaderField: "Accept-Language")
         req.timeoutInterval = 20
         guard let (d, r) = try? await URLSession.shared.data(for: req),
@@ -367,7 +400,7 @@ enum Following {
         return d
     }
 
-    private static func getText(_ url: String) async -> String? {
-        await getData(url).flatMap { String(data: $0, encoding: .utf8) }
+    private static func getText(_ url: String, userAgent: String = "Mozilla/5.0 (iPhone) StockTracker/1.0") async -> String? {
+        await getData(url, userAgent: userAgent).flatMap { String(data: $0, encoding: .utf8) }
     }
 }
