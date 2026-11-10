@@ -36,7 +36,7 @@ data class Form4(
 object Edgar {
     private const val FEED =
         "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=%s" +
-            "&company=&dateb=&owner=include&start=0&count=100&output=atom"
+            "&company=&dateb=&owner=include&start=0&count=%d&output=atom"
 
     val TX_CODES = mapOf(
         "P" to "Bought (open market)", "S" to "Sold (open market)",
@@ -67,9 +67,12 @@ object Edgar {
         }
     }
 
-    /** Latest filings of one form type ("4" or "13F-HR"), newest first, one per accession. */
-    fun feed(form: String, userAgent: String): List<Filing> {
-        val xml = get(String.format(FEED, URLEncoder.encode(form, "UTF-8")), userAgent)
+    /**
+     * Latest filings of one form type ("4" or "13F-HR"), newest first, one per accession.
+     * [count] is how many feed entries to ask for; live mode asks for a few to keep each check small.
+     */
+    fun feed(form: String, userAgent: String, count: Int = 100): List<Filing> {
+        val xml = get(String.format(Locale.US, FEED, URLEncoder.encode(form, "UTF-8"), count), userAgent)
         val parser = Xml.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(StringReader(xml))

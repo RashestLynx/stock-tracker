@@ -89,6 +89,26 @@ final class AppModel: ObservableObject {
 
     func resetCongressTimer() { lastCongressCheck = .distantPast }
 
+    /// Live check while the app is open: a small look at the SEC's insider feed. When it shows a filing
+    /// the app hasn't seen, runs a quick check (no history step) so the notification goes out right away.
+    func liveCheck() async {
+        guard isSetUp, !isChecking, isWatching(.insider) else { return }
+        guard let latest = try? await Edgar.feed("4", ua: userAgent, count: 20) else { return }
+        let known = Set(seen)
+        if latest.contains(where: { !known.contains($0.accession) }) {
+            await check(background: true)
+        }
+    }
+
+    /// EDGAR accepts filings on weekdays from 6 a.m. to 10 p.m. Eastern; outside that nothing new appears.
+    static func filingHours(_ now: Date = Date()) -> Bool {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        let day = cal.component(.weekday, from: now)   // 1 = Sunday, 7 = Saturday
+        let hour = cal.component(.hour, from: now)
+        return day != 1 && day != 7 && (6..<22).contains(hour)
+    }
+
     // ---------------- checking ----------------
     /// `background`: iOS woke the app for a short check (about 30 seconds), so skip the slower history step.
     func check(notify: Bool = true, background: Bool = false) async {

@@ -20,6 +20,8 @@ class CheckAlarm : BroadcastReceiver() {
         if (intent.action == ACTION) CheckWorker.runNow(context)
         else CheckWorker.schedule(context)   // after a restart or update
         arm(context)
+        // Restarts live mode after a phone restart or app update, or if Android stopped it.
+        LiveService.start(context)
     }
 
     companion object {

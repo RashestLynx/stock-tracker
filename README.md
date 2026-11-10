@@ -63,6 +63,8 @@ The first check loads recent filings into the app without sending notifications.
 
 **Live alerts:** for notifications within a minute or two of each filing, 24/7 with your phone and PC off, set up the free cloud checker in [`cloud/`](cloud/README.md). It sends alerts through the free ntfy app on iPhone and Android.
 
+**Live alerts in the app (Android):** Settings → Live alerts keeps checking the SEC's insider feed every second (or 5, 15 or 60 seconds), even with the app closed, and notifies you as soon as a new filing appears. Android shows a small "Live alerts on" notification while it runs. Outside SEC filing hours (weekdays 6 a.m. to 10 p.m. Eastern) it checks once a minute. Everything else is checked every 5 minutes. Checking every second uses noticeably more battery and data. On iPhone the app checks every second while it's open; iOS doesn't allow that in the background.
+
 Both apps check for new filings when you open them and every 5 minutes while they're open, and send a notification for each new one.
 
 In the background, Android checks about every 15 minutes, with a backup alarm that's allowed to run while the phone is idle. If Android's battery saving is limiting the app, **Settings → Background checks** shows a button to allow it. On iPhone, iOS decides when background checks run (often every hour or few, less if you rarely open the app), and Background App Refresh must be on. Instant alerts on iPhone would need Apple push notifications, which require a paid Apple Developer account and a server.

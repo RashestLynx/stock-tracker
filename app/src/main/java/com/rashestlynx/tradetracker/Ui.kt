@@ -921,6 +921,7 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
                     }
                     store.userAgent = email
                     if (store.backgroundOn) CheckWorker.schedule(context)
+                    LiveService.start(context)
                     if (!wasSetUp) onReady() else onMessage("Saved")
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -1129,10 +1130,35 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
         }
 
         var appNotify by remember { mutableStateOf(store.appNotify) }
+        var liveOn by remember { mutableStateOf(store.liveOn) }
+        var liveSeconds by remember { mutableStateOf(store.liveSeconds) }
         Section("Live alerts",
-            "For alerts within a minute or two, around the clock, even with the app closed: set up the free cloud checker " +
-                "(see the cloud folder's README in the project) and the free ntfy app. Then turn this off so you don't get each alert twice.") {
-            SwitchRow("Also alert from this app", "Notifications for new filings from the app's own checks.", appNotify) {
+            "Checks the SEC for new insider trades every few seconds, even with the app closed, and notifies you " +
+                "right away. Android shows a small \"Live alerts on\" notification while it runs. Checking every second " +
+                "uses more battery and data; outside SEC filing hours (weekdays 6 a.m. to 10 p.m. Eastern) it checks once a minute.") {
+            SwitchRow("Live alerts", "Keep checking in the background for new filings.", liveOn) {
+                liveOn = it
+                store.liveOn = it
+                if (it) LiveService.start(context) else LiveService.stop(context)
+            }
+            if (liveOn) {
+                Text("Check every", style = MaterialTheme.typography.bodyMedium)
+                val choices = listOf(1 to "1 sec", 5 to "5 sec", 15 to "15 sec", 60 to "1 min")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    choices.forEachIndexed { i, (secs, label) ->
+                        SegmentedButton(
+                            selected = liveSeconds == secs,
+                            onClick = {
+                                liveSeconds = secs
+                                store.liveSeconds = secs
+                                LiveService.restart(context)
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(i, choices.size),
+                        ) { Text(label) }
+                    }
+                }
+            }
+            SwitchRow("Notifications from this app", "Turn off to stop all filing notifications from the app.", appNotify) {
                 appNotify = it; store.appNotify = it
             }
         }

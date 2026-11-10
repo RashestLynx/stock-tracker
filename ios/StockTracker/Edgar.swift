@@ -54,10 +54,11 @@ enum Edgar {
     }
 
     /// Latest filings of one form type ("4" or "13F-HR"), newest first, one per accession.
-    static func feed(_ form: String, ua: String) async throws -> [Filing] {
+    /// `count` is how many feed entries to ask for; live checks ask for a few to keep each check small.
+    static func feed(_ form: String, ua: String, count: Int = 100) async throws -> [Filing] {
         let encoded = form.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? form
         let url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=\(encoded)"
-            + "&company=&dateb=&owner=include&start=0&count=100&output=atom"
+            + "&company=&dateb=&owner=include&start=0&count=\(count)&output=atom"
         guard let root = XNode.parse(try await get(url, ua: ua)) else { throw AppError("Couldn't read SEC feed") }
         var seen = Set<String>()
         var out: [Filing] = []

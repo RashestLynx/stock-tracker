@@ -40,6 +40,14 @@ struct ContentView: View {
                 try? await Task.sleep(for: .seconds(300))
             }
         }
+        .task {
+            // Live checks while the app is open: new insider filings every second during SEC filing hours,
+            // once a minute otherwise. iOS doesn't allow this in the background.
+            while !Task.isCancelled {
+                await model.liveCheck()
+                try? await Task.sleep(for: .seconds(AppModel.filingHours() ? 1 : 60))
+            }
+        }
         .onAppear { if !model.isSetUp { model.showSettings = true } }
         .sheet(item: $model.openStock) { target in
             StockSheet(target: target).environmentObject(model)

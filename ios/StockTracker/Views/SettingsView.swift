@@ -194,14 +194,14 @@ struct SettingsView: View {
                 Section {
                     Toggle(isOn: $model.appNotify) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Also alert from this app")
-                            Text("Notifications for new filings from the app's own checks.").font(.caption).foregroundStyle(.secondary)
+                            Text("Notifications from this app")
+                            Text("Turn off to stop all filing notifications from the app.").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 } header: {
                     Text("Live alerts")
                 } footer: {
-                    Text("For alerts within a minute or two, around the clock, even with the app closed: set up the free cloud checker (see the cloud folder's README in the project) and the free ntfy app. Then turn this off so you don't get each alert twice.")
+                    Text("While the app is open, it checks the SEC for new insider trades every second (once a minute outside SEC filing hours, weekdays 6 a.m. to 10 p.m. Eastern). When it's closed, iOS only allows the occasional background check.")
                 }
 
                 Section {

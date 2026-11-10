@@ -43,23 +43,35 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             store.lastStatus = "Add your email in Settings to start"
             return Result.success()
         }
-        store.lastStatus = "Checking…"
+        // Live mode's quick check: only new insider filings, no history step.
+        val fast = inputData.getBoolean(FAST, false)
+        if (!fast) store.lastStatus = "Checking…"
 
-        // First run: load what's already posted into the app, but don't send notifications.
-        val firstRun = !store.hasSeenAnything()
-        val seen = store.seenSet()
+        // One check at a time looks at new filings, so the same filing is never notified twice.
+        val firstRun = synchronized(LOCK) {
+            // First run: load what's already posted into the app, but don't send notifications.
+            val firstRun = !store.hasSeenAnything()
+            val seen = store.seenSet()
 
-        if (store.watching(Category.SENATE) || store.watching(Category.HOUSE)) checkCongress(seen)
-        if (store.watching(Category.INSIDER)) checkForm4(ua, seen, if (firstRun) 40 else 100)
-        if (store.watching(Category.FUND)) check13F(ua, seen, if (firstRun) 12 else 40)
-        if (store.watching(Category.CHARGES)) checkCharges(ua, seen)
+            if (fast) {
+                if (store.watching(Category.INSIDER)) checkForm4(ua, seen, if (firstRun) 40 else 100)
+            } else {
+                if (store.watching(Category.SENATE) || store.watching(Category.HOUSE)) checkCongress(seen)
+                if (store.watching(Category.INSIDER)) checkForm4(ua, seen, if (firstRun) 40 else 100)
+                if (store.watching(Category.FUND)) check13F(ua, seen, if (firstRun) 12 else 40)
+                if (store.watching(Category.CHARGES)) checkCharges(ua, seen)
 
-        if (store.newsAlerts && (store.tickers.isNotEmpty() || store.watchlist.isNotEmpty())) checkNews(seen, firstRun)
-        checkFollowing(seen, firstRun)
+                if (store.newsAlerts && (store.tickers.isNotEmpty() || store.watchlist.isNotEmpty())) checkNews(seen, firstRun)
+                checkFollowing(seen, firstRun)
+            }
 
-        // Save and notify about new filings right away, before the slower history step.
-        saveAll(newAlerts)
-        if (!firstRun && store.appNotify) notifyAll(newAlerts)
+            // Save and notify about new filings right away, before the slower history step.
+            saveAll(newAlerts)
+            if (!firstRun && store.appNotify) notifyAll(newAlerts)
+            firstRun
+        }
+        // A quick check with nothing new leaves the status line alone.
+        if (fast && newAlerts.isEmpty() && errors.isEmpty()) return Result.success()
 
         val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
         store.lastStatus = when {
@@ -70,7 +82,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         }
 
         // Then load a batch of older filings (never notifies).
-        if (!isStopped) {
+        if (!fast && !isStopped) {
             runCatching { runHistory(ua, store.seenSet()) }
             saveAll(histAlerts)
         }
@@ -524,6 +536,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         const val CHANNEL = "filings"
         private const val PERIODIC = "edgar-periodic"
         private const val NOW = "check-now"
+        private const val LIVE = "check-live"
+        private const val FAST = "fast"
+        private val LOCK = Any()
 
         fun createChannel(ctx: Context) {
             val ch = NotificationChannel(CHANNEL, "New filings", NotificationManager.IMPORTANCE_DEFAULT)
@@ -553,6 +568,14 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         fun runNow(ctx: Context) {
             val req = OneTimeWorkRequestBuilder<CheckWorker>().setConstraints(network).build()
             WorkManager.getInstance(ctx).enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, req)
+        }
+
+        /** Live mode found new insider filings: read and notify just those, skipping everything slow. */
+        fun runFast(ctx: Context) {
+            val req = OneTimeWorkRequestBuilder<CheckWorker>()
+                .setInputData(androidx.work.workDataOf(FAST to true))
+                .setConstraints(network).build()
+            WorkManager.getInstance(ctx).enqueueUniqueWork(LIVE, ExistingWorkPolicy.KEEP, req)
         }
     }
 }

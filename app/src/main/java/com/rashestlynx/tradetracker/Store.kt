@@ -132,6 +132,16 @@ class Store(context: Context) {
         get() = prefs.getBoolean("background_on", true)
         set(v) = prefs.edit().putBoolean("background_on", v).apply()
 
+    /** Live mode: keeps checking for new insider filings every few seconds, even with the app closed. */
+    var liveOn: Boolean
+        get() = prefs.getBoolean("live_on", true)
+        set(v) = prefs.edit().putBoolean("live_on", v).apply()
+
+    /** Seconds between live checks. */
+    var liveSeconds: Int
+        get() = prefs.getInt("live_seconds", 1).coerceAtLeast(1)
+        set(v) = prefs.edit().putInt("live_seconds", v.coerceAtLeast(1)).apply()
+
     var bargoKey: String
         // The user's own Bargo key is built in (hourly Congress checks); a key saved in Settings replaces it.
         get() = (prefs.getString("bargo_key", "") ?: "").ifBlank { "fak_PAPE7zAnmQGjv-zKB7HlKR_tbVSP-cziSmE12TOfJ_6z" }

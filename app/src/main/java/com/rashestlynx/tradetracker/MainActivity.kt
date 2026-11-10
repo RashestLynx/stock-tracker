@@ -30,6 +30,8 @@ class MainActivity : ComponentActivity() {
         val store = Store(this)
         // Keep background checks scheduled (no-op if already scheduled).
         if (store.isSetUp && store.backgroundOn) CheckWorker.schedule(this)
+        // Live mode: checks every few seconds, even after the app is closed.
+        LiveService.start(this)
 
         setContent {
             AppTheme(store) { StockTrackerApp(store) }
