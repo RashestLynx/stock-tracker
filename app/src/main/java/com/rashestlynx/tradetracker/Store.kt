@@ -123,6 +123,11 @@ class Store(context: Context) {
     fun watching(c: Category): Boolean = prefs.getBoolean("watch_${c.id}", true)
     fun setWatching(c: Category, on: Boolean) = prefs.edit().putBoolean("watch_${c.id}", on).apply()
 
+    /** Filing notifications from the app itself (turn off once live alerts from the cloud checker are set up). */
+    var appNotify: Boolean
+        get() = prefs.getBoolean("app_notify", true)
+        set(v) = prefs.edit().putBoolean("app_notify", v).apply()
+
     var backgroundOn: Boolean
         get() = prefs.getBoolean("background_on", true)
         set(v) = prefs.edit().putBoolean("background_on", v).apply()

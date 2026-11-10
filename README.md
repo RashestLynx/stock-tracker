@@ -61,6 +61,8 @@ The first check loads recent filings into the app without sending notifications.
 - **Common picks** matches 13F holdings to tickers by company name using the SEC's official company list, so a few holdings may not match.
 - Senior federal officials and state legislators aren't included: their disclosures are PDFs with no live public feed.
 
+**Live alerts:** for notifications within a minute or two of each filing, 24/7 with your phone and PC off, set up the free cloud checker in [`cloud/`](cloud/README.md). It sends alerts through the free ntfy app on iPhone and Android.
+
 Both apps check for new filings when you open them and every 5 minutes while they're open, and send a notification for each new one.
 
 In the background, Android checks about every 15 minutes, with a backup alarm that's allowed to run while the phone is idle. If Android's battery saving is limiting the app, **Settings → Background checks** shows a button to allow it. On iPhone, iOS decides when background checks run (often every hour or few, less if you rarely open the app), and Background App Refresh must be on. Instant alerts on iPhone would need Apple push notifications, which require a paid Apple Developer account and a server.

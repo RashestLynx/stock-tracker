@@ -192,6 +192,19 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle(isOn: $model.appNotify) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Also alert from this app")
+                            Text("Notifications for new filings from the app's own checks.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Live alerts")
+                } footer: {
+                    Text("For alerts within a minute or two, around the clock, even with the app closed: set up the free cloud checker (see the cloud folder's README in the project) and the free ntfy app. Then turn this off so you don't get each alert twice.")
+                }
+
+                Section {
                     Button("Clear feed history", role: .destructive) { model.clearAlerts() }
                 }
 

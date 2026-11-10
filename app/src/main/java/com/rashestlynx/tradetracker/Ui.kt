@@ -1128,6 +1128,15 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
             NotificationHealth()
         }
 
+        var appNotify by remember { mutableStateOf(store.appNotify) }
+        Section("Live alerts",
+            "For alerts within a minute or two, around the clock, even with the app closed: set up the free cloud checker " +
+                "(see the cloud folder's README in the project) and the free ntfy app. Then turn this off so you don't get each alert twice.") {
+            SwitchRow("Also alert from this app", "Notifications for new filings from the app's own checks.", appNotify) {
+                appNotify = it; store.appNotify = it
+            }
+        }
+
         Section("History") {
             OutlinedButton(
                 onClick = { store.clearAlerts(); onMessage("Feed history cleared") },

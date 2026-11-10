@@ -36,6 +36,8 @@ final class AppModel: ObservableObject {
     @Published var openPerson: PersonTarget?
     @Published var showSettings = false
     @Published var newsAlerts: Bool { didSet { d.set(newsAlerts, forKey: "newsAlerts") } }
+    /// Filing notifications from the app itself (turn off once live alerts from the cloud checker are set up).
+    @Published var appNotify: Bool { didSet { d.set(appNotify, forKey: "appNotify") } }
     /// "system", "light" or "dark".
     @Published var appearance: String { didSet { d.set(appearance, forKey: "appearance") } }
     /// Tint the background green when the S&P 500 is up today, red when it's down.
@@ -68,6 +70,7 @@ final class AppModel: ObservableObject {
         let savedMassive = d.string(forKey: "massiveKey") ?? ""
         massiveKey = savedMassive.isEmpty ? "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" : savedMassive
         newsAlerts = d.object(forKey: "newsAlerts") as? Bool ?? true
+        appNotify = d.object(forKey: "appNotify") as? Bool ?? true
         appearance = d.string(forKey: "appearance") ?? "system"
         marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
         movers = Self.load("movers.json")
@@ -367,7 +370,7 @@ final class AppModel: ObservableObject {
         Self.save(alerts, "alerts.json")
         Self.save(seen, "seen.json")
         if !firstRun && notify {
-            await post(newAlerts)
+            if appNotify { await post(newAlerts) }
             for (name, v) in videosToPost.prefix(3) {
                 let c = UNMutableNotificationContent()
                 c.title = "\(name) posted a new video"

@@ -59,7 +59,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
 
         // Save and notify about new filings right away, before the slower history step.
         saveAll(newAlerts)
-        if (!firstRun) notifyAll(newAlerts)
+        if (!firstRun && store.appNotify) notifyAll(newAlerts)
 
         val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
         store.lastStatus = when {

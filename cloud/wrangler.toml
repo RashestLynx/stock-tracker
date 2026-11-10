@@ -1,0 +1,27 @@
+# Stock Tracker live alerts (Cloudflare Worker). Setup: see README.md.
+name = "stock-tracker-alerts"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+# Runs every minute, 24/7.
+[triggers]
+crons = ["* * * * *"]
+
+# Remembers which filings were already sent. setup.ps1 fills in the id.
+[[d1_databases]]
+binding = "DB"
+database_name = "stock-tracker-alerts"
+database_id = "REPLACE_WITH_DATABASE_ID"
+
+# What to alert on. Change these and run `npx wrangler deploy` again.
+[vars]
+# Any of: insiders, funds, charges, congress
+SECTIONS = "insiders,funds,charges,congress"
+# "open-market" = only real buys and sales; "all" = also grants, option exercises, gifts, tax withholding
+INSIDER_TRADES = "open-market"
+# Only alert on insider trades worth at least this many dollars (0 = any size)
+MIN_VALUE = "0"
+# Only these tickers, comma separated (empty = every stock), e.g. "NVDA,AAPL,TSLA"
+TICKERS = ""
+# "famous" = the funds and countries the app follows; "all" = every 13F filed (hundreds a day near deadlines)
+FUNDS = "famous"
