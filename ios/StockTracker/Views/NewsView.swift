@@ -22,13 +22,7 @@ struct NewsView: View {
         NavigationStack {
             List {
                 Section {
-                    Picker("View", selection: $view) {
-                        Text("Market").tag(0)
-                        Text("Your stocks").tag(1)
-                        Text("Filings").tag(2)
-                        Text("People").tag(3)
-                    }
-                    .pickerStyle(.segmented)
+                    PillTabs(options: [(0, "Market"), (1, "Your stocks"), (2, "Filings"), (3, "People")], selection: $view)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 } header: {
@@ -51,32 +45,39 @@ struct NewsView: View {
                 if view != 3 && loading && items.isEmpty { Section { ProgressView().frame(maxWidth: .infinity) } }
 
                 ForEach(view == 3 ? [] : Array(items.prefix(60))) { n in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Button {
-                            if let u = URL(string: n.url) { openURL(u) }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(n.source.isEmpty ? "News" : n.source).font(.caption.weight(.semibold))
-                                        .foregroundStyle(Color.accentColor).lineLimit(1)
-                                    Spacer()
-                                    Text(Format.ago(n.time)).font(.caption2).foregroundStyle(.secondary)
+                    // Each headline as a post: the source is the author.
+                    HStack(alignment: .top, spacing: 12) {
+                        Avatar(name: n.source.isEmpty ? "News" : n.source, size: 40)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Button {
+                                if let u = URL(string: n.url) { openURL(u) }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 4) {
+                                        Text(n.source.isEmpty ? "News" : n.source).font(.subheadline.weight(.bold)).lineLimit(1)
+                                        Text("· " + Format.ago(n.time)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Text(n.title).font(.body.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+                                    if !n.detail.isEmpty { Text(n.detail).font(.caption).foregroundStyle(.secondary) }
                                 }
-                                Text(n.title).font(.subheadline.weight(.semibold))
-                                if !n.detail.isEmpty { Text(n.detail).font(.caption).foregroundStyle(.secondary) }
+                                .contentShape(Rectangle())
                             }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.primary)
-                        if !n.ticker.isEmpty {
-                            Button("Summary of \(n.ticker)") {
-                                model.openStock = StockTarget(ticker: n.ticker, company: n.isFiling ? n.title : "")
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                            if !n.ticker.isEmpty {
+                                Button("$\(n.ticker)  ›") {
+                                    model.openStock = StockTarget(ticker: n.ticker, company: n.isFiling ? n.title : "")
+                                }
+                                .font(.subheadline.weight(.bold))
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Color(.secondarySystemFill), in: Capsule())
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Brand.accent)
+                                .padding(.top, 2)
                             }
-                            .buttonStyle(.borderless).font(.footnote.weight(.medium))
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                 }
 
                 Section {

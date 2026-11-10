@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.text.format.DateUtils
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -54,8 +55,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
@@ -107,6 +108,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -350,66 +352,56 @@ private fun FeedScreen(
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // First thing on screen: today's top buy and sale (or setup, before that).
-                if (!store.isSetUp) item { SetupCard(onSetup) }
+                if (!store.isSetUp) item { Box(Modifier.padding(horizontal = 16.dp)) { SetupCard(onSetup) } }
                 // Today's buy & sale lives on Home now.
                 // Section tabs stay pinned at the top while scrolling.
                 stickyHeader(key = "tabs") {
                     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
-                        ScrollableTabRow(selectedTabIndex = section, edgePadding = 0.dp,
-                            containerColor = MaterialTheme.colorScheme.background) {
-                            Category.entries.forEachIndexed { i, c ->
-                                val count = alerts.count { it.category == c }
-                                Tab(
-                                    selected = section == i,
-                                    onClick = { section = i; filter = "All" },
-                                    text = { Text(if (count > 0) "${c.label}  $count" else c.label) },
-                                )
-                            }
-                        }
+                        PillTabs(Category.entries.map { c ->
+                            val count = alerts.count { it.category == c }
+                            if (count > 0) "${c.label}  $count" else c.label
+                        }, section, { section = it; filter = "All" }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     }
                 }
-                item { SearchField(query, { query = it }, "Search ${category.label.lowercase()}") }
+                item { Box(Modifier.padding(horizontal = 16.dp)) { SearchField(query, { query = it }, "Search ${category.label.lowercase()}") } }
                 if (histStatus.isNotEmpty()) item {
-                    Text(histStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(histStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 if (category != Category.FUND && category != Category.CHARGES) {
                     item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TRADE_FILTERS.forEach { f ->
-                                FilterChip(
-                                    selected = filter == f,
-                                    onClick = { filter = f },
-                                    label = { Text(f) },
-                                )
-                            }
-                        }
+                        PillTabs(TRADE_FILTERS, TRADE_FILTERS.indexOf(filter), { filter = TRADE_FILTERS[it] },
+                            Modifier.padding(horizontal = 16.dp))
                     }
                 }
                 if (!store.watching(category)) {
                     item {
-                        EmptyState("${category.label} is turned off",
-                            "Turn it back on under Settings → Sections.")
+                        Box(Modifier.padding(horizontal = 16.dp)) {
+                            EmptyState("${category.label} is turned off", "Turn it back on under Settings → Sections.")
+                        }
                     }
                 } else if (shown.isEmpty()) {
                     item {
-                        EmptyState(
-                            if (inSection.isEmpty()) "No ${category.label.lowercase()} filings yet" else "Nothing matches",
-                            if (inSection.isEmpty()) sectionHint(category) else "Try a different search or filter.",
-                        )
+                        Box(Modifier.padding(horizontal = 16.dp)) {
+                            EmptyState(
+                                if (inSection.isEmpty()) "No ${category.label.lowercase()} filings yet" else "Nothing matches",
+                                if (inSection.isEmpty()) sectionHint(category) else "Try a different search or filter.",
+                            )
+                        }
                     }
                 }
                 items(shown, key = { it.key }) { a ->
-                    AlertCard(a, onOpen = {
+                    SavedPostItem(postOf(a, null), store, onStock = {
                         val price = moves.firstOrNull { it.key == a.key || it.key.startsWith(a.key + "|") }?.price ?: 0.0
                         onOpen(StockTarget(a.ticker, a.company, "This filing", a.headline, a.lines, a.link, price))
                     })
                 }
                 if (category == Category.SENATE || category == Category.HOUSE) {
-                    item { BargoCredit() }
+                    item { Box(Modifier.padding(horizontal = 16.dp)) { BargoCredit() } }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
@@ -422,7 +414,7 @@ private fun FeedScreen(
 @Composable
 private fun TodayCard(h: DailyHighlights, onOpen: (StockTarget) -> Unit) {
     var showInfo by rememberSaveable { mutableStateOf(false) }
-    ElevatedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
+    ModernCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -614,7 +606,7 @@ private fun AlertCard(a: Alert, onOpen: () -> Unit) {
         else -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
     }
 
-    ElevatedCard(
+    ModernCard(
         onClick = {
             // Stocks open a summary; fund reports (no single stock) open the filing.
             if (a.ticker.isNotEmpty() && !isFund) onOpen()
@@ -760,14 +752,7 @@ private fun PicksScreen(
             }
             item { SearchField(query, { query = it }, "Search ticker, company or person") }
             item {
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    PICK_FILTERS.forEach { f ->
-                        FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) })
-                    }
-                }
+                PillTabs(PICK_FILTERS, PICK_FILTERS.indexOf(filter), { filter = PICK_FILTERS[it] })
             }
             if (shown.isEmpty()) {
                 item {
@@ -798,7 +783,7 @@ private fun PickCard(rank: Int, o: Overlap, onSummary: () -> Unit) {
     val buyers = o.people.count { it.action == "buy" }
     val holders = o.people.size - buyers
 
-    ElevatedCard(
+    ModernCard(
         onClick = { expanded = !expanded },
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier.fillMaxWidth().animateContentSize(),
@@ -1049,7 +1034,7 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
             "Stock summaries get a button that opens the ticker in this app. If the app is installed it opens there, otherwise in the browser.") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 (Broker.CHOICES.map { it.name } + Broker.CUSTOM).forEach { n ->
-                    FilterChip(selected = broker == n, onClick = {
+                    FilterChip(shape = RoundedCornerShape(50), selected = broker == n, onClick = {
                         broker = n
                         Broker.set(store, n, customLink)
                     }, label = { Text(n) })
@@ -1467,15 +1452,7 @@ private fun MoversScreen(store: Store, onOpen: (StockTarget) -> Unit, onMessage:
             }
 
             item {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf("Whole market", "People you track").forEachIndexed { i, label ->
-                        SegmentedButton(
-                            selected = scope == i,
-                            onClick = { scope = i },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2),
-                        ) { Text(label) }
-                    }
-                }
+                PillTabs(listOf("Whole market", "People you track"), scope, { scope = it })
             }
 
             val r = result
@@ -1513,7 +1490,7 @@ private fun MoversScreen(store: Store, onOpen: (StockTarget) -> Unit, onMessage:
 private fun MoversList(title: String, list: List<Mover>, up: Boolean, onOpen: (StockTarget) -> Unit) {
     val accent = if (up) TradeColors.buy() else TradeColors.sell()
     val container = if (up) TradeColors.buyContainer() else TradeColors.sellContainer()
-    ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 12.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                 color = accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -1594,18 +1571,10 @@ private fun WsbScreen(store: Store, onOpen: (StockTarget) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf("r/wallstreetbets", "All stock subs").forEachIndexed { i, label ->
-                        SegmentedButton(selected = source == i, onClick = { source = i },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
-                    }
-                }
+                PillTabs(listOf("r/wallstreetbets", "All stock subs"), source, { source = it })
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = sort == 0, onClick = { sort = 0 }, label = { Text("Most talked about") })
-                    FilterChip(selected = sort == 1, onClick = { sort = 1 }, label = { Text("Spiking") })
-                }
+                PillTabs(listOf("Most talked about", "Spiking"), sort, { sort = it })
             }
             item {
                 Text(
@@ -1637,7 +1606,7 @@ private fun WsbScreen(store: Store, onOpen: (StockTarget) -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WsbRow(w: WsbStock, trackedBy: List<Category>, onClick: () -> Unit) {
-    ElevatedCard(onClick = onClick, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+    ModernCard(onClick = onClick, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("#${w.rank}", style = MaterialTheme.typography.titleSmall,
@@ -1882,15 +1851,10 @@ private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf("Market", "Stocks", "Filings", "People").forEachIndexed { i, label ->
-                        SegmentedButton(selected = view == i, onClick = { view = i; items = emptyList() },
-                            shape = SegmentedButtonDefaults.itemShape(i, 4)) { Text(label, maxLines = 1) }
-                    }
-                }
+                PillTabs(listOf("Market", "Stocks", "Filings", "People"), view, { view = it; items = emptyList() })
             }
             if (view == 3) {
                 item { FollowingList(store) }
@@ -1918,30 +1882,36 @@ private fun NewsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
             error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error) } }
             if (loading && items.isEmpty()) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             items(items.take(60), key = { it.key }) { n ->
-                ElevatedCard(
-                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.url))) },
-                    shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Each headline as a post: the source is the author.
+                Row(Modifier.fillMaxWidth().clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.url))) }
+                    .padding(vertical = 10.dp)) {
+                    Avatar(n.source.ifEmpty { "News" }, 40)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(n.source.ifEmpty { "News" }, style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(timeAgo(n.time), style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(n.source.ifEmpty { "News" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            Text("  ·  " + timeAgo(n.time), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
-                        Text(n.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(n.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                         if (n.detail.isNotEmpty()) {
                             Text(n.detail, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (n.ticker.isNotEmpty()) {
-                            TextButton(onClick = { onOpen(StockTarget(n.ticker, if (n.isFiling) n.title else "", "", "", emptyList(), "", 0.0)) }) {
-                                Text("Summary of ${n.ticker}")
+                            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(50)).clickable {
+                                    onOpen(StockTarget(n.ticker, if (n.isFiling) n.title else "", "", "", emptyList(), "", 0.0))
+                                }) {
+                                Text("$" + n.ticker + "  ›", Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             }
             item {
                 Text("Headlines from Google News; filings from SEC EDGAR. Tap a story to read it at the source.",
@@ -2021,7 +1991,7 @@ private fun FollowedCard(f: Followed, store: Store, onRemove: () -> Unit) {
     }
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
-    ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().animateContentSize()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TickerBadge(if (isFund(f)) fundBadge(f.name) else initials(f.name), MaterialTheme.colorScheme.tertiaryContainer,
@@ -2272,9 +2242,9 @@ private fun CryptoScreen(store: Store, onOpen: (StockTarget) -> Unit) {
                     listOf("BTC" to "Bitcoin", "ETH" to "Ethereum").forEachIndexed { i, (sym, label) ->
                         val p = prices[sym]
                         val up = (p?.change24h ?: 0.0) >= 0
-                        ElevatedCard(onClick = { coin = i }, shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f),
-                            colors = if (coin == i) CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                            else CardDefaults.elevatedCardColors()) {
+                        ModernCard(onClick = { coin = i }, shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f),
+                            colors = if (coin == i) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                            else CardDefaults.cardColors()) {
                             Column(Modifier.padding(14.dp)) {
                                 Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                                 Text(p?.let { String.format(java.util.Locale.US, "\$%,.0f", it.usd) } ?: "—",
@@ -2446,6 +2416,98 @@ private fun InsiderBlock(f: Followed, store: Store) {
 }
 
 
+// ============================================================ Shared modern components
+
+/** The app's card: soft tinted surface, thin outline, no shadow. */
+@Composable
+private fun ModernCard(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(24.dp),
+    onClick: (() -> Unit)? = null,
+    colors: CardColors? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val c = colors ?: CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+    if (onClick != null) Card(onClick = onClick, modifier = modifier, shape = shape, colors = c, border = border, content = content)
+    else Card(modifier = modifier, shape = shape, colors = c, border = border, content = content)
+}
+
+/** Pill-shaped tabs, like the feed switchers on social apps. Scrolls sideways when they don't fit. */
+@Composable
+private fun PillTabs(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEachIndexed { i, label ->
+            val on = i == selected
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (on) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable { onSelect(i) },
+            ) {
+                Text(label, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** A filing as a social-style post (shared by Home and Sections). */
+private fun postOf(a: Alert, followed: Followed?): Post {
+    val isFund = a.category == Category.FUND
+    val name = when (a.category) {
+        Category.FUND -> a.headline
+        Category.CHARGES -> "SEC Enforcement"
+        else -> cleanName(a.headline).substringBefore(", ")
+    }
+    val about = when (a.category) {
+        Category.SENATE -> "U.S. Senator" + a.headline.substringAfter(" · ", "").let { if (it.isNotEmpty()) " · $it" else "" }
+        Category.HOUSE -> "U.S. Representative" + a.headline.substringAfter(" · ", "").let { if (it.isNotEmpty()) " · $it" else "" }
+        Category.INSIDER -> listOf(a.headline.substringAfter(" · ", ""), a.company).filter { it.isNotBlank() }.joinToString(" at ")
+        Category.CHARGES -> a.company
+        else -> "Investment fund"
+    }
+    val text = when (a.category) {
+        Category.FUND -> "Filed new quarterly holdings. " + a.lines.joinToString(" · ")
+        Category.CHARGES -> (listOf(a.headline) + a.lines).joinToString("\n")
+        else -> a.lines.joinToString(" · ")
+    }
+    return Post(name, about, a.category, a.time, text, a.ticker, a.company, a.link,
+        if (a.category == Category.CHARGES) null else personOf(a), followed)
+}
+
+/** [PostItem] that keeps its own like and watchlist state (saved with the rest of the app's settings). */
+@Composable
+private fun SavedPostItem(p: Post, store: Store, onStock: () -> Unit) {
+    val context = LocalContext.current
+    val openPerson = LocalOpenPerson.current
+    var liked by remember(p.key) { mutableStateOf(p.key in store.prefs.getStringSet("liked_posts", emptySet())!!) }
+    var watching by remember(p.key) { mutableStateOf(p.ticker.isNotEmpty() && p.ticker.uppercase() in store.watchlist) }
+    PostItem(
+        p, liked = liked, watching = watching,
+        onAuthor = { p.person?.let(openPerson) },
+        onStock = onStock,
+        onLike = {
+            val set = store.prefs.getStringSet("liked_posts", emptySet())!!.toMutableSet()
+            if (!set.remove(p.key)) set.add(p.key)
+            store.prefs.edit().putStringSet("liked_posts", set).apply()
+            liked = p.key in set
+        },
+        onWatch = {
+            val t = p.ticker.uppercase()
+            store.watchlist = if (t in store.watchlist) store.watchlist - t else store.watchlist + t
+            watching = t in store.watchlist
+        },
+        onShare = {
+            val text = "${p.who}: ${p.text}" + (if (p.ticker.isNotEmpty()) " \$${p.ticker}" else "") +
+                (if (p.link.isNotEmpty()) "\n${p.link}" else "")
+            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, text), null))
+        },
+        onSource = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.link))) },
+    )
+}
+
 // ============================================================ Home: social-style feed
 
 /** One post in the Home feed. */
@@ -2612,19 +2674,7 @@ private fun HomeScreen(
     val byPerson = remember(tick, reload) { Following.load(store).filter { it.person.isNotEmpty() }.associateBy { it.person } }
     // Posts from the app's tracked filings (Congress, insiders, funds).
     val alertPosts = remember(tick, byPerson) {
-        store.alerts().filter { it.category != Category.CHARGES }.take(150).map { a ->
-            val isFund = a.category == Category.FUND
-            val name = if (isFund) a.headline else cleanName(a.headline).substringBefore(", ")
-            val about = when (a.category) {
-                Category.SENATE -> "U.S. Senator" + a.headline.substringAfter(" · ", "").let { if (it.isNotEmpty()) " · $it" else "" }
-                Category.HOUSE -> "U.S. Representative" + a.headline.substringAfter(" · ", "").let { if (it.isNotEmpty()) " · $it" else "" }
-                Category.INSIDER -> listOf(a.headline.substringAfter(" · ", ""), a.company).filter { it.isNotBlank() }.joinToString(" at ")
-                else -> "Investment fund"
-            }
-            Post(name, about, a.category, a.time,
-                if (isFund) "Filed new quarterly holdings. " + a.lines.joinToString(" · ") else a.lines.joinToString(" · "),
-                a.ticker, a.company, a.link, personOf(a), byPerson[a.person])
-        }
+        store.alerts().filter { it.category != Category.CHARGES }.take(150).map { a -> postOf(a, byPerson[a.person]) }
     }
 
     // Posts from people you follow, loaded live.
@@ -2712,13 +2762,8 @@ private fun HomeScreen(
 
             // Feed tabs, like "For you" / "Following" on social apps.
             item(key = "filters") {
-                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FEED_FILTERS.forEach { f ->
-                        FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f) },
-                            shape = RoundedCornerShape(50))
-                    }
-                }
+                PillTabs(FEED_FILTERS, FEED_FILTERS.indexOf(filter), { filter = FEED_FILTERS[it] },
+                    Modifier.padding(horizontal = 12.dp))
                 HorizontalDivider(Modifier.padding(top = 8.dp))
             }
 
@@ -2784,12 +2829,8 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            listOf("Movers", "Common picks", "WSB").forEachIndexed { i, label ->
-                SegmentedButton(selected = view == i, onClick = { view = i },
-                    shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label, maxLines = 1) }
-            }
-        }
+        PillTabs(listOf("Movers", "Common picks", "WSB"), view, { view = it },
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
             1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
@@ -2896,9 +2937,9 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 FilledTonalIconButton(onClick = { add() }) { Icon(Icons.Filled.Add, contentDescription = "Add") }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = sel == "", onClick = { sel = "" }, label = { Text("All (${list.size})") })
+                FilterChip(shape = RoundedCornerShape(50), selected = sel == "", onClick = { sel = "" }, label = { Text("All (${list.size})") })
                 groups.forEach { g ->
-                    FilterChip(selected = sel == g.name, onClick = { if (sel == g.name) editGroup = g.name else sel = g.name },
+                    FilterChip(shape = RoundedCornerShape(50), selected = sel == g.name, onClick = { if (sel == g.name) editGroup = g.name else sel = g.name },
                         label = { Text("${g.name} (${g.tickers.count { it in list }})") })
                 }
                 AssistChipLike("+ New group") { newGroup = "" }
@@ -2920,7 +2961,7 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                 onOpen = { onOpen(StockTarget(it, "", "", "", emptyList(), "", 0.0)) })
         }
         items(shown, key = { it }) { t ->
-            ElevatedCard(onClick = { onOpen(StockTarget(t, "", "", "", emptyList(), "", 0.0)) },
+            ModernCard(onClick = { onOpen(StockTarget(t, "", "", "", emptyList(), "", 0.0)) },
                 shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

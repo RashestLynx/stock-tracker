@@ -93,20 +93,9 @@ struct HomeView: View {
         var byPerson: [String: Followed] = [:]
         for f in follows { if let p = f.person, !p.isEmpty { byPerson[p] = f } }
         return model.alerts.filter { $0.category != .charges }.prefix(150).map { a in
-            let isFund = a.category == .fund
-            let name = isFund ? a.headline : (cleanName(a.headline).components(separatedBy: ", ").first ?? a.headline)
-            let after = a.headline.components(separatedBy: " · ").dropFirst().joined(separator: " · ")
-            let about: String
-            switch a.category {
-            case .senate: about = "U.S. Senator" + (after.isEmpty ? "" : " · \(after)")
-            case .house: about = "U.S. Representative" + (after.isEmpty ? "" : " · \(after)")
-            case .insider: about = [after, a.company].filter { !$0.isEmpty }.joined(separator: " at ")
-            default: about = "Investment fund"
-            }
-            return Post(who: name, about: about, category: a.category, time: a.time,
-                        text: (isFund ? "Filed new quarterly holdings. " : "") + a.lines.joined(separator: " · "),
-                        ticker: a.ticker, company: a.company, link: a.link, person: personOf(a),
-                        followed: a.person.flatMap { byPerson[$0] })
+            var p = postFrom(a)
+            p.followed = a.person.flatMap { byPerson[$0] }
+            return p
         }
     }
 
@@ -375,13 +364,8 @@ struct MarketsView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            Picker("View", selection: $view) {
-                Text("Movers").tag(0)
-                Text("Common picks").tag(1)
-                Text("WSB").tag(2)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal).padding(.vertical, 6)
+            PillTabs(options: [(0, "Movers"), (1, "Common picks"), (2, "WSB")], selection: $view)
+                .padding(.horizontal).padding(.vertical, 8)
             switch view {
             case 0: MoversView()
             case 1: PicksView()

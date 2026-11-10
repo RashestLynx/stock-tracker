@@ -26,11 +26,7 @@ struct MoversView: View {
                     }
                 } else {
                     Section {
-                        Picker("Show", selection: $scope) {
-                            Text("Whole market").tag(0)
-                            Text("People you track").tag(1)
-                        }
-                        .pickerStyle(.segmented)
+                        PillTabs(options: [(0, "Whole market"), (1, "People you track")], selection: $scope)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     } footer: {

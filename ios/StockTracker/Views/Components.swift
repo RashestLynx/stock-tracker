@@ -72,62 +72,157 @@ struct EmptyStateView: View {
     }
 }
 
+/// Pill-shaped tabs, like the feed switchers on social apps. Scrolls sideways when they don't fit.
+struct PillTabs<T: Hashable>: View {
+    let options: [(T, String)]
+    @Binding var selection: T
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(options, id: \.0) { o in
+                    Button { withAnimation(.snappy) { selection = o.0 } } label: {
+                        Text(o.1).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            .padding(.horizontal, 14).padding(.vertical, 7)
+                            .foregroundStyle(selection == o.0 ? Color(.systemBackground) : .primary)
+                            .background(selection == o.0 ? Color.primary : Color(.secondarySystemFill), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+/// A filing as a social-style post (shared by Home and Sections).
+func postFrom(_ a: Alert) -> Post {
+    let after = a.headline.components(separatedBy: " · ").dropFirst().joined(separator: " · ")
+    let name: String
+    let about: String
+    var text = a.lines.joined(separator: " · ")
+    switch a.category {
+    case .senate:
+        name = cleanName(a.headline).components(separatedBy: ", ").first ?? a.headline
+        about = "U.S. Senator" + (after.isEmpty ? "" : " · \(after)")
+    case .house:
+        name = cleanName(a.headline).components(separatedBy: ", ").first ?? a.headline
+        about = "U.S. Representative" + (after.isEmpty ? "" : " · \(after)")
+    case .insider:
+        name = cleanName(a.headline).components(separatedBy: ", ").first ?? a.headline
+        about = [after, a.company].filter { !$0.isEmpty }.joined(separator: " at ")
+    case .fund:
+        name = a.headline
+        about = "Investment fund"
+        text = "Filed new quarterly holdings. " + text
+    case .charges:
+        name = "SEC Enforcement"
+        about = a.company
+        text = ([a.headline] + a.lines).joined(separator: "\n")
+    }
+    return Post(who: name, about: about, category: a.category, time: a.time, text: text,
+                ticker: a.ticker, company: a.company, link: a.link,
+                person: a.category == .charges ? nil : personOf(a))
+}
+
+/// One filing in Sections, laid out like a social post: avatar, name and time, text, stock card, actions.
 struct AlertRow: View {
     let alert: Alert
     @Environment(\.openURL) private var openURL
     @EnvironmentObject var model: AppModel
-
-    private var badgeColor: Color {
-        if alert.category == .fund || alert.category == .charges { return alert.category.color }
-        if alert.buy && !alert.sell { return .green }
-        if alert.sell && !alert.buy { return .red }
-        return .gray
-    }
+    @State private var liked = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-        Button {
-            if !alert.ticker.isEmpty && alert.category != .fund {
-                let price = model.moves.first { $0.key == alert.key || $0.key.hasPrefix(alert.key + "|") }?.price
-                model.openStock = StockTarget(
-                    ticker: alert.ticker, company: alert.company, heading: "This filing",
-                    who: alert.headline, lines: alert.lines, link: alert.link, tradePrice: price)
-            } else if let url = URL(string: alert.link) {
-                openURL(url)
+        let p = postFrom(alert)
+        let watching = !p.ticker.isEmpty && model.watchlist.contains(p.ticker.uppercased())
+        HStack(alignment: .top, spacing: 12) {
+            Button { if let t = p.person { model.openPerson = t } } label: {
+                Avatar(name: p.who, size: 44, fund: alert.category == .fund)
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    TickerBadge(text: alert.category == .charges ? "SEC" : alert.category == .fund ? "13F" : (alert.ticker.isEmpty ? "—" : alert.ticker),
-                                color: badgeColor)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(alert.category == .fund || alert.category == .charges ? alert.headline
-                             : (alert.ticker.isEmpty ? alert.company : alert.ticker))
-                            .font(.headline).lineLimit(alert.category == .charges ? 3 : 1)
-                        Text(alert.company).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 6) {
+                Button { if let t = p.person { model.openPerson = t } } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(p.who).font(.subheadline.weight(.bold)).lineLimit(1)
+                            Image(systemName: "checkmark.seal.fill").font(.caption).foregroundStyle(alert.category.color)
+                            Text("· " + Format.ago(p.time)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Text([alert.category.label, p.about].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    Spacer(minLength: 8)
-                    Text(Format.ago(alert.time)).font(.caption2).foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                 }
-                if alert.category != .fund && alert.category != .charges {
-                    Text(alert.headline).font(.subheadline.weight(.medium))
+                .buttonStyle(.plain)
+
+                Text(p.text).font(.body)
+                    .foregroundStyle(p.text.hasPrefix("Bought") ? .green : p.text.hasPrefix("Sold") ? .red : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !p.ticker.isEmpty && alert.category != .fund {
+                    Button {
+                        let price = model.moves.first { $0.key == alert.key || $0.key.hasPrefix(alert.key + "|") }?.price
+                        model.openStock = StockTarget(
+                            ticker: alert.ticker, company: alert.company, heading: "This filing",
+                            who: alert.headline, lines: alert.lines, link: alert.link, tradePrice: price)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(String(p.ticker.prefix(4))).font(.caption.weight(.heavy)).foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(LinearGradient(colors: Brand.story, startPoint: .bottomLeading, endPoint: .topTrailing),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("$" + p.ticker).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                                if !p.company.isEmpty { Text(p.company).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                            }
+                            Spacer()
+                            Text("Chart").font(.caption.weight(.semibold)).foregroundStyle(Brand.accent)
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
-                ForEach(alert.lines, id: \.self) { TradeLine(line: $0) }
+
+                HStack {
+                    Button {
+                        var set = Set(UserDefaults.standard.stringArray(forKey: "likedPosts") ?? [])
+                        if set.contains(p.key) { set.remove(p.key) } else { set.insert(p.key) }
+                        UserDefaults.standard.set(Array(set), forKey: "likedPosts")
+                        withAnimation(.snappy) { liked = set.contains(p.key) }
+                    } label: {
+                        Image(systemName: liked ? "heart.fill" : "heart").foregroundStyle(liked ? Brand.like : .secondary)
+                            .symbolEffect(.bounce, value: liked)
+                    }
+                    Spacer()
+                    if !p.ticker.isEmpty {
+                        Button {
+                            let t = p.ticker.uppercased()
+                            if let i = model.watchlist.firstIndex(of: t) { model.watchlist.remove(at: i) } else { model.watchlist.append(t) }
+                        } label: {
+                            Image(systemName: watching ? "star.fill" : "star").foregroundStyle(watching ? Brand.accent : .secondary)
+                        }
+                        Spacer()
+                    }
+                    ShareLink(item: "\(p.who): \(p.text)" + (p.ticker.isEmpty ? "" : " $\(p.ticker)") + (p.link.isEmpty ? "" : "\n\(p.link)")) {
+                        Image(systemName: "square.and.arrow.up").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let u = URL(string: p.link), !p.link.isEmpty {
+                        Button { openURL(u) } label: {
+                            Label("Source", systemImage: "link").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .font(.title3)
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .padding(.trailing, 8)
             }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.primary)
-        if alert.category != .charges {
-            Button(alert.category == .fund ? "Fund profile" : "Investor profile") {
-                model.openPerson = personOf(alert)
-            }
-            .buttonStyle(.borderless)
-            .font(.footnote.weight(.medium))
-            .padding(.bottom, 4)
-        }
-        }
+        .padding(.vertical, 8)
+        .onAppear { liked = (UserDefaults.standard.stringArray(forKey: "likedPosts") ?? []).contains(p.key) }
     }
 }
 

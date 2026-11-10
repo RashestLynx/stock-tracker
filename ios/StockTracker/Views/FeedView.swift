@@ -32,20 +32,15 @@ struct FeedView: View {
                 // Today's buy & sale lives on Home now.
 
                 Section {
-                    Picker("Section", selection: $section) {
-                        ForEach(Category.allCases) { c in
-                            Text(c == .charges ? "SEC" : c.label).tag(c)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    PillTabs(options: Category.allCases.map { c in
+                        let n = model.alerts.filter { $0.category == c }.count
+                        return (c, (c == .charges ? "SEC" : c.label) + (n > 0 ? "  \(n)" : ""))
+                    }, selection: $section)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
 
                     if section != .fund && section != .charges {
-                        Picker("Show", selection: $filter) {
-                            ForEach(["All", "Buys", "Sells"], id: \.self) { Text($0).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
+                        PillTabs(options: ["All", "Buys", "Sells"].map { ($0, $0) }, selection: $filter)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
                     }
@@ -93,7 +88,7 @@ struct FeedView: View {
                     .listRowBackground(Color.clear)
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
             .marketBackground()
             .navigationTitle("Sections")
             .searchable(text: $query, prompt: "Search \(section.label.lowercased())")

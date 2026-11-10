@@ -19,18 +19,10 @@ struct WsbView: View {
         NavigationStack {
             List {
                 Section {
-                    Picker("Source", selection: $source) {
-                        Text("r/wallstreetbets").tag(0)
-                        Text("All stock subs").tag(1)
-                    }
-                    .pickerStyle(.segmented)
+                    PillTabs(options: [(0, "r/wallstreetbets"), (1, "All stock subs")], selection: $source)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    Picker("Sort", selection: $sort) {
-                        Text("Most talked about").tag(0)
-                        Text("Spiking").tag(1)
-                    }
-                    .pickerStyle(.segmented)
+                    PillTabs(options: [(0, "Most talked about"), (1, "Spiking")], selection: $sort)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
                 } footer: {
