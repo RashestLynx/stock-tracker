@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.text.format.DateUtils
+import kotlin.math.abs
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -2935,12 +2936,130 @@ private fun MarketsScreen(
             1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
             2 -> WsbScreen(store, onOpen = onOpen)
             3 -> CryptoScreen(store, onOpen = onOpen)
-            else -> PredictionsScreen()
+            else -> PredictionsTab(store)
         }
     }
 }
 
-// ============================================================ Prediction markets (Kalshi)
+// ============================================================ Prediction markets (Kalshi, Polymarket)
+
+@Composable
+private fun PredictionsTab(store: Store) {
+    var view by rememberSaveable { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        PillTabs(listOf("All markets", "NFL odds check"), view, { view = it },
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+        if (view == 0) PredictionsScreen() else NflOddsScreen(store)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NflOddsScreen(store: Store) {
+    val context = LocalContext.current
+    var result by remember { mutableStateOf<OddsResult?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var reloadToken by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(reloadToken) {
+        loading = true
+        error = null
+        val r = withContext(Dispatchers.IO) { runCatching { Odds.load(store, reloadToken > 0) } }
+        r.onSuccess { result = it }.onFailure { error = it.message ?: "Couldn't load NFL odds" }
+        loading = false
+    }
+
+    fun pct(v: Double?) = if (v == null) "–" else String.format(java.util.Locale.US, "%.0f%%", v * 100)
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Text("Each game's chance of the home team winning, from four sources. Sportsbooks are usually the " +
+                    "sharpest estimate. When Kalshi or Polymarket is several points away from them, one side of " +
+                    "that game is cheaper there. Gaps under about 3 points are mostly fees and noise.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            error?.let { e ->
+                item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+            val r = result
+            if (r != null && r.games.isEmpty()) {
+                item { Text("No NFL games in the next week.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (r != null) items(r.games.size) { i ->
+                val g = r.games[i]
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${g.away} at ${g.home}", style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(g.kickoff, style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("Chance the ${g.home} win", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            listOf("Sportsbooks" to g.books, "Kalshi" to g.kalshi,
+                                "Polymarket" to g.polymarket, "Math model" to g.model).forEach { (name, v) ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(pct(v), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(name, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        oddsNote(g)?.let { note ->
+                            Text(note, style = MaterialTheme.typography.bodySmall,
+                                color = if (g.gap >= 3) TradeColors.buy() else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (g.kalshiUrl.isNotEmpty()) OutlinedButton(onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(g.kalshiUrl)))
+                            }) { Text("Kalshi") }
+                            if (g.polymarketUrl.isNotEmpty()) OutlinedButton(onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(g.polymarketUrl)))
+                            }) { Text("Polymarket") }
+                        }
+                    }
+                }
+            }
+            if (r != null && r.tested > 0) {
+                item {
+                    Text(String.format(java.util.Locale.US,
+                        "How the math model has done: since 2023 it picked the winner in %.0f%% of %,d games. " +
+                            "The sportsbook favorite won %.0f%% of the same games, so trust the sportsbooks more " +
+                            "when the two disagree.", r.modelRight * 100, r.tested, r.booksRight * 100),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
+                Text("Game results and sportsbook lines from nflverse (free, open data). Odds are estimates, not " +
+                    "sure things. Only bet money you can afford to lose. Not financial advice.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** One plain-English line about the biggest disagreement, e.g. "Kalshi has the Giants 4 points higher…". */
+private fun oddsNote(g: OddsGame): String? {
+    val ref = g.books ?: return null
+    val (site, v) = listOfNotNull(g.kalshi?.let { "Kalshi" to it }, g.polymarket?.let { "Polymarket" to it })
+        .maxByOrNull { abs(it.second - ref) } ?: return "Not listed on Kalshi or Polymarket yet."
+    val pts = (v - ref) * 100
+    if (abs(pts) < 3) return "$site is in line with the sportsbooks."
+    val cheaper = if (pts > 0) g.away else g.home
+    return String.format(java.util.Locale.US, "%s has the %s %.0f points %s than the sportsbooks, so the %s are the cheaper side there.",
+        site, g.home, abs(pts), if (pts > 0) "higher" else "lower", cheaper)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

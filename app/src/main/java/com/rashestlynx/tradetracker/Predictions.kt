@@ -19,6 +19,7 @@ data class PredEvent(
     val outcomes: List<PredOutcome>, // most likely first, at most two
     val volume24: Double,        // traded in the last 24 hours (Kalshi: contracts, Polymarket: dollars)
     val move: Double,            // biggest one-day change in odds among its outcomes, signed
+    val count: Int = outcomes.size, // how many outcomes the event has in total (only the top two are kept)
 )
 
 /**
@@ -87,6 +88,12 @@ object Predictions {
                     }
                     outcomes.add(PredOutcome(label, p, change))
                 } else {
+                    // Game events also hold point-spread and over/under markets; keep only who wins.
+                    val kind = m.optString("sportsMarketType").lowercase(Locale.US)
+                    val q = m.optString("question").lowercase(Locale.US)
+                    if (kind.isNotEmpty() && kind != "moneyline") continue
+                    if (kind.isEmpty() && (Regex("\\d").containsMatchIn(q.replace("49ers", "")) ||
+                            "o/u" in q || "spread" in q || "total" in q)) continue
                     // e.g. a game with outcomes ["Bears", "Lions"]; the daily change is for the first one.
                     names.forEachIndexed { j, n ->
                         val p = prices[j]
@@ -116,6 +123,7 @@ object Predictions {
                 outcomes = outcomes.take(2),
                 volume24 = volume,
                 move = outcomes.mapNotNull { it.change }.maxByOrNull { abs(it) } ?: 0.0,
+                count = outcomes.size,
             ))
         }
         return out
@@ -180,6 +188,7 @@ object Predictions {
                 val prev = price(m, "previous_price")
                 volume += count(m, "volume_24h")
                 val label = m.optString("yes_sub_title").ifBlank { m.optString("subtitle") }.ifBlank { "Yes" }
+                if (label.equals("Tie", true) || label.equals("Draw", true)) continue // rare; would hide the game
                 outcomes.add(PredOutcome(label, prob, if (prev > 0 && prev < 1) prob - prev else null))
             }
             if (outcomes.isEmpty() || volume < 100) continue
@@ -200,6 +209,7 @@ object Predictions {
                 outcomes = outcomes.take(2),
                 volume24 = volume,
                 move = move,
+                count = outcomes.size,
             ))
         }
         return out

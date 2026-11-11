@@ -17,6 +17,7 @@ struct PredEvent: Identifiable {
     let outcomes: [PredOutcome] // most likely first, at most two
     let volume24: Double        // traded in the last 24 hours (Kalshi: contracts, Polymarket: dollars)
     let move: Double            // biggest one-day change in odds among its outcomes, signed
+    var count = 2               // how many outcomes the event has in total (only the top two are kept)
 }
 
 /// Live odds from Kalshi and Polymarket, both open to Illinois residents.
@@ -77,6 +78,12 @@ enum Predictions {
                     if label.isEmpty { label = markets.count == 1 ? "Yes" : (m["question"] as? String ?? "Yes") }
                     outcomes.append(PredOutcome(label: label, prob: p, change: change))
                 } else {
+                    // Game events also hold point-spread and over/under markets; keep only who wins.
+                    let kind = (m["sportsMarketType"] as? String ?? "").lowercased()
+                    let q = (m["question"] as? String ?? "").lowercased()
+                    if !kind.isEmpty && kind != "moneyline" { continue }
+                    if kind.isEmpty && (q.replacingOccurrences(of: "49ers", with: "").contains(where: \.isNumber)
+                        || q.contains("o/u") || q.contains("spread") || q.contains("total")) { continue }
                     // e.g. a game with outcomes ["Bears", "Lions"]; the daily change is for the first one.
                     for (j, n) in names.enumerated() {
                         let p = prices[j]
@@ -105,7 +112,8 @@ enum Predictions {
                 url: "https://polymarket.com/event/" + slug,
                 outcomes: Array(outcomes.prefix(2)),
                 volume24: volume,
-                move: outcomes.compactMap(\.change).max { abs($0) < abs($1) } ?? 0))
+                move: outcomes.compactMap(\.change).max { abs($0) < abs($1) } ?? 0,
+                count: outcomes.count))
         }
         return out
     }
@@ -171,6 +179,7 @@ enum Predictions {
                 var label = m["yes_sub_title"] as? String ?? ""
                 if label.isEmpty { label = m["subtitle"] as? String ?? "" }
                 if label.isEmpty { label = "Yes" }
+                if ["tie", "draw"].contains(label.lowercased()) { continue }   // rare; would hide the game
                 outcomes.append(PredOutcome(label: label, prob: prob, change: prev > 0 && prev < 1 ? prob - prev : nil))
             }
             if outcomes.isEmpty || volume < 100 { continue }
@@ -192,7 +201,8 @@ enum Predictions {
                 url: "https://kalshi.com/markets/" + series.lowercased(),
                 outcomes: Array(outcomes.prefix(2)),
                 volume24: volume,
-                move: move))
+                move: move,
+                count: outcomes.count))
         }
         return out
     }
@@ -219,11 +229,11 @@ enum Predictions {
         return (m[name] as? NSNumber)?.doubleValue ?? 0
     }
 
-    private static func get(_ url: String) async throws -> [String: Any] {
+    static func get(_ url: String) async throws -> [String: Any] {
         try JSONSerialization.jsonObject(with: try await getData(url)) as? [String: Any] ?? [:]
     }
 
-    private static func getData(_ url: String) async throws -> Data {
+    static func getData(_ url: String) async throws -> Data {
         guard let u = URL(string: url) else { throw AppError("Bad URL") }
         var req = URLRequest(url: u)
         req.setValue("StockTracker-iOS/1.0 (personal app)", forHTTPHeaderField: "User-Agent")

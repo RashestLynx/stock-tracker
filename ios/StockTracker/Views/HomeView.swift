@@ -371,7 +371,7 @@ struct MarketsView: View {
             case 1: PicksView()
             case 2: WsbView()
             case 3: CryptoView()
-            default: PredictionsView()
+            default: PredictionsTabView()
             }
         }
     }
