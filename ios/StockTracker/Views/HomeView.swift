@@ -404,6 +404,7 @@ struct WatchlistView: View {
     @State private var sel = ""            // "" = All
     @State private var followed: [Followed] = Following.load()
     @State private var whoMap: [String: [WhoEntry]]? = WhoTraded.cached(Following.load())
+    @State private var owned: [String: (units: Double?, value: Double)] = Accounts.owned()
     @State private var newName = ""
     @State private var showNew = false
     @State private var showEdit = false
@@ -506,6 +507,12 @@ struct WatchlistView: View {
         }
     }
 
+    static func shareText(_ v: Double) -> String {
+        v == v.rounded() ? Format.number(v) : String(format: "%.4f", v)
+            .replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+    }
+
     @ViewBuilder
     private func row(_ t: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -525,6 +532,13 @@ struct WatchlistView: View {
                             Text(prices[t].map { "$" + Format.number($0, decimals: 2) + " latest close" }
                                  ?? (loaded ? "Price unavailable" : "Price loading…"))
                                 .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let o = owned[t] {
+                            // Shares from your linked accounts; value at today's live price when there is one.
+                            let now = o.units.flatMap { u in live[t].map { u * $0.price } } ?? o.value
+                            Text((o.units.map { "You own \(Self.shareText($0)) shares · " } ?? "You own ")
+                                 + "$" + Format.number(now, decimals: 2))
+                                .font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
                         }
                     }
                     Spacer()

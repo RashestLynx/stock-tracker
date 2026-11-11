@@ -19,7 +19,7 @@ struct ContentView: View {
             FeedTabView()
                 .tabItem { Label("Feed", systemImage: "bell.fill") }
                 .tag(1)
-            WatchlistView()
+            WatchlistTabView()
                 .tabItem { Label("Watchlist", systemImage: "star.fill") }
                 .tag(5)
         }

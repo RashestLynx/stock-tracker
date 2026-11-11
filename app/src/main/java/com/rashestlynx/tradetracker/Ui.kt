@@ -275,7 +275,7 @@ fun StockTrackerApp(store: Store) {
             when (tab) {
                 TAB_HOME -> HomeScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
-                TAB_WATCH -> WatchlistScreen(store, tick, onOpen = { stock = it })
+                TAB_WATCH -> WatchlistTab(store, tick, onOpen = { stock = it })
                 TAB_MARKETS, TAB_MOVERS, TAB_PICKS, TAB_WSB -> MarketsScreen(store, tick, refreshing,
                     onRefresh = { checkNow() }, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_TOP30 -> ScoresScreen(store, onOpen = { stock = it })
@@ -3300,6 +3300,10 @@ private fun ScoresList(title: String, list: List<ScoredStock>, onOpen: (StockTar
 }
 
 
+private fun shareText(v: Double): String =
+    if (v == Math.floor(v)) String.format(java.util.Locale.US, "%,.0f", v)
+    else String.format(java.util.Locale.US, "%,.4f", v).trimEnd('0').trimEnd('.')
+
 private fun shareCount(v: Double): String = when {
     v >= 1e9 -> String.format(java.util.Locale.US, "%.2fB", v / 1e9)
     v >= 1e6 -> String.format(java.util.Locale.US, "%.1fM", v / 1e6)
@@ -3307,11 +3311,186 @@ private fun shareCount(v: Double): String = when {
 }
 
 
+// ============================================================ Watchlist and My accounts
+
+@Composable
+private fun WatchlistTab(store: Store, tick: Int, onOpen: (StockTarget) -> Unit) {
+    var view by rememberSaveable { mutableIntStateOf(0) }
+    var accountsTick by remember { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        PillTabs(listOf("Watchlist", "My accounts"), view, { view = it },
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
+        if (view == 0) WatchlistScreen(store, tick + accountsTick, onOpen)
+        else MyAccountsScreen(store, onOpen, onChanged = { accountsTick++ })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MyAccountsScreen(store: Store, onOpen: (StockTarget) -> Unit, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    var hasKey by remember { mutableStateOf(Accounts.hasKey(context)) }
+    var portfolio by remember { mutableStateOf<MyMoney?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reloadToken by remember { mutableIntStateOf(0) }
+    var clientInput by rememberSaveable { mutableStateOf("") }
+    var keyInput by rememberSaveable { mutableStateOf("") }
+    var manual by remember { mutableStateOf(Accounts.manual(context)) }
+    var mAccount by rememberSaveable { mutableStateOf("T. Rowe Price") }
+    var mName by rememberSaveable { mutableStateOf("") }
+    var mTicker by rememberSaveable { mutableStateOf("") }
+    var mValue by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(reloadToken, hasKey) {
+        loading = true
+        portfolio = withContext(Dispatchers.IO) { Accounts.load(context, reloadToken > 0) }
+        loading = false
+        onChanged()
+    }
+    val p = portfolio
+    val notes = remember(p) { if (p == null) emptyList() else Accounts.checkup(p, store.moves(), Scores.cached(store)) }
+    fun money(v: Double) = String.format(java.util.Locale.US, "\$%,.2f", v)
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (p != null && p.holdings.isNotEmpty()) {
+                item {
+                    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(money(p.total), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            p.holdings.groupBy { it.account }.forEach { (acct, list) ->
+                                Text("$acct: ${money(list.sumOf { it.value })}", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+            p?.error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
+            if (notes.isNotEmpty()) {
+                item {
+                    Section("Checkup", "Not advice: things worth knowing about what you own.") {
+                        notes.forEach { n ->
+                            Row(Modifier.fillMaxWidth().clickable(enabled = n.ticker.isNotEmpty()) {
+                                onOpen(StockTarget(n.ticker, "", "", "", emptyList(), "", 0.0))
+                            }) {
+                                Text(if (n.good) "✓ " else "! ", color = if (n.good) TradeColors.buy() else TradeColors.sell(),
+                                    fontWeight = FontWeight.Bold)
+                                Text(n.text, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            }
+            if (p != null && p.holdings.isNotEmpty()) {
+                val sorted = p.holdings.sortedByDescending { it.value }
+                items(sorted.size) { i ->
+                    val h = sorted[i]
+                    ModernCard(
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                        onClick = if (h.ticker.isNotEmpty()) ({ onOpen(StockTarget(h.ticker, h.name, "", "", emptyList(), "", 0.0)) }) else null,
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(h.ticker.ifEmpty { h.name }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text(listOfNotNull(h.name.takeIf { h.ticker.isNotEmpty() }, h.account,
+                                    h.units?.let { "${shareText(it)} shares" }).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(money(h.value), fontWeight = FontWeight.Bold)
+                                Text(String.format(java.util.Locale.US, "%.1f%% of total", h.value / p.total * 100),
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val c = h.cost; val u = h.units
+                                if (c != null && u != null && c > 0) {
+                                    val gain = h.value - c * u
+                                    Text(String.format(java.util.Locale.US, "%s%s (%+.0f%%)", if (gain >= 0) "+" else "-",
+                                        money(kotlin.math.abs(gain)), gain / (c * u) * 100),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (gain >= 0) TradeColors.buy() else TradeColors.sell())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Section("Robinhood", if (hasKey) "Linked, read-only. Pull down to refresh." else
+                    "Link it read-only through SnapTrade Personal, which is free for personal use. The app can see " +
+                        "what you own but can't trade or move money.") {
+                    if (!hasKey) {
+                        Text("1. Make a free SnapTrade Personal account and link Robinhood there.\n" +
+                            "2. In SnapTrade's dashboard, create a Personal API key.\n" +
+                            "3. Paste the Client ID and Consumer Key below. They're encrypted on this phone.",
+                            style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Accounts.SIGNUP)))
+                        }) { Text("Open SnapTrade") }
+                        OutlinedTextField(clientInput, { clientInput = it }, label = { Text("Client ID") },
+                            singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(keyInput, { keyInput = it }, label = { Text("Consumer Key") }, singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth())
+                        Button(enabled = clientInput.isNotBlank() && keyInput.isNotBlank(), onClick = {
+                            Accounts.saveKey(context, clientInput, keyInput)
+                            clientInput = ""; keyInput = ""
+                            hasKey = true
+                        }) { Text("Link") }
+                    } else {
+                        OutlinedButton(onClick = { Accounts.forgetKey(context); hasKey = false }) { Text("Unlink") }
+                    }
+                }
+            }
+            item {
+                Section("T. Rowe Price and other accounts",
+                    "T. Rowe Price can't be linked automatically, so type in each fund and its current value. " +
+                        "Update the values now and then from your statement.") {
+                    manual.forEachIndexed { i, m ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(m.name.ifBlank { m.ticker }, fontWeight = FontWeight.SemiBold)
+                                Text("${m.account}${if (m.ticker.isNotBlank()) " · ${m.ticker}" else ""} · ${money(m.value)}",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            TextButton(onClick = {
+                                manual = manual.filterIndexed { k, _ -> k != i }
+                                Accounts.saveManual(context, manual)
+                                reloadToken++
+                            }) { Text("Remove") }
+                        }
+                    }
+                    OutlinedTextField(mAccount, { mAccount = it }, label = { Text("Account") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(mName, { mName = it }, label = { Text("Fund name, e.g. Retirement 2055") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(mTicker, { mTicker = it.uppercase() }, label = { Text("Ticker, if it has one") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(mValue, { mValue = it }, label = { Text("Current value in dollars") }, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth())
+                    val v = mValue.replace(",", "").replace("$", "").toDoubleOrNull()
+                    Button(enabled = (mName.isNotBlank() || mTicker.isNotBlank()) && v != null && v > 0, onClick = {
+                        manual = manual + ManualHolding(mAccount.ifBlank { "Other" }, mName.trim(), mTicker.trim(), v!!, System.currentTimeMillis())
+                        Accounts.saveManual(context, manual)
+                        mName = ""; mTicker = ""; mValue = ""
+                        reloadToken++
+                    }) { Text("Add") }
+                }
+            }
+        }
+    }
+}
+
 // ============================================================ Watchlist
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Unit) {
+    val ownedCtx = LocalContext.current
+    val owned = remember(tick) { Accounts.owned(ownedCtx) }
     var list by remember { mutableStateOf(store.watchlist) }
     var groups by remember { mutableStateOf(store.loadGroups()) }
     val followed = remember { Following.load(store) }
@@ -3446,6 +3625,15 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                                 Text(prices[t]?.let { String.format(java.util.Locale.US, "\$%,.2f latest close", it) }
                                     ?: if (pricesLoaded) "Price unavailable" else "Price loading…",
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            owned[t]?.let { (units, value) ->
+                                // Shares from your linked accounts; value at today's live price when there is one.
+                                val now = if (units != null && q != null) units * q.price else value
+                                Text(
+                                    (if (units != null) String.format(java.util.Locale.US, "You own %s shares · ", shareText(units)) else "You own ") +
+                                        String.format(java.util.Locale.US, "\$%,.2f", now),
+                                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary)
                             }
                         }
                         if (groups.isNotEmpty()) {
