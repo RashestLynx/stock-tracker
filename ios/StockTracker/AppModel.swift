@@ -42,6 +42,11 @@ final class AppModel: ObservableObject {
     @Published var appNotify: Bool { didSet { d.set(appNotify, forKey: "appNotify") } }
     /// "system", "light" or "dark".
     @Published var appearance: String { didSet { d.set(appearance, forKey: "appearance") } }
+    /// Live price alerts while the market is open (watchlist and last night's strongest patterns).
+    @Published var priceAlertsOn: Bool { didSet { d.set(priceAlertsOn, forKey: "priceAlertsOn") } }
+    /// Recent price alerts, newest first.
+    @Published var priceAlertLog: [PriceAlert] = []
+    private var isCheckingPrices = false
     /// Ask for Face ID, Touch ID or the passcode to open the app.
     @Published var appLock: Bool { didSet { d.set(appLock, forKey: "appLock") } }
     /// Tint the background green when the S&P 500 is up today, red when it's down.
@@ -77,6 +82,8 @@ final class AppModel: ObservableObject {
         appNotify = d.object(forKey: "appNotify") as? Bool ?? true
         appearance = d.string(forKey: "appearance") ?? "system"
         appLock = d.object(forKey: "appLock") as? Bool ?? true
+        priceAlertsOn = d.object(forKey: "priceAlertsOn") as? Bool ?? true
+        priceAlertLog = Self.load("price_alerts.json") ?? []
         marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
         movers = Self.load("movers.json")
         scores = Self.load("scores.json")
@@ -117,7 +124,40 @@ final class AppModel: ObservableObject {
 
     // ---------------- checking ----------------
     /// `background`: iOS woke the app for a short check (about 30 seconds), so skip the slower history step.
+    /// One round of price checks (only while the market is open). Runs with every check and every few minutes on the Patterns screen.
+    func checkPrices(notify: Bool = true) async {
+        guard priceAlertsOn, PriceWatch.marketOpen(), !isCheckingPrices else { return }
+        isCheckingPrices = true
+        defer { isCheckingPrices = false }
+        let nightly: NightlyResult? = (try? await Nightly.load()) ?? Nightly.cached()
+        // Levels are from the last scan; ignore them if it's more than 4 days old.
+        let cutoff = Calendar.current.date(byAdding: .day, value: -5, to: Date()).map { x -> String in
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX"); return f.string(from: x) } ?? ""
+        let fresh = (nightly?.date ?? "") > cutoff
+        let day = PriceWatch.today()
+        var seenKeys = Set(d.stringArray(forKey: "priceSeen") ?? [])
+        var found: [PriceAlert] = []
+        let hasKey = !Live.key.isEmpty
+        for t in PriceWatch.targets(watchlist: watchlist, nightly: nightly) {
+            var q = await Live.quote(t)
+            if q == nil { q = await Live.yahooDay(t) }
+            guard let quote = q else { continue }
+            let s = fresh ? nightly?.stocks[t] : nil
+            for a in PriceWatch.rules(t, price: quote.price, changePct: quote.changePct, stock: s, day: day) where !seenKeys.contains(a.key) {
+                seenKeys.insert(a.key); found.append(a)
+            }
+            if hasKey { try? await Task.sleep(nanoseconds: 1_100_000_000) }   // stay under Finnhub's 60 a minute
+        }
+        guard !found.isEmpty else { return }
+        d.set(Array(seenKeys.filter { $0.hasSuffix(day) }), forKey: "priceSeen")
+        let keys = Set(found.map(\.key))
+        priceAlertLog = Array((found + priceAlertLog.filter { !keys.contains($0.key) }).prefix(40))
+        Self.save(priceAlertLog, "price_alerts.json")
+        if notify && appNotify { await PriceWatch.post(found) }
+    }
+
     func check(notify: Bool = true, background: Bool = false) async {
+        await checkPrices(notify: notify)
         guard isSetUp else { status = "Add your email in Settings to start"; return }
         guard !isChecking else { return }
         isChecking = true

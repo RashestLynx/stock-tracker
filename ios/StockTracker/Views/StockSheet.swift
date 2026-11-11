@@ -42,6 +42,7 @@ struct StockSheet: View {
                     }
                     .buttonStyle(.bordered)
                     PriceChartView(ticker: target.ticker, live: live)
+                    NightlyCard(ticker: target.ticker)
                     PatternsCard(ticker: target.ticker)
                     if summary == nil {
                         ProgressView().frame(maxWidth: .infinity)

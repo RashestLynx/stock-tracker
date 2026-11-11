@@ -211,6 +211,12 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle(isOn: $model.priceAlertsOn) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Price alerts")
+                            Text("While the market is open: your watchlist and last night's strongest patterns breaking a 20-day or 52-week high or low, or moving 5% in a day.").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     Toggle(isOn: $model.appNotify) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Notifications from this app")
