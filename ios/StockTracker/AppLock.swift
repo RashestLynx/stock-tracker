@@ -1,6 +1,11 @@
 import LocalAuthentication
 import SwiftUI
 
+enum AppLock {
+    /// True when the iPhone has a passcode (and so Face ID or Touch ID) set, which is what the app lock uses.
+    static var available: Bool { LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) }
+}
+
 /// Locks the app behind Face ID, Touch ID or the iPhone passcode. It locks when the app opens and again after a minute
 /// in the background, and covers the screen in the app switcher so balances don't show.
 struct LockGate<Content: View>: View {
@@ -12,11 +17,7 @@ struct LockGate<Content: View>: View {
     @State private var message = ""
     @State private var asking = false
 
-    private var lockOn: Bool { model.appLock && LockGate.available }
-
-    static var available: Bool {
-        LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
-    }
+    private var lockOn: Bool { model.appLock && AppLock.available }
 
     var body: some View {
         ZStack {

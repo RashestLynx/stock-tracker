@@ -143,7 +143,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    if LockGate.available {
+                    if AppLock.available {
                         Toggle(isOn: $model.appLock) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("App lock")

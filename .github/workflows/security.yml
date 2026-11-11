@@ -34,7 +34,7 @@ jobs:
         run: ./gitleaks git . --redact --no-banner --report-format json --report-path history.json --exit-code 0
 
       - name: Mobile app code checks
-        run: mobsfscan app/src ios --json -o mobsf.json || true
+        run: mobsfscan --config .mobsf app/src ios --json -o mobsf.json || true
 
       - name: Write the report
         run: |
