@@ -1381,6 +1381,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
 
             // ---- price ----
             PriceChartBlock(t.ticker, store, liveQ)
+            PatternsBlock(t.ticker, store)
             liveQ?.let { q ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).background(TradeColors.sell(), CircleShape))
@@ -4388,6 +4389,67 @@ private fun GroupCheckup(title: String, tickers: List<String>, live: Map<String,
     }
 }
 
+
+// ============================================================ Chart patterns
+
+@Composable
+private fun PatternsBlock(ticker: String, store: Store) {
+    var report by remember(ticker) { mutableStateOf<PatternReport?>(null) }
+    var error by remember(ticker) { mutableStateOf<String?>(null) }
+    var open by remember(ticker) { mutableStateOf(false) }
+    LaunchedEffect(ticker) {
+        withContext(Dispatchers.IO) { runCatching { Patterns.load(ticker, store) } }
+            .onSuccess { report = it }.onFailure { error = it.message ?: "Couldn't check patterns" }
+    }
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Patterns", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                val r = report
+                if (r != null) {
+                    val up = r.hits.count { it.mood > 0 }
+                    val down = r.hits.count { it.mood < 0 }
+                    Text("$up good · $down bad", style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            val r = report
+            when {
+                error != null -> Text(error!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                r == null -> Text("Checking the last 2 years of prices…", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> {
+                    val shown = if (open) r.hits else r.hits.take(3)
+                    shown.forEach { h ->
+                        Column {
+                            Row {
+                                Text(when { h.mood > 0 -> "▲ "; h.mood < 0 -> "▼ "; else -> "• " },
+                                    color = when { h.mood > 0 -> TradeColors.buy(); h.mood < 0 -> TradeColors.sell()
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant }, fontWeight = FontWeight.Bold)
+                                Text(h.name, fontWeight = FontWeight.SemiBold)
+                            }
+                            Text(h.what, style = MaterialTheme.typography.bodySmall)
+                            if (h.history.isNotEmpty()) Text(h.history, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (r.support != null || r.resistance != null) {
+                        Text(listOfNotNull(r.support?.let { String.format(java.util.Locale.US, "Support near \$%.2f", it) },
+                            r.resistance?.let { String.format(java.util.Locale.US, "resistance near \$%.2f", it) }).joinToString(" · ") +
+                            ": prices it has bounced off more than once in the past year.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (r.hits.size > 3) TextButton(onClick = { open = !open }, contentPadding = PaddingValues(0.dp)) {
+                        Text(if (open) "Show less" else "Show all ${r.hits.size}")
+                    }
+                    Text("Patterns are hints, not predictions. Research finds trend and momentum signals hold up best; " +
+                        "classic chart shapes are weaker. The history line shows how each one has actually worked for this stock.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
 
 // ============================================================ Price chart (Robinhood-style)
 
