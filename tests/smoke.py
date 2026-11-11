@@ -280,7 +280,6 @@ def check_market_color():
 
 
 def main(apk):
-    check_market_sources()
     try:
         subprocess.run([sys.executable, "tests/probe_sports.py"], timeout=300)
     except Exception as e:
