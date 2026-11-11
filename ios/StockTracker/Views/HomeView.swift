@@ -364,12 +364,29 @@ struct MarketsView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "Movers"), (1, "Common picks"), (2, "WSB")], selection: $view)
+            PillTabs(options: [(0, "Movers"), (1, "Common picks"), (2, "WSB"), (3, "Crypto")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 8)
             switch view {
             case 0: MoversView()
             case 1: PicksView()
-            default: WsbView()
+            case 2: WsbView()
+            default: CryptoView()
+            }
+        }
+    }
+}
+
+/// Filings and news in one tab.
+struct FeedTabView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var view = 0
+    var body: some View {
+        VStack(spacing: 0) {
+            PillTabs(options: [(0, "Filings"), (1, "News")], selection: $view)
+                .padding(.horizontal).padding(.vertical, 8)
+            switch view {
+            case 0: FeedView(goToSettings: { model.showSettings = true })
+            default: NewsView()
             }
         }
     }

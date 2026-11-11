@@ -16,6 +16,7 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **SEC charges**: SEC enforcement cases for illegal insider trading, from the SEC's official litigation and press release feeds
 - **WSB**: the most-discussed and fastest-spiking stocks on r/wallstreetbets and other stock subreddits (via ApeWisdom), flagged when people you track are in the same stock
 - **Today's buy & sale**: the first thing on the home screen, the day's most notable open-market buy and sale, ranked by size, who made it, and how many others also bought the stock
+- **Top 30**: every U.S. stock scored 0 to 100 three ways, showing the top 10 for **growth** (sales and profits rising fast), the top 10 for **income** (a 10-year dividend that's covered by cash and still growing) and the top 10 for **wealth** (steady, very profitable, low-debt compounders). Runs entirely on the phone, no cloud setup
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
 - **United States**: companies the U.S. government owns a stake in (Intel, MP Materials, Lithium Americas, USA Rare Earth, quantum and chip companies and more), shown on each stock's summary and kept in the Following list
@@ -56,6 +57,7 @@ The first check loads recent filings into the app without sending notifications.
 
 - **Insiders and funds**: SEC EDGAR. Form 4s are filed within 2 business days of a trade; 13Fs up to 45 days after each quarter ends.
 - **Congress**: the free [Bargo Congress Trades API](https://www.bargo.ai/free-apis/congress), built from official House Clerk and Senate eFD filings. Members have up to 45 days to disclose. Without a key, the app checks Congress about every 5 hours to stay inside the free limit (100 rows a day); a free Bargo key, entered in Settings, allows hourly checks.
+- **Top 30**: company financials from the SEC's free XBRL "frames" data (about 57 requests cover every U.S. company; kept on the phone for a week) and prices from Massive. Penny stocks, tiny or thinly traded companies, shells and obvious data errors are filtered out; a stock appears on one list only, with at most 3 per industry. Scores are a starting point for research, not financial advice.
 - **Movers**: end-of-day prices from Massive (formerly Polygon.io). Their free Basic plan is enough; paste the free API key into the app once.
 - **Stock summaries**: company profiles from the SEC and Wikipedia; latest delayed price from Stooq.
 - **Common picks** matches 13F holdings to tickers by company name using the SEC's official company list, so a few holdings may not match.

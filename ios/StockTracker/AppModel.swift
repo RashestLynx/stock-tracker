@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     @Published var bargoKey: String { didSet { d.set(bargoKey, forKey: "bargoKey") } }
     @Published var massiveKey: String { didSet { d.set(massiveKey, forKey: "massiveKey"); movers = nil } }
     @Published var movers: MoversResult?
+    @Published var scores: ScoresResult?
+    @Published var scoresProgress = ""
     @Published var status: String { didSet { d.set(status, forKey: "status") } }
     private var lastCongressCheck: Date { didSet { d.set(lastCongressCheck, forKey: "lastCongress") } }
 
@@ -74,6 +76,7 @@ final class AppModel: ObservableObject {
         appearance = d.string(forKey: "appearance") ?? "system"
         marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
         movers = Self.load("movers.json")
+        scores = Self.load("scores.json")
         status = d.string(forKey: "status") ?? "Not checked yet"
         lastCongressCheck = d.object(forKey: "lastCongress") as? Date ?? .distantPast
         alerts = Self.load("alerts.json") ?? []
@@ -452,6 +455,17 @@ final class AppModel: ObservableObject {
         let r = try await Movers.load(key: massiveKey, names: names, tracked: tracked)
         movers = r
         Self.save(r, "movers.json")
+    }
+
+    /// Loads the Top 30 scores (growth, income, wealth), cached for 12 hours unless forced.
+    func loadScores(force: Bool) async throws {
+        if !force, let s = scores, Date().timeIntervalSince(s.fetchedAt) < 12 * 3600 { return }
+        scoresProgress = ""
+        let r = try await Scores.load(key: massiveKey, ua: userAgent) { message in
+            Task { @MainActor in self.scoresProgress = message }
+        }
+        scores = r
+        Self.save(r, "scores.json")
     }
 
     private func tickerNames() async -> [String: String] {

@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var customLink = Broker.customTemplate
     @State private var newTicker = ""
     @State private var savedMessage: String?
+    @State private var showSources = false
 
     private let minValues: [(Double, String)] = [(0, "Any"), (10_000, "$10K"), (100_000, "$100K"), (1_000_000, "$1M")]
 
@@ -205,6 +206,12 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button("See all sources") { showSources = true }
+                } footer: {
+                    Text("Every data feed the app uses, and the article or filing behind each person's holdings.")
+                }
+
+                Section {
                     Button("Clear feed history", role: .destructive) { model.clearAlerts() }
                 }
 
@@ -215,6 +222,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $showSources) { SourcesView().environmentObject(model) }
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { model.showSettings = false } } }
             .onAppear {
                 email = model.userAgent

@@ -33,6 +33,11 @@ object Movers {
     private val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private var calls = 0
 
+    /** Starts a fresh count for the 5-requests-a-minute limit. */
+    fun resetCalls() { calls = 0 }
+
+    fun parseDay(date: String): java.util.Date = dayFmt.parse(date)!!
+
     /** Blocking: call from a background thread. */
     fun load(store: Store, force: Boolean): MoversResult {
         if (!force) cached(store)?.let { if (System.currentTimeMillis() - it.fetchedAt < CACHE_MS) return it }
@@ -79,7 +84,7 @@ object Movers {
     }
 
     /** Walks back from [from] to the first weekday that has data. Returns (date, ticker -> (close, volume)). */
-    private fun findDay(from: Calendar, key: String, maxTries: Int): Pair<String, Map<String, Pair<Double, Double>>>? {
+    fun findDay(from: Calendar, key: String, maxTries: Int): Pair<String, Map<String, Pair<Double, Double>>>? {
         val c = from.clone() as Calendar
         var tries = 0
         while (tries < maxTries) {

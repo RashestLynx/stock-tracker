@@ -9,24 +9,19 @@ struct ContentView: View {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
-            WatchlistView()
-                .tabItem { Label("Watchlist", systemImage: "star.fill") }
-                .tag(5)
-            FeedView(goToSettings: { model.showSettings = true })
-                .tabItem { Label("Sections", systemImage: "bell.fill") }
-                .tag(1)
-            NewsView()
-                .tabItem { Label("News", systemImage: "newspaper.fill") }
-                .tag(2)
-            CryptoView()
-                .tabItem { Label("Crypto", systemImage: "bitcoinsign.circle.fill") }
-                .tag(3)
+            // Five tabs: Crypto lives under Markets, News under Feed, and Sources under Settings.
+            ScoresView()
+                .tabItem { Label("Top 30", systemImage: "trophy.fill") }
+                .tag(7)
             MarketsView()
                 .tabItem { Label("Markets", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(4)
-            SourcesView()
-                .tabItem { Label("Sources", systemImage: "list.bullet.rectangle") }
-                .tag(6)
+            FeedTabView()
+                .tabItem { Label("Feed", systemImage: "bell.fill") }
+                .tag(1)
+            WatchlistView()
+                .tabItem { Label("Watchlist", systemImage: "star.fill") }
+                .tag(5)
         }
         .tint(Brand.accent)
         .preferredColorScheme(model.appearance == "dark" ? .dark : model.appearance == "light" ? .light : nil)

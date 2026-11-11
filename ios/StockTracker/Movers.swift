@@ -27,6 +27,9 @@ enum Movers {
     static let signupURL = "https://massive.com/pricing"
     private static var calls = 0
 
+    /// Starts a fresh count for the 5-requests-a-minute limit.
+    static func resetCalls() { calls = 0 }
+
     static func load(key: String, names: [String: String], tracked: Set<String>) async throws -> MoversResult {
         guard !key.isEmpty else { throw AppError("Add a free Massive key first") }
         calls = 0
@@ -61,7 +64,7 @@ enum Movers {
             fetchedAt: Date())
     }
 
-    private static let dayFormatter: DateFormatter = {
+    static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "America/New_York")
@@ -69,10 +72,10 @@ enum Movers {
         return f
     }()
 
-    private struct Day { let date: String; let data: [String: (close: Double, volume: Double)] }
+    struct Day { let date: String; let data: [String: (close: Double, volume: Double)] }
 
     /// Walks back from a date to the first weekday that has data.
-    private static func findDay(from start: Date, key: String, maxTries: Int) async throws -> Day? {
+    static func findDay(from start: Date, key: String, maxTries: Int) async throws -> Day? {
         let cal = Calendar(identifier: .gregorian)
         var day = start
         var tries = 0

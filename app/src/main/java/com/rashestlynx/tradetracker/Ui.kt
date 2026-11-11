@@ -149,6 +149,7 @@ private const val TAB_SOURCES = 10
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
+private const val TAB_TOP30 = 11
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,7 +212,8 @@ fun StockTrackerApp(store: Store) {
                                 TAB_HOME -> "Stock Tracker"
                                 TAB_MARKETS -> "Markets"
                                 TAB_WATCH -> "Watchlist"
-                                TAB_FEED -> "Sections"
+                                TAB_FEED -> "Feed"
+                                TAB_TOP30 -> "Top 30"
                                 TAB_MOVERS -> "This week's movers"
                                 TAB_WSB -> "WallStreetBets"
                                 TAB_NEWS -> "Live news"
@@ -250,23 +252,20 @@ fun StockTrackerApp(store: Store) {
             )
         },
         bottomBar = {
+            // Five tabs: Crypto lives under Markets, News under Feed, and Sources under Settings.
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_HOME, onClick = { tab = TAB_HOME },
-                    icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Home") }, alwaysShowLabel = false)
-                NavigationBarItem(selected = tab == TAB_WATCH, onClick = { tab = TAB_WATCH },
-                    icon = { Icon(Icons.Filled.Star, contentDescription = null) }, label = { Text("Watchlist") }, alwaysShowLabel = false)
-                NavigationBarItem(selected = tab == TAB_FEED, onClick = { tab = TAB_FEED },
-                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null) }, label = { Text("Sections") }, alwaysShowLabel = false)
-                NavigationBarItem(selected = tab == TAB_NEWS, onClick = { tab = TAB_NEWS },
-                    icon = { Icon(Icons.Filled.Info, contentDescription = null) }, label = { Text("News") }, alwaysShowLabel = false)
-                NavigationBarItem(selected = tab == TAB_CRYPTO, onClick = { tab = TAB_CRYPTO },
-                    icon = { Text("₿", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-                    label = { Text("Crypto") }, alwaysShowLabel = false)
-                NavigationBarItem(selected = tab == TAB_MARKETS || tab == TAB_MOVERS || tab == TAB_PICKS || tab == TAB_WSB,
+                    icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Home") })
+                NavigationBarItem(selected = tab == TAB_TOP30, onClick = { tab = TAB_TOP30 },
+                    icon = { Text("30", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                    label = { Text("Top 30") })
+                NavigationBarItem(selected = tab == TAB_MARKETS || tab == TAB_MOVERS || tab == TAB_PICKS || tab == TAB_WSB || tab == TAB_CRYPTO,
                     onClick = { tab = TAB_MARKETS },
-                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") }, alwaysShowLabel = false)
-                NavigationBarItem(selected = tab == TAB_SOURCES, onClick = { tab = TAB_SOURCES },
-                    icon = { Icon(Icons.Filled.List, contentDescription = null) }, label = { Text("Sources") }, alwaysShowLabel = false)
+                    icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") })
+                NavigationBarItem(selected = tab == TAB_FEED || tab == TAB_NEWS, onClick = { tab = TAB_FEED },
+                    icon = { Icon(Icons.Filled.Notifications, contentDescription = null) }, label = { Text("Feed") })
+                NavigationBarItem(selected = tab == TAB_WATCH, onClick = { tab = TAB_WATCH },
+                    icon = { Icon(Icons.Filled.Star, contentDescription = null) }, label = { Text("Watchlist") })
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -278,7 +277,8 @@ fun StockTrackerApp(store: Store) {
                 TAB_WATCH -> WatchlistScreen(store, tick, onOpen = { stock = it })
                 TAB_MARKETS, TAB_MOVERS, TAB_PICKS, TAB_WSB -> MarketsScreen(store, tick, refreshing,
                     onRefresh = { checkNow() }, onOpen = { stock = it }, onMessage = { message(it) })
-                TAB_FEED -> FeedScreen(store, tick, refreshing, onRefresh = { checkNow() },
+                TAB_TOP30 -> ScoresScreen(store, onOpen = { stock = it })
+                TAB_FEED -> FeedTab(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
                 TAB_CRYPTO -> CryptoScreen(store, onOpen = { stock = it })
                 TAB_NEWS -> NewsScreen(store, onOpen = { stock = it })
@@ -287,7 +287,7 @@ fun StockTrackerApp(store: Store) {
                 TAB_MOVERS -> MoversScreen(store, onOpen = { stock = it }, onMessage = { message(it) })
                 TAB_PICKS -> PicksScreen(store, tick, refreshing, onRefresh = { checkNow() },
                     onOpen = { stock = it })
-                else -> SettingsScreen(store, onMessage = { message(it) }, onReady = {
+                else -> SettingsScreen(store, onMessage = { message(it) }, onSources = { tab = TAB_SOURCES }, onReady = {
                     tab = TAB_HOME
                     checkNow()
                 })
@@ -869,7 +869,7 @@ private val MIN_VALUES = listOf(0.0 to "Any", 10_000.0 to "\$10K", 100_000.0 to 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: () -> Unit) {
+private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onSources: () -> Unit, onReady: () -> Unit) {
     val context = LocalContext.current
     var email by rememberSaveable { mutableStateOf(store.userAgent) }
     var bargoKey by rememberSaveable { mutableStateOf(store.bargoKey) }
@@ -1161,6 +1161,10 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onReady: (
             SwitchRow("Notifications from this app", "Turn off to stop all filing notifications from the app.", appNotify) {
                 appNotify = it; store.appNotify = it
             }
+        }
+
+        Section("Sources", "Every data feed the app uses, and the article or filing behind each person's holdings.") {
+            OutlinedButton(onClick = onSources) { Text("See all sources") }
         }
 
         Section("History") {
@@ -2924,12 +2928,164 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Movers", "Common picks", "WSB"), view, { view = it },
+        PillTabs(listOf("Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
             1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
-            else -> WsbScreen(store, onOpen = onOpen)
+            2 -> WsbScreen(store, onOpen = onOpen)
+            else -> CryptoScreen(store, onOpen = onOpen)
+        }
+    }
+}
+
+// ============================================================ Feed: filings and news together
+
+@Composable
+private fun FeedTab(
+    store: Store, tick: Int, refreshing: Boolean, onRefresh: () -> Unit,
+    onSetup: () -> Unit, onOpen: (StockTarget) -> Unit,
+) {
+    var view by rememberSaveable { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        PillTabs(listOf("Filings", "News"), view, { view = it },
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
+        when (view) {
+            0 -> FeedScreen(store, tick, refreshing, onRefresh = onRefresh, onSetup = onSetup, onOpen = onOpen)
+            else -> NewsScreen(store, onOpen = onOpen)
+        }
+    }
+}
+
+// ============================================================ Top 30: best-scoring stocks for growth, income and wealth
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScoresScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    var result by remember { mutableStateOf(Scores.cached(store)) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf("") }
+    var view by rememberSaveable { mutableIntStateOf(0) } // 0 growth, 1 income, 2 wealth
+    var reloadToken by remember { mutableIntStateOf(0) }
+    var force by remember { mutableStateOf(false) }
+
+    LaunchedEffect(reloadToken) {
+        loading = true
+        error = null
+        val r = withContext(Dispatchers.IO) { runCatching { Scores.load(store, force) { progress = it } } }
+        r.onSuccess { result = it }.onFailure { error = it.message ?: "Couldn't load the scores" }
+        force = false
+        loading = false
+    }
+
+    PullToRefreshBox(
+        isRefreshing = loading,
+        onRefresh = { force = true; reloadToken++ },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { PillTabs(listOf("Growth", "Income", "Wealth"), view, { view = it }) }
+            item {
+                Text(
+                    when (view) {
+                        0 -> "Growth: sales and profits rising fast, with the share price trending up."
+                        1 -> "Income: a solid dividend paid for 10 years, covered by cash, and still growing."
+                        else -> "Wealth: steady compounders. Very profitable, low debt, reliable growth year after year."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            if (loading) {
+                item {
+                    Text(
+                        if (result == null) "Scoring every U.S. stock. The first time takes a minute or two. $progress"
+                        else "Updating… $progress",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            error?.let { e ->
+                item {
+                    Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            val r = result
+            if (r != null) {
+                val list = when (view) { 0 -> r.growth; 1 -> r.income; else -> r.wealth }
+                val title = when (view) { 0 -> "Top 10 for growth"; 1 -> "Top 10 for income"; else -> "Top 10 for wealth" }
+                item { ScoresList(title, list, onOpen) }
+                item {
+                    Text(
+                        "Scored ${String.format(java.util.Locale.US, "%,d", r.screened)} U.S. companies using their " +
+                            "${r.fiscalYear} annual reports (SEC) and prices from ${r.priceDate} (Massive). " +
+                            "Each score is 0 to 100. A stock appears on one list only, with at most 3 per industry. " +
+                            "Pull down to refresh.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            item {
+                Text("Scores are made automatically from public filings and can contain errors or be out of date. " +
+                    "They are a starting point for research, not financial advice.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScoresList(title: String, list: List<ScoredStock>, onOpen: (StockTarget) -> Unit) {
+    val accent = TradeColors.buy()
+    val container = TradeColors.buyContainer()
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            if (list.isEmpty()) {
+                Text("No stocks passed every check this time.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp))
+            }
+            list.forEachIndexed { i, s ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(StockTarget(s.ticker, s.name, "", "", emptyList(), "", 0.0)) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${i + 1}", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(24.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(s.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(if (s.sector.isBlank()) s.name else "${s.name} · ${s.sector}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(s.facts.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+                        Surface(color = container, shape = RoundedCornerShape(50)) {
+                            Text("${s.score}", color = accent, fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
+                        Text(String.format(java.util.Locale.US, "\$%,.2f", s.price),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }
