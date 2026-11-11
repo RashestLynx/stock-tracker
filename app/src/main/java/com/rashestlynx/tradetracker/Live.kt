@@ -23,7 +23,30 @@ object Live {
      * Stooq's free delayed prices (no key needed). Blocking.
      */
     fun market(store: Store): LiveQuote? =
-        runCatching { quote("SPY", store) }.getOrNull() ?: runCatching { stooqDay("SPY") }.getOrNull()
+        runCatching { quote("SPY", store) }.getOrNull()
+            ?: runCatching { cboeDay("SPY") }.getOrNull()
+            ?: runCatching { yahooDay("SPY") }.getOrNull()
+            ?: runCatching { stooqDay("SPY") }.getOrNull()
+
+    /** Cboe's free 15-minute-delayed quote (no key). */
+    fun cboeDay(ticker: String): LiveQuote? {
+        val d = JSONObject(plain("https://cdn.cboe.com/api/global/delayed_quotes/quotes/${ticker.uppercase()}.json"))
+            .optJSONObject("data") ?: return null
+        val now = d.optDouble("current_price", 0.0)
+        val prev = d.optDouble("prev_day_close", 0.0)
+        if (now <= 0 || prev <= 0) return null
+        return LiveQuote(now, now - prev, (now / prev - 1) * 100, System.currentTimeMillis(), d.optDouble("open", 0.0), prev)
+    }
+
+    /** Yahoo Finance's public chart data (no key). */
+    fun yahooDay(ticker: String): LiveQuote? {
+        val meta = JSONObject(plain("https://query1.finance.yahoo.com/v8/finance/chart/${ticker.uppercase()}?range=1d&interval=1d"))
+            .optJSONObject("chart")?.optJSONArray("result")?.optJSONObject(0)?.optJSONObject("meta") ?: return null
+        val now = meta.optDouble("regularMarketPrice", 0.0)
+        val prev = meta.optDouble("chartPreviousClose", meta.optDouble("previousClose", 0.0))
+        if (now <= 0 || prev <= 0) return null
+        return LiveQuote(now, now - prev, (now / prev - 1) * 100, System.currentTimeMillis(), 0.0, prev)
+    }
 
     /** Today's change from Stooq: tries the quote with previous close, then the daily history, then open vs now. */
     fun stooqDay(ticker: String): LiveQuote? {

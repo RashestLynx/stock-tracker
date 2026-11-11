@@ -137,8 +137,28 @@ def tour(label):
 
 
 def check_market_sources():
-    """Reports which free market-price address works, for the green/red background without a key."""
-    import urllib.request
+    """Reports which free market-price address works, for the green/red background without a key.
+    Parses each one the same way the app does and prints today's S&P 500 move."""
+    import json, urllib.request
+
+    def get(url):
+        req = urllib.request.Request(url, headers={"User-Agent": "StockTracker-Android/2.0"})
+        return urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "replace")
+
+    try:
+        d = json.loads(get("https://cdn.cboe.com/api/global/delayed_quotes/quotes/SPY.json")).get("data", {})
+        now, prev = float(d.get("current_price") or 0), float(d.get("prev_day_close") or 0)
+        note(f"Market source Cboe -> " + (f"OK: SPY {now} vs {prev} ({(now / prev - 1) * 100:+.2f}%)" if now > 0 and prev > 0
+                                            else f"no usable price; keys: {list(d)[:15]}"))
+    except Exception as e:
+        note(f"Market source Cboe -> failed: {e}")
+    try:
+        meta = json.loads(get("https://query1.finance.yahoo.com/v8/finance/chart/SPY?range=1d&interval=1d"))["chart"]["result"][0]["meta"]
+        now, prev = float(meta.get("regularMarketPrice") or 0), float(meta.get("chartPreviousClose") or meta.get("previousClose") or 0)
+        note(f"Market source Yahoo -> " + (f"OK: SPY {now} vs {prev} ({(now / prev - 1) * 100:+.2f}%)" if now > 0 and prev > 0
+                                             else f"no usable price; keys: {list(meta)[:15]}"))
+    except Exception as e:
+        note(f"Market source Yahoo -> failed: {e}")
     for url in ("https://stooq.com/q/l/?s=spy.us&f=sd2t2ohlcp&h&e=csv",
                 "https://stooq.com/q/d/l/?s=spy.us&i=d",
                 "https://stooq.com/q/l/?s=spy.us&f=sd2t2oc&h&e=csv"):

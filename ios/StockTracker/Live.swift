@@ -17,7 +17,39 @@ enum Live {
     /// otherwise Stooq's free delayed prices (no key needed). Mirrors Live.market on Android.
     static func market() async -> LiveQuote? {
         if let q = await quote("SPY") { return q }
+        if let q = await cboeDay("SPY") { return q }
+        if let q = await yahooDay("SPY") { return q }
         return await stooqDay("SPY")
+    }
+
+    private static func json(_ url: String) async -> [String: Any]? {
+        guard let u = URL(string: url) else { return nil }
+        var req = URLRequest(url: u)
+        req.setValue("StockTracker-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              ((resp as? HTTPURLResponse)?.statusCode ?? 0) / 100 == 2 else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    private static func dbl(_ v: Any?) -> Double { (v as? NSNumber)?.doubleValue ?? Double(v as? String ?? "") ?? 0 }
+
+    /// Cboe's free 15-minute-delayed quote (no key).
+    static func cboeDay(_ ticker: String) async -> LiveQuote? {
+        guard let d = await json("https://cdn.cboe.com/api/global/delayed_quotes/quotes/\(ticker.uppercased()).json")?["data"] as? [String: Any] else { return nil }
+        let now = dbl(d["current_price"]), prev = dbl(d["prev_day_close"])
+        guard now > 0, prev > 0 else { return nil }
+        return LiveQuote(price: now, change: now - prev, changePct: (now / prev - 1) * 100, open: dbl(d["open"]), prevClose: prev)
+    }
+
+    /// Yahoo Finance's public chart data (no key).
+    static func yahooDay(_ ticker: String) async -> LiveQuote? {
+        guard let chart = await json("https://query1.finance.yahoo.com/v8/finance/chart/\(ticker.uppercased())?range=1d&interval=1d")?["chart"] as? [String: Any],
+              let meta = (chart["result"] as? [[String: Any]])?.first?["meta"] as? [String: Any] else { return nil }
+        let now = dbl(meta["regularMarketPrice"])
+        var prev = dbl(meta["chartPreviousClose"])
+        if prev <= 0 { prev = dbl(meta["previousClose"]) }
+        guard now > 0, prev > 0 else { return nil }
+        return LiveQuote(price: now, change: now - prev, changePct: (now / prev - 1) * 100, prevClose: prev)
     }
 
     /// Today's change from Stooq: tries the quote with previous close, then the daily history, then open vs now.
