@@ -1,5 +1,17 @@
 # Stock Tracker
 
+## Layout
+
+Five tabs, each with one row of views at most:
+
+- **Home**: today's biggest buy and sale, and the latest filings
+- **Markets**: Top 30, Movers, Common picks, WSB, Crypto
+- **Predictions**: All markets, NFL odds check, My picks
+- **Feed**: Filings (each group in its own section) and News
+- **Portfolio**: Watchlist, My accounts, Track record
+
+Settings (the gear at the top) has your keys, alerts, app lock, appearance and the list of Sources.
+
 ## Download
 
 - **Android:** [TradeTracker.apk](https://github.com/RashestLynx/stock-tracker/releases/download/latest/TradeTracker.apk)
@@ -17,9 +29,9 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **WSB**: the most-discussed and fastest-spiking stocks on r/wallstreetbets and other stock subreddits (via ApeWisdom), flagged when people you track are in the same stock
 - **Today's buy & sale**: the first thing on the home screen, the day's most notable open-market buy and sale, ranked by size, who made it, and how many others also bought the stock
 - **Top 30**: every U.S. stock scored 0 to 100 three ways, showing the top 10 for **growth** (sales and profits rising fast), the top 10 for **income** (a 10-year dividend that's covered by cash and still growing) and the top 10 for **wealth** (steady, very profitable, low-debt compounders). Runs entirely on the phone, no cloud setup
-- **Predictions** (under Markets): live odds from Kalshi and Polymarket, both open in Illinois, for sports, politics and economics. Sorted by today's biggest moves or by trading volume; tap one to open it on that site. FanDuel and DraftKings don't publish their odds, so they aren't shown. **Log a pick** on any market and **My picks** follows it until it settles, then compares how many you won with how many the market's odds said you would, the fair test of whether you're beating the market. **NFL odds check** puts each upcoming game's chances side by side from the sportsbooks, Kalshi, Polymarket and a simple rating model built from open nflverse data, flags where the markets disagree, and shows the model's track record against the sportsbooks
-- **My accounts** (in the Watchlist tab): Robinhood linked read-only through SnapTrade Personal (free; your key stays encrypted on your phone), plus T. Rowe Price or any other funds typed in by hand. Shows your total, each holding's share of it and gain or loss, and a checkup that flags too much money in one stock, idle cash, big losses, insiders selling what you own, and holdings on the Top 30. Watchlist rows show how many shares you own
-- **Before you buy / Track record**: tapping "Open in Robinhood" first shows a quick check (how much you already own, Top 30 score, what insiders did lately) and lets you log the buy with your reason. Track record (in the Watchlist tab) grades every logged buy against the S&P 500 over the same days, so you can see whether your picks actually beat an index fund
+- **Predictions** (its own tab): live odds from Kalshi and Polymarket, both open in Illinois, for sports, politics and economics. Sorted by today's biggest moves or by trading volume; tap one to open it on that site. FanDuel and DraftKings don't publish their odds, so they aren't shown. **Log a pick** on any market and **My picks** follows it until it settles, then compares how many you won with how many the market's odds said you would, the fair test of whether you're beating the market. **NFL odds check** puts each upcoming game's chances side by side from the sportsbooks, Kalshi, Polymarket and a simple rating model built from open nflverse data, flags where the markets disagree, and shows the model's track record against the sportsbooks
+- **My accounts** (in the Portfolio tab): Robinhood linked read-only through SnapTrade Personal (free; your key stays encrypted on your phone), plus T. Rowe Price or any other funds typed in by hand. Shows your total, each holding's share of it and gain or loss, and a checkup that flags too much money in one stock, idle cash, big losses, insiders selling what you own, and holdings on the Top 30. Watchlist rows show how many shares you own
+- **Before you buy / Track record**: tapping "Open in Robinhood" first shows a quick check (how much you already own, Top 30 score, what insiders did lately) and lets you log the buy with your reason. Track record (in the Portfolio tab) grades every logged buy against the S&P 500 over the same days, so you can see whether your picks actually beat an index fund
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
 - **United States**: companies the U.S. government owns a stake in (Intel, MP Materials, Lithium Americas, USA Rare Earth, quantum and chip companies and more), shown on each stock's summary and kept in the Following list

@@ -6,6 +6,7 @@ struct ScoresView: View {
     @State private var view = 0   // 0 growth, 1 income, 2 wealth
     @State private var loading = false
     @State private var error: String?
+    @State private var keyInput = ""
 
     private var blurb: String {
         switch view {
@@ -26,6 +27,20 @@ struct ScoresView: View {
     var body: some View {
         NavigationStack {
             List {
+                if model.massiveKey.isEmpty {
+                    Section {
+                        Text("Top 30 scores every U.S. stock using SEC filings and daily prices from Massive (formerly Polygon.io). Their free plan works: sign up, copy your API key and paste it here. It's saved on this iPhone only.")
+                        Link("Get a free key", destination: URL(string: Movers.signupURL)!)
+                        SecureField("Paste API key", text: $keyInput)
+                        Button("Save and score stocks") {
+                            model.massiveKey = keyInput.trimmingCharacters(in: .whitespaces)
+                            Task { await load(force: true) }
+                        }
+                        .disabled(keyInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                    } header: {
+                        Text("One-time setup")
+                    }
+                }
                 Section {
                     PillTabs(options: [(0, "Growth"), (1, "Income"), (2, "Wealth")], selection: $view)
                         .listRowBackground(Color.clear)
@@ -109,7 +124,7 @@ struct ScoresView: View {
     }
 
     private func load(force: Bool) async {
-        if loading { return }
+        if loading || model.massiveKey.isEmpty { return }
         loading = true
         error = nil
         do { try await model.loadScores(force: force) } catch { self.error = error.localizedDescription }

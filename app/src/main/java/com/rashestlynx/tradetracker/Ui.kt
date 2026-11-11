@@ -150,7 +150,7 @@ private const val TAB_SOURCES = 10
 private const val TAB_MOVERS = 1
 private const val TAB_PICKS = 2
 private const val TAB_SETTINGS = 3
-private const val TAB_TOP30 = 11
+private const val TAB_PRED = 11
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,9 +212,9 @@ fun StockTrackerApp(store: Store) {
                             when (tab) {
                                 TAB_HOME -> "Stock Tracker"
                                 TAB_MARKETS -> "Markets"
-                                TAB_WATCH -> "Watchlist"
+                                TAB_WATCH -> "Portfolio"
                                 TAB_FEED -> "Feed"
-                                TAB_TOP30 -> "Top 30"
+                                TAB_PRED -> "Predictions"
                                 TAB_MOVERS -> "This week's movers"
                                 TAB_WSB -> "WallStreetBets"
                                 TAB_NEWS -> "Live news"
@@ -253,20 +253,22 @@ fun StockTrackerApp(store: Store) {
             )
         },
         bottomBar = {
-            // Five tabs: Crypto lives under Markets, News under Feed, and Sources under Settings.
+            // Five tabs, each with one row of views at most:
+            // Markets (Top 30, Movers, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
+            // Portfolio (Watchlist, My accounts, Track record). Sources is in Settings.
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_HOME, onClick = { tab = TAB_HOME },
                     icon = { Icon(Icons.Filled.Home, contentDescription = null) }, label = { Text("Home") })
-                NavigationBarItem(selected = tab == TAB_TOP30, onClick = { tab = TAB_TOP30 },
-                    icon = { Text("30", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
-                    label = { Text("Top 30") })
                 NavigationBarItem(selected = tab == TAB_MARKETS || tab == TAB_MOVERS || tab == TAB_PICKS || tab == TAB_WSB || tab == TAB_CRYPTO,
                     onClick = { tab = TAB_MARKETS },
                     icon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) }, label = { Text("Markets") })
+                NavigationBarItem(selected = tab == TAB_PRED, onClick = { tab = TAB_PRED },
+                    icon = { Text("%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+                    label = { Text("Predictions") })
                 NavigationBarItem(selected = tab == TAB_FEED || tab == TAB_NEWS, onClick = { tab = TAB_FEED },
                     icon = { Icon(Icons.Filled.Notifications, contentDescription = null) }, label = { Text("Feed") })
                 NavigationBarItem(selected = tab == TAB_WATCH, onClick = { tab = TAB_WATCH },
-                    icon = { Icon(Icons.Filled.Star, contentDescription = null) }, label = { Text("Watchlist") })
+                    icon = { Icon(Icons.Filled.Star, contentDescription = null) }, label = { Text("Portfolio") })
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -278,7 +280,7 @@ fun StockTrackerApp(store: Store) {
                 TAB_WATCH -> WatchlistTab(store, tick, onOpen = { stock = it })
                 TAB_MARKETS, TAB_MOVERS, TAB_PICKS, TAB_WSB -> MarketsScreen(store, tick, refreshing,
                     onRefresh = { checkNow() }, onOpen = { stock = it }, onMessage = { message(it) })
-                TAB_TOP30 -> ScoresScreen(store, onOpen = { stock = it })
+                TAB_PRED -> PredictionsTab(store)
                 TAB_FEED -> FeedTab(store, tick, refreshing, onRefresh = { checkNow() },
                     onSetup = { tab = TAB_SETTINGS }, onOpen = { stock = it })
                 TAB_CRYPTO -> CryptoScreen(store, onOpen = { stock = it })
@@ -2943,14 +2945,14 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Movers", "Common picks", "WSB", "Crypto", "Predictions"), view, { view = it },
+        PillTabs(listOf("Top 30", "Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
-            0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
-            2 -> WsbScreen(store, onOpen = onOpen)
-            3 -> CryptoScreen(store, onOpen = onOpen)
-            else -> PredictionsTab(store)
+            0 -> ScoresScreen(store, onOpen = onOpen)
+            1 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
+            2 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            3 -> WsbScreen(store, onOpen = onOpen)
+            else -> CryptoScreen(store, onOpen = onOpen)
         }
     }
 }
@@ -2962,7 +2964,7 @@ private fun PredictionsTab(store: Store) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
         PillTabs(listOf("All markets", "NFL odds check", "My picks"), view, { view = it },
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> PredictionsScreen()
             1 -> NflOddsScreen(store)
@@ -3348,6 +3350,26 @@ private fun FeedTab(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScoresScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    var hasKey by remember { mutableStateOf(store.massiveKey.isNotBlank()) }
+    var keyInput by rememberSaveable { mutableStateOf("") }
+    if (!hasKey) {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Section("One-time setup",
+                "Top 30 scores every U.S. stock using SEC filings and daily prices from Massive (formerly Polygon.io). " +
+                    "Their free plan works: sign up, copy your API key and paste it here. It's saved on this phone only.") {
+                OutlinedButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://massive.com/pricing")))
+                }) { Text("Get a free key") }
+                OutlinedTextField(keyInput, { keyInput = it }, label = { Text("Paste API key") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
+                Button(enabled = keyInput.isNotBlank(), onClick = { store.massiveKey = keyInput; hasKey = true }) {
+                    Text("Save and score stocks")
+                }
+            }
+        }
+        return
+    }
     var result by remember { mutableStateOf(Scores.cached(store)) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

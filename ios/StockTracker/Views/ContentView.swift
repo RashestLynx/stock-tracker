@@ -9,18 +9,20 @@ struct ContentView: View {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
-            // Five tabs: Crypto lives under Markets, News under Feed, and Sources under Settings.
-            ScoresView()
-                .tabItem { Label("Top 30", systemImage: "trophy.fill") }
-                .tag(7)
+            // Five tabs, each with one row of views at most:
+            // Markets (Top 30, Movers, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
+            // Portfolio (Watchlist, My accounts, Track record). Sources is in Settings.
             MarketsView()
                 .tabItem { Label("Markets", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(4)
+            PredictionsTabView()
+                .tabItem { Label("Predictions", systemImage: "percent") }
+                .tag(7)
             FeedTabView()
                 .tabItem { Label("Feed", systemImage: "bell.fill") }
                 .tag(1)
             WatchlistTabView()
-                .tabItem { Label("Watchlist", systemImage: "star.fill") }
+                .tabItem { Label("Portfolio", systemImage: "star.fill") }
                 .tag(5)
         }
         .tint(Brand.accent)

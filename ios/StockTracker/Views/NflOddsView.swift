@@ -6,7 +6,7 @@ struct PredictionsTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             PillTabs(options: [(0, "All markets"), (1, "NFL odds check"), (2, "My picks")], selection: $view)
-                .padding(.horizontal).padding(.vertical, 4)
+                .padding(.horizontal).padding(.vertical, 8)
             switch view {
             case 0: PredictionsView()
             case 1: NflOddsView()

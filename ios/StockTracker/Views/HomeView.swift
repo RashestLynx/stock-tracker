@@ -359,19 +359,19 @@ struct HomeView: View {
     }
 }
 
-/// Watchlist, Movers, Common picks and WSB in one tab.
+/// Top 30, Movers, Common picks, WSB and Crypto in one tab.
 struct MarketsView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "Movers"), (1, "Common picks"), (2, "WSB"), (3, "Crypto"), (4, "Predictions")], selection: $view)
+            PillTabs(options: [(0, "Top 30"), (1, "Movers"), (2, "Common picks"), (3, "WSB"), (4, "Crypto")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 8)
             switch view {
-            case 0: MoversView()
-            case 1: PicksView()
-            case 2: WsbView()
-            case 3: CryptoView()
-            default: PredictionsTabView()
+            case 0: ScoresView()
+            case 1: MoversView()
+            case 2: PicksView()
+            case 3: WsbView()
+            default: CryptoView()
             }
         }
     }
