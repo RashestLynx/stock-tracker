@@ -2928,13 +2928,100 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
+        PillTabs(listOf("Movers", "Common picks", "WSB", "Crypto", "Predictions"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
             1 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
             2 -> WsbScreen(store, onOpen = onOpen)
-            else -> CryptoScreen(store, onOpen = onOpen)
+            3 -> CryptoScreen(store, onOpen = onOpen)
+            else -> PredictionsScreen()
+        }
+    }
+}
+
+// ============================================================ Prediction markets (Kalshi)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PredictionsScreen() {
+    val context = LocalContext.current
+    var events by remember { mutableStateOf<List<PredEvent>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var category by rememberSaveable { mutableIntStateOf(0) } // 0 all, 1 sports, 2 politics, 3 economics
+    var sort by rememberSaveable { mutableIntStateOf(0) }     // 0 biggest moves, 1 most traded
+    var reloadToken by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(reloadToken) {
+        loading = true
+        error = null
+        val r = withContext(Dispatchers.IO) { runCatching { Predictions.load(reloadToken > 0) } }
+        r.onSuccess { events = it }.onFailure { error = it.message ?: "Couldn't load prediction markets" }
+        loading = false
+    }
+
+    val cats = listOf("All", "Sports", "Politics", "Economics")
+    val shown = events
+        .filter { category == 0 || it.category == cats[category] }
+        .sortedByDescending { if (sort == 0) kotlin.math.abs(it.move) else it.volume24 }
+        .take(25)
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { PillTabs(cats, category, { category = it }) }
+            item { PillTabs(listOf("Biggest moves today", "Most traded"), sort, { sort = it }) }
+            item {
+                Text("Live odds from Kalshi, a federally regulated prediction market open in Illinois. " +
+                    "A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            error?.let { e ->
+                item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+            if (!loading && error == null && shown.isEmpty()) {
+                item { Text("Nothing to show yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            items(shown.size) { i ->
+                val ev = shown[i]
+                ModernCard(
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ev.url))) },
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(ev.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        ev.outcomes.forEach { o ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(o.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                o.change?.takeIf { kotlin.math.abs(it) >= 0.01 }?.let { c ->
+                                    Text(String.format(java.util.Locale.US, "%+.0f today", c * 100),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (c > 0) TradeColors.buy() else TradeColors.sell(),
+                                        modifier = Modifier.padding(end = 8.dp))
+                                }
+                                Text(String.format(java.util.Locale.US, "%.0f%%", o.prob * 100),
+                                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Text("${ev.category} · ${String.format(java.util.Locale.US, "%,.0f", ev.volume24)} contracts traded today",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
+                Text("Odds are the crowd's estimate, not a sure thing. Prediction markets are risky; only trade money you can afford to lose. Not financial advice.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

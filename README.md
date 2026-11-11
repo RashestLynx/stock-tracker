@@ -17,6 +17,7 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **WSB**: the most-discussed and fastest-spiking stocks on r/wallstreetbets and other stock subreddits (via ApeWisdom), flagged when people you track are in the same stock
 - **Today's buy & sale**: the first thing on the home screen, the day's most notable open-market buy and sale, ranked by size, who made it, and how many others also bought the stock
 - **Top 30**: every U.S. stock scored 0 to 100 three ways, showing the top 10 for **growth** (sales and profits rising fast), the top 10 for **income** (a 10-year dividend that's covered by cash and still growing) and the top 10 for **wealth** (steady, very profitable, low-debt compounders). Runs entirely on the phone, no cloud setup
+- **Predictions** (under Markets): live odds from Kalshi, the federally regulated prediction market open in Illinois, for sports, politics and economics. Sorted by today's biggest moves or by trading volume; tap one to open it in Kalshi
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
 - **United States**: companies the U.S. government owns a stake in (Intel, MP Materials, Lithium Americas, USA Rare Earth, quantum and chip companies and more), shown on each stock's summary and kept in the Following list

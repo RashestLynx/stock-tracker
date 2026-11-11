@@ -364,13 +364,14 @@ struct MarketsView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "Movers"), (1, "Common picks"), (2, "WSB"), (3, "Crypto")], selection: $view)
+            PillTabs(options: [(0, "Movers"), (1, "Common picks"), (2, "WSB"), (3, "Crypto"), (4, "Predictions")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 8)
             switch view {
             case 0: MoversView()
             case 1: PicksView()
             case 2: WsbView()
-            default: CryptoView()
+            case 3: CryptoView()
+            default: PredictionsView()
             }
         }
     }
