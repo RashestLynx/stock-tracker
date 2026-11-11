@@ -67,6 +67,52 @@ def find(root, text):
     return None
 
 
+def find_prefix(root, prefix):
+    if root is None:
+        return None
+    for n in root.iter("node"):
+        t = n.get("text") or ""
+        if t.startswith(prefix) and n.get("clickable") in ("true", None):
+            m = re.findall(r"\d+", n.get("bounds", ""))
+            if len(m) == 4:
+                x1, y1, x2, y2 = map(int, m)
+                return (x1 + x2) // 2, (y1 + y2) // 2
+    # Text inside a button isn't clickable itself; tapping its middle still hits the button.
+    for n in root.iter("node"):
+        t = n.get("text") or ""
+        if t.startswith(prefix):
+            m = re.findall(r"\d+", n.get("bounds", ""))
+            if len(m) == 4:
+                x1, y1, x2, y2 = map(int, m)
+                return (x1 + x2) // 2, (y1 + y2) // 2
+    return None
+
+
+def check_bet_sheet(label):
+    """Opens Log a pick → Yes on the first market, checks the How much? screen, then cancels."""
+    root = screen()
+    if find(root, "Log a pick") is None:
+        note(f"{label}: no market with 'Log a pick' on screen, so the bet screen wasn't checked")
+        return
+    if not tap("Log a pick", f"{label} / All markets"):
+        return
+    pos = find_prefix(screen(), "Yes ")
+    if pos is None:
+        fail(f"{label}: 'Log a pick' didn't show Yes/No choices. Visible: {', '.join(texts(screen())[:20])}")
+        return
+    adb("shell", "input", "tap", str(pos[0]), str(pos[1]))
+    time.sleep(3)
+    if not check_ok(f"{label} / Log a pick → Yes"):
+        return
+    root = screen()
+    if find(root, "How much?") is None:
+        fail(f"{label}: the How much? screen didn't open. Visible: {', '.join(texts(root)[:20])}")
+        return
+    shown = " | ".join(t for t in texts(root) if "edge" in t.lower() or "If it" in t or "budget" in t.lower())
+    note(f"{label}: How much? screen opened: {shown[:250]}")
+    tap("Cancel", f"{label} / How much?", wait=2)
+
+
 def texts(root):
     return [] if root is None else [n.get("text") for n in root.iter("node") if n.get("text")]
 
@@ -133,6 +179,9 @@ def tour(label):
         for v in inner:
             if not tap(v, f"{label} / {tab}", wait=5, row=inner):
                 return
+            if tab == "Predictions" and v == "All markets" and label == "No screen lock":
+                time.sleep(8)  # let the markets load
+                check_bet_sheet(label)
     note(f"{label}: opened every tab and view without crashing")
 
 
