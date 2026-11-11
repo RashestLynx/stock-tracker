@@ -59,7 +59,13 @@ object AppLock {
     }
 
     /** Shows the system unlock prompt on Android 9+. Returns false when the caller should use the older screen. */
-    fun prompt(activity: Activity, onOk: () -> Unit, onFail: (String) -> Unit): Boolean {
+    fun prompt(activity: Activity, onOk: () -> Unit, onFail: (String) -> Unit): Boolean = try {
+        show(activity, onOk, onFail)
+    } catch (_: Exception) {
+        false // never let the lock crash the app; fall back to the phone's confirm-lock screen
+    }
+
+    private fun show(activity: Activity, onOk: () -> Unit, onFail: (String) -> Unit): Boolean {
         if (Build.VERSION.SDK_INT < 28) return false
         val builder = BiometricPrompt.Builder(activity)
             .setTitle("Unlock Stock Tracker")
@@ -99,10 +105,15 @@ fun LockGate(store: Store, content: @Composable () -> Unit) {
         message = ""
         val shown = AppLock.prompt(a, onOk = { unlocked = true }, onFail = { message = it })
         if (!shown) {
-            @Suppress("DEPRECATION")
-            val intent: Intent? = (a.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager)
-                .createConfirmDeviceCredentialIntent("Unlock Stock Tracker", "Confirm your screen lock")
-            if (intent != null) legacy.launch(intent) else unlocked = true
+            try {
+                @Suppress("DEPRECATION")
+                val intent: Intent? = (a.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager)
+                    .createConfirmDeviceCredentialIntent("Unlock Stock Tracker", "Confirm your screen lock")
+                if (intent != null) legacy.launch(intent) else unlocked = true
+            } catch (_: Exception) {
+                // No way to ask for the screen lock on this phone: open rather than lock you out.
+                unlocked = true
+            }
         }
     }
 
