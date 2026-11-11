@@ -30,15 +30,7 @@ struct StockSheet: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    if let url = Broker.link(target.ticker) {
-                        Button {
-                            openURL(url)
-                        } label: {
-                            Label("Open \(target.ticker) in \(Broker.name)", systemImage: "arrow.up.forward.app")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+                    BuyButton(ticker: target.ticker, prominent: true)
                     let watching = model.watchlist.contains(target.ticker.uppercased())
                     Button {
                         if watching { model.watchlist.removeAll { $0 == target.ticker.uppercased() } }

@@ -5,9 +5,13 @@ struct WatchlistTabView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "Watchlist"), (1, "My accounts")], selection: $view)
+            PillTabs(options: [(0, "Watchlist"), (1, "My accounts"), (2, "Track record")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 8)
-            if view == 0 { WatchlistView() } else { MyAccountsView() }
+            switch view {
+            case 0: WatchlistView()
+            case 1: MyAccountsView()
+            default: TrackRecordView()
+            }
         }
     }
 }

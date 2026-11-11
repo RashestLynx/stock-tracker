@@ -1365,11 +1365,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
                 }
             }
 
-            Broker.link(store, t.ticker)?.let { url ->
-                Button(onClick = { open(url) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Open ${t.ticker} in ${Broker.name(store)}")
-                }
-            }
+            BuyButton(store, t.ticker, prominent = true)
             var watching by remember(t.ticker) { mutableStateOf(t.ticker.uppercase() in store.watchlist) }
             OutlinedButton(onClick = {
                 store.watchlist = if (watching) store.watchlist - t.ticker.uppercase() else store.watchlist + t.ticker.uppercase()
@@ -3336,10 +3332,13 @@ private fun WatchlistTab(store: Store, tick: Int, onOpen: (StockTarget) -> Unit)
     var view by rememberSaveable { mutableIntStateOf(0) }
     var accountsTick by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Watchlist", "My accounts"), view, { view = it },
+        PillTabs(listOf("Watchlist", "My accounts", "Track record"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
-        if (view == 0) WatchlistScreen(store, tick + accountsTick, onOpen)
-        else MyAccountsScreen(store, onOpen, onChanged = { accountsTick++ })
+        when (view) {
+            0 -> WatchlistScreen(store, tick + accountsTick, onOpen)
+            1 -> MyAccountsScreen(store, onOpen, onChanged = { accountsTick++ })
+            else -> TrackRecordScreen(store, onOpen)
+        }
     }
 }
 
@@ -3497,6 +3496,150 @@ private fun MyAccountsScreen(store: Store, onOpen: (StockTarget) -> Unit, onChan
                         reloadToken++
                     }) { Text("Add") }
                 }
+            }
+        }
+    }
+}
+
+// ============================================================ Before you buy, and your track record
+
+/**
+ * "Open in Robinhood", with a quick look first: how much you already own, Top 30 score, and what insiders did.
+ * You can log the buy (with your reason) so Track record can grade it against the S&P 500.
+ */
+@Composable
+private fun BuyButton(store: Store, ticker: String, prominent: Boolean) {
+    val context = LocalContext.current
+    val url = Broker.link(store, ticker) ?: return
+    val scope = rememberCoroutineScope()
+    var show by remember { mutableStateOf(false) }
+    var reason by remember(ticker) { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf("") }
+    fun open() = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    if (prominent) {
+        Button(onClick = { show = true }, modifier = Modifier.fillMaxWidth()) { Text("Open $ticker in ${Broker.name(store)}") }
+    } else {
+        TextButton(onClick = { show = true }, contentPadding = PaddingValues(0.dp)) { Text("Open in ${Broker.name(store)}") }
+    }
+    if (show) {
+        val check = remember(ticker) { Journal.check(context, store, ticker) }
+        AlertDialog(
+            onDismissRequest = { show = false },
+            title = { Text("Before you buy $ticker") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    check.lines.forEach { (good, line) ->
+                        Row {
+                            Text(if (good) "✓ " else "! ", color = if (good) TradeColors.buy() else TradeColors.sell(), fontWeight = FontWeight.Bold)
+                            Text(line, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    OutlinedTextField(reason, { reason = it }, label = { Text("Why are you buying? (optional)") },
+                        modifier = Modifier.fillMaxWidth())
+                    if (note.isNotEmpty()) Text(note, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(enabled = !saving, onClick = {
+                    saving = true
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) { Journal.logBuy(context, store, ticker, reason) }
+                        saving = false
+                        if (ok) { show = false; reason = ""; note = ""; open() } else note = "Couldn't get today's price to log it. Try again, or just open."
+                    }
+                }) { Text(if (saving) "Logging…" else "Log it & open") }
+            },
+            dismissButton = { TextButton(onClick = { show = false; open() }) { Text("Just open") } },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrackRecordScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var record by remember { mutableStateOf<TrackRecord?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reloadToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reloadToken) {
+        loading = true
+        record = withContext(Dispatchers.IO) { Journal.grade(context, store) }
+        loading = false
+    }
+    fun pct(v: Double?) = if (v == null) "–" else String.format(java.util.Locale.US, "%+.1f%%", v * 100)
+    val dayFmt = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US) }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val r = record
+            item {
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Your picks vs the S&P 500", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        if (r == null || r.count == 0) {
+                            Text("Nothing logged yet. When you tap \"Open in ${Broker.name(store)}\" on a stock, choose " +
+                                "\"Log it & open\" and it shows up here, graded against the S&P 500 over the same days.",
+                                style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                listOf("Your average" to pct(r.avg), "S&P 500" to pct(r.spyAvg),
+                                    "Beat it" to "${r.wins} of ${r.count}").forEach { (label, v) ->
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(v, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Text(when {
+                                r.count < 10 -> "Too early to judge. A fair test needs 10 or more picks held for several months."
+                                r.avg > r.spyAvg -> "So far you're ahead of simply buying an S&P 500 index fund. Keep logging to see if it lasts."
+                                else -> "So far an S&P 500 index fund would have done better. That's true for most stock pickers, " +
+                                    "including professionals, which is why index funds are a strong default."
+                            }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            if (r != null) items(r.graded.size) { i ->
+                val g = r.graded[i]
+                ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                    onClick = { onOpen(StockTarget(g.pick.ticker, "", "", "", emptyList(), "", 0.0)) }) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(g.pick.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f))
+                            Text(pct(g.ret), fontWeight = FontWeight.Bold,
+                                color = if ((g.ret ?: 0.0) >= 0) TradeColors.buy() else TradeColors.sell())
+                        }
+                        Text("Logged ${dayFmt.format(java.util.Date(g.pick.id))} at " +
+                            String.format(java.util.Locale.US, "\$%,.2f", g.pick.price) +
+                            (g.pick.soldAt?.let { " · sold ${dayFmt.format(java.util.Date(it))}" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("S&P 500 over the same time: ${pct(g.spyRet)}" + when (g.beat) {
+                            true -> " · you beat it"; false -> " · it beat you"; null -> "" },
+                            style = MaterialTheme.typography.bodySmall)
+                        if (g.pick.reason.isNotBlank()) Text("Why: ${g.pick.reason}", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (g.pick.soldAt == null) TextButton(onClick = {
+                                scope.launch { withContext(Dispatchers.IO) { Journal.markSold(context, store, g.pick.id) }; reloadToken++ }
+                            }) { Text("I sold it") }
+                            TextButton(onClick = { Journal.delete(context, g.pick.id); reloadToken++ }) { Text("Remove") }
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Prices from Finnhub (live) or Stooq (last close). The S&P 500 is measured with the SPY fund. " +
+                    "Dividends aren't included. Your log is encrypted on this phone.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -3691,11 +3834,7 @@ private fun WatchlistScreen(store: Store, tick: Int, onOpen: (StockTarget) -> Un
                             .distinctBy { it.who.lowercase() + it.action + it.date }.sortedByDescending { it.date }
                     }
                     WhoBlock(whoMap?.get(t), others, loading = whoMap == null, othersLoading = looked == null)
-                    Broker.link(store, t)?.let { url ->
-                        val context = LocalContext.current
-                        TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
-                            contentPadding = PaddingValues(0.dp)) { Text("Open in ${Broker.name(store)}") }
-                    }
+                    BuyButton(store, t, prominent = false)
                 }
             }
         }

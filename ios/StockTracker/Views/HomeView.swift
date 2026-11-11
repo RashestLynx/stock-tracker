@@ -551,9 +551,7 @@ struct WatchlistView: View {
             WhoBlock(ticker: t, following: whoMap?[t] ?? [], tracked: WhoTraded.others(model.moves, ticker: t, followed: Set(followed.map(\.name))),
                      followedNames: Set(followed.map(\.name)), loading: whoMap == nil)
             HStack {
-                if let url = Broker.link(t) {
-                    Button("Open in \(Broker.name)") { openURL(url) }.buttonStyle(.borderless).font(.caption)
-                }
+                BuyButton(ticker: t)
                 Spacer()
                 if !model.watchGroups.isEmpty {
                     Menu {
