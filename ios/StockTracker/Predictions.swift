@@ -21,6 +21,8 @@ struct PredEvent: Identifiable {
     let volume24: Double        // traded in the last 24 hours (Kalshi: contracts, Polymarket: dollars)
     let move: Double            // biggest one-day change in odds among its outcomes, signed
     var count = 2               // how many outcomes the event has in total (only the top two are kept)
+    var all: [PredOutcome] = [] // every outcome, including a tie/draw, most likely first
+    var ticker = ""             // Kalshi event ticker (holds the game date), or Polymarket slug
 }
 
 /// Live odds from Kalshi and Polymarket, both open to Illinois residents.
@@ -63,7 +65,7 @@ enum Predictions {
     }
 
     /// Polymarket events: one market per outcome ("Will X win?"), or one market with named outcomes.
-    static func parsePolymarket(_ events: [[String: Any]]) -> [PredEvent] {
+    static func parsePolymarket(_ events: [[String: Any]], minVolume: Double = 100) -> [PredEvent] {
         var out: [PredEvent] = []
         for e in events {
             let markets = e["markets"] as? [[String: Any]] ?? []
@@ -74,7 +76,9 @@ enum Predictions {
                 let prices = strings(m["outcomePrices"]).map { Double($0) ?? .nan }
                 guard names.count == prices.count, !names.isEmpty else { continue }
                 let change = (m["oneDayPriceChange"] as? NSNumber)?.doubleValue
+                let mkind = (m["sportsMarketType"] as? String ?? "").lowercased()
                 if let yes = names.firstIndex(where: { $0.lowercased() == "yes" }) {
+                    if !mkind.isEmpty && mkind != "moneyline" { continue }   // spreads and totals
                     let p = prices[yes]
                     guard p.isFinite, p > 0, p < 1 else { continue }
                     var label = m["groupItemTitle"] as? String ?? ""
@@ -96,7 +100,7 @@ enum Predictions {
                 }
             }
             let volume = (e["volume24hr"] as? NSNumber)?.doubleValue ?? 0
-            if outcomes.isEmpty || volume < 100 { continue }
+            if outcomes.isEmpty || volume < minVolume { continue }
             outcomes.sort { $0.prob > $1.prob }
             let top = outcomes[0]
             if top.prob >= 0.98 || (outcomes.count == 1 && top.prob <= 0.02) { continue }
@@ -116,7 +120,9 @@ enum Predictions {
                 outcomes: Array(outcomes.prefix(2)),
                 volume24: volume,
                 move: outcomes.compactMap(\.change).max { abs($0) < abs($1) } ?? 0,
-                count: outcomes.count))
+                count: outcomes.count,
+                all: outcomes,
+                ticker: slug))
         }
         return out
     }
@@ -168,10 +174,11 @@ enum Predictions {
     }
 
     /// Turns one page of Kalshi events into rows, skipping dead or already-decided markets.
-    static func parse(_ page: [String: Any]) -> [PredEvent] {
+    static func parse(_ page: [String: Any], minVolume: Double = 100) -> [PredEvent] {
         var out: [PredEvent] = []
         for e in page["events"] as? [[String: Any]] ?? [] {
             var outcomes: [PredOutcome] = []
+            var ties: [PredOutcome] = []
             var volume = 0.0
             for m in e["markets"] as? [[String: Any]] ?? [] {
                 let type = m["market_type"] as? String ?? ""
@@ -195,11 +202,15 @@ enum Predictions {
                 var label = m["yes_sub_title"] as? String ?? ""
                 if label.isEmpty { label = m["subtitle"] as? String ?? "" }
                 if label.isEmpty { label = "Yes" }
-                if ["tie", "draw"].contains(label.lowercased()) { continue }   // rare; would hide the game
+                if ["tie", "draw"].contains(label.lowercased()) {
+                    // Kept apart so two-team matching still works; soccer uses it via `all`.
+                    ties.append(PredOutcome(label: label, prob: prob, change: nil, ref: "k:" + (m["ticker"] as? String ?? "")))
+                    continue
+                }
                 outcomes.append(PredOutcome(label: label, prob: prob, change: prev > 0 && prev < 1 ? prob - prev : nil,
                                             ref: "k:" + (m["ticker"] as? String ?? "")))
             }
-            if outcomes.isEmpty || volume < 100 { continue }
+            if outcomes.isEmpty || volume < minVolume { continue }
             outcomes.sort { $0.prob > $1.prob }
             let top = outcomes[0]
             // Nothing left to learn from a market that's all but settled.
@@ -219,7 +230,9 @@ enum Predictions {
                 outcomes: Array(outcomes.prefix(2)),
                 volume24: volume,
                 move: move,
-                count: outcomes.count))
+                count: outcomes.count,
+                all: (outcomes + ties).sorted { $0.prob > $1.prob },
+                ticker: eventTicker))
         }
         return out
     }

@@ -23,6 +23,8 @@ data class PredEvent(
     val volume24: Double,        // traded in the last 24 hours (Kalshi: contracts, Polymarket: dollars)
     val move: Double,            // biggest one-day change in odds among its outcomes, signed
     val count: Int = outcomes.size, // how many outcomes the event has in total (only the top two are kept)
+    val all: List<PredOutcome> = outcomes, // every outcome, including a tie/draw, most likely first
+    val ticker: String = "",     // Kalshi event ticker (holds the game date), or Polymarket slug
 )
 
 /**
@@ -69,7 +71,7 @@ object Predictions {
     }
 
     /** Polymarket events: one market per outcome ("Will X win?"), or one market with named outcomes. */
-    fun parsePolymarket(events: JSONArray): List<PredEvent> {
+    fun parsePolymarket(events: JSONArray, minVolume: Double = 100.0): List<PredEvent> {
         val out = ArrayList<PredEvent>()
         for (i in 0 until events.length()) {
             val e = events.optJSONObject(i) ?: continue
@@ -83,6 +85,8 @@ object Predictions {
                 if (names.size != prices.size || names.isEmpty()) continue
                 val change = m.optDouble("oneDayPriceChange", Double.NaN).takeIf { !it.isNaN() }
                 val yes = names.indexOfFirst { it.equals("Yes", ignoreCase = true) }
+                val mkind = m.optString("sportsMarketType").lowercase(Locale.US)
+                if (yes >= 0 && mkind.isNotEmpty() && mkind != "moneyline") continue // spreads and totals
                 if (yes >= 0) {
                     val p = prices[yes]
                     if (p.isNaN() || p <= 0 || p >= 1) continue
@@ -107,7 +111,7 @@ object Predictions {
                 }
             }
             val volume = e.optDouble("volume24hr", 0.0).let { if (it.isNaN()) 0.0 else it }
-            if (outcomes.isEmpty() || volume < 100) continue
+            if (outcomes.isEmpty() || volume < minVolume) continue
             outcomes.sortByDescending { it.prob }
             val top = outcomes.first()
             if (top.prob >= 0.98 || (outcomes.size == 1 && top.prob <= 0.02)) continue
@@ -127,6 +131,8 @@ object Predictions {
                 volume24 = volume,
                 move = outcomes.mapNotNull { it.change }.maxByOrNull { abs(it) } ?: 0.0,
                 count = outcomes.size,
+                all = outcomes.toList(),
+                ticker = e.optString("slug"),
             ))
         }
         return out
@@ -165,13 +171,14 @@ object Predictions {
     }
 
     /** Turns one page of Kalshi events into rows, skipping dead or already-decided markets. */
-    fun parse(page: JSONObject): List<PredEvent> {
+    fun parse(page: JSONObject, minVolume: Double = 100.0): List<PredEvent> {
         val events = page.optJSONArray("events") ?: return emptyList()
         val out = ArrayList<PredEvent>()
         for (i in 0 until events.length()) {
             val e = events.optJSONObject(i) ?: continue
             val markets = e.optJSONArray("markets") ?: continue
             val outcomes = ArrayList<PredOutcome>()
+            val ties = ArrayList<PredOutcome>()
             var volume = 0.0
             for (k in 0 until markets.length()) {
                 val m = markets.optJSONObject(k) ?: continue
@@ -191,10 +198,14 @@ object Predictions {
                 val prev = price(m, "previous_price")
                 volume += count(m, "volume_24h")
                 val label = m.optString("yes_sub_title").ifBlank { m.optString("subtitle") }.ifBlank { "Yes" }
-                if (label.equals("Tie", true) || label.equals("Draw", true)) continue // rare; would hide the game
+                if (label.equals("Tie", true) || label.equals("Draw", true)) {
+                    // Kept apart so two-team matching still works; soccer uses it via PredEvent.all.
+                    ties.add(PredOutcome(label, prob, null, "k:" + m.optString("ticker")))
+                    continue
+                }
                 outcomes.add(PredOutcome(label, prob, if (prev > 0 && prev < 1) prob - prev else null, "k:" + m.optString("ticker")))
             }
-            if (outcomes.isEmpty() || volume < 100) continue
+            if (outcomes.isEmpty() || volume < minVolume) continue
             outcomes.sortByDescending { it.prob }
             val top = outcomes.first()
             // Nothing left to learn from a market that's all but settled.
@@ -213,6 +224,8 @@ object Predictions {
                 volume24 = volume,
                 move = move,
                 count = outcomes.size,
+                all = (outcomes + ties).sortedByDescending { it.prob },
+                ticker = e.optString("event_ticker"),
             ))
         }
         return out

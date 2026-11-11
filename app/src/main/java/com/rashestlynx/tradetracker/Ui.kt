@@ -2963,11 +2963,11 @@ private fun MarketsScreen(
 private fun PredictionsTab(store: Store) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("All markets", "NFL odds check", "My picks"), view, { view = it },
+        PillTabs(listOf("All markets", "Sports", "My picks"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> PredictionsScreen()
-            1 -> NflOddsScreen(store)
+            1 -> SportsScreen(store)
             else -> MyPredPicksScreen()
         }
     }
@@ -3196,6 +3196,148 @@ private fun MyPredPicksScreen() {
             item {
                 Text("\"\$10 on each\" is what you'd have made or lost betting \$10 on every pick at the logged price, " +
                     "before fees. Open picks are valued at today's price. Nothing is ever bought for you.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Sports: pick a league from the menu. NFL adds sportsbook odds and the math model; the rest use Kalshi and Polymarket. */
+@Composable
+private fun SportsScreen(store: Store) {
+    var leagueName by rememberSaveable { mutableStateOf("NFL") }
+    var open by remember { mutableStateOf(false) }
+    val league = SportsData.LEAGUES.firstOrNull { it.name == leagueName } ?: SportsData.LEAGUES.first()
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.padding(horizontal = 16.dp)) {
+            OutlinedButton(onClick = { open = true }) { Text("League: ${league.name}  ▾") }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                SportsData.LEAGUES.forEach { l ->
+                    DropdownMenuItem(text = { Text(l.name) }, onClick = { leagueName = l.name; open = false })
+                }
+            }
+        }
+        if (league.name == "NFL") NflOddsScreen(store) else LeagueScreen(league)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LeagueScreen(league: League) {
+    val context = LocalContext.current
+    var games by remember(league.name) { mutableStateOf<List<SportGame>?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember(league.name) { mutableStateOf<String?>(null) }
+    var reloadToken by remember { mutableIntStateOf(0) }
+    var picking by remember { mutableStateOf<SportGame?>(null) }
+    var bet by remember { mutableStateOf<BetTarget?>(null) }
+    var logged by remember { mutableStateOf("") }
+    LaunchedEffect(league.name, reloadToken) {
+        loading = true
+        error = null
+        val r = withContext(Dispatchers.IO) { runCatching { SportsData.load(league, reloadToken > 0) } }
+        r.onSuccess { games = it }.onFailure { error = it.message ?: "Couldn't load ${league.name}" }
+        loading = false
+    }
+    fun pct(v: Double?) = if (v == null) "–" else String.format(java.util.Locale.US, "%.0f%%", v * 100)
+
+    bet?.let { t -> BetSheet(t, onDone = { logged = it; bet = null }, onCancel = { bet = null }) }
+    picking?.let { g ->
+        AlertDialog(
+            onDismissRequest = { picking = null },
+            title = { Text(g.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Who wins? Pick a side and a site. It's logged at that price and followed under My picks. Nothing is bought.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOfNotNull("Kalshi" to g.kalshiEvent, g.polyEvent?.let { "Polymarket" to it }).forEach { (site, ev) ->
+                        Text(site, style = MaterialTheme.typography.labelLarge)
+                        g.sides.forEach { side ->
+                            val o = if (site == "Kalshi") side.kalshi else side.poly
+                            if (o != null && o.ref.isNotEmpty()) OutlinedButton(onClick = {
+                                picking = null
+                                bet = BetTarget(ev, o, "yes", side.best, String.format(java.util.Locale.US,
+                                    "Best estimate for %s: %.0f%%, from %s.", side.label, side.best * 100,
+                                    if (side.polyP != null) "Kalshi and Polymarket combined" else "Kalshi's price"))
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(String.format(java.util.Locale.US, "%s  %.0f¢", side.label, o.prob * 100))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { picking = null }) { Text("Cancel") } },
+        )
+    }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Text("Each side's chance to win from Kalshi and Polymarket, with the best estimate combining them. " +
+                    (if (league.hasDraw) "Soccer games can end in a draw, so it's listed too. " else "") +
+                    "When the two sites differ by 3 points or more, one side is cheaper on one of them.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (logged.isNotEmpty()) item { Text("$logged. See it under My picks.", color = TradeColors.buy()) }
+            error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error) } }
+            val list = games
+            if (list != null && list.isEmpty()) {
+                item { Text("No ${league.name} games open right now. The season may be over or not started yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (list != null) items(list.size) { i ->
+                val g = list[i]
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(g.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (g.date.isNotEmpty()) Text(g.date, style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row {
+                            Text("", modifier = Modifier.weight(1f))
+                            listOf("Best", "Kalshi", "Poly").forEach {
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(56.dp), textAlign = TextAlign.End)
+                            }
+                        }
+                        g.sides.forEach { s ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(s.label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(pct(s.best), fontWeight = FontWeight.Bold, modifier = Modifier.width(56.dp), textAlign = TextAlign.End)
+                                Text(pct(s.kalshiP), modifier = Modifier.width(56.dp), textAlign = TextAlign.End,
+                                    style = MaterialTheme.typography.bodySmall)
+                                Text(pct(s.polyP), modifier = Modifier.width(56.dp), textAlign = TextAlign.End,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        if (g.gap >= 3) {
+                            val s = g.sides.maxByOrNull { if (it.kalshiP != null && it.polyP != null) abs(it.kalshiP - it.polyP) else 0.0 }!!
+                            val cheaper = if ((s.kalshiP ?: 0.0) < (s.polyP ?: 0.0)) "Kalshi" else "Polymarket"
+                            Text(String.format(java.util.Locale.US, "The sites differ by %.0f points on %s. It's cheaper on %s.",
+                                g.gap, s.label, cheaper), style = MaterialTheme.typography.bodySmall, color = TradeColors.buy())
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { picking = g }, contentPadding = PaddingValues(0.dp)) { Text("Log my pick") }
+                            TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(g.kalshiEvent.url))) },
+                                contentPadding = PaddingValues(0.dp)) { Text("Kalshi") }
+                            g.polyEvent?.let { pe ->
+                                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pe.url))) },
+                                    contentPadding = PaddingValues(0.dp)) { Text("Polymarket") }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Prices are each site's current chance, adjusted so a game's sides add up to 100%. " +
+                    "Only bet money you can afford to lose. Not financial advice.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

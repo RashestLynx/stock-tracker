@@ -113,6 +113,30 @@ def check_bet_sheet(label):
     tap("Cancel", f"{label} / How much?", wait=2)
 
 
+def check_leagues(label):
+    """Opens each league from the Sports menu and reports how many games it shows."""
+    for league in ("NBA", "UFC", "Premier League", "College football", "NHL"):
+        pos = find_prefix(screen(), "League:")
+        if pos is None:
+            fail(f"{label}: no League menu on the Sports screen. Visible: {', '.join(texts(screen())[:20])}")
+            return
+        adb("shell", "input", "tap", str(pos[0]), str(pos[1]))
+        time.sleep(2)
+        if not tap(league, f"{label} / Sports menu", wait=10):
+            return
+        root = screen()
+        games = sum(1 for t in texts(root) if t == "Log my pick")
+        empty = any("No " + league in t for t in texts(root))
+        err = [t for t in texts(root) if "Couldn't" in t or "HTTP" in t]
+        note(f"{label}: {league}: {games} game cards on screen" + (" (none open)" if empty else "") +
+             (f"; error: {err[0]}" if err else ""))
+    pos = find_prefix(screen(), "League:")
+    if pos:
+        adb("shell", "input", "tap", str(pos[0]), str(pos[1]))
+        time.sleep(2)
+        tap("NFL", f"{label} / Sports menu", wait=6)
+
+
 def texts(root):
     return [] if root is None else [n.get("text") for n in root.iter("node") if n.get("text")]
 
@@ -168,7 +192,7 @@ def tour(label):
     """Taps every bottom tab and every view button inside it."""
     views = {
         "Markets": ["Top 30", "Movers", "Common picks", "WSB", "Crypto"],
-        "Predictions": ["All markets", "NFL odds check", "My picks"],
+        "Predictions": ["All markets", "Sports", "My picks"],
         "Feed": ["Filings", "News"],
         "Portfolio": ["Watchlist", "My accounts", "Track record"],
         "Home": [],
@@ -182,6 +206,8 @@ def tour(label):
             if tab == "Predictions" and v == "All markets" and label == "No screen lock":
                 time.sleep(8)  # let the markets load
                 check_bet_sheet(label)
+            if tab == "Predictions" and v == "Sports" and label == "No screen lock":
+                check_leagues(label)
     note(f"{label}: opened every tab and view without crashing")
 
 
