@@ -19,7 +19,7 @@ def notice(title, lines):
 leagues = {
     "NFL": "football/nfl", "College football": "football/college-football", "NBA": "basketball/nba",
     "College basketball": "basketball/mens-college-basketball", "NHL": "hockey/nhl", "MLB": "baseball/mlb",
-    "MLS": "soccer/usa.1", "Premier League": "soccer/eng.1", "Champions League": "soccer/uefa.champions",
+    "UFC": "mma/ufc", "MLS": "soccer/usa.1", "Premier League": "soccer/eng.1", "Champions League": "soccer/uefa.champions",
 }
 today = datetime.now(timezone.utc)
 rng = today.strftime("%Y%m%d") + "-" + (today + timedelta(days=7)).strftime("%Y%m%d")
@@ -29,6 +29,14 @@ for name, path in leagues.items():
         d = get(f"https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard?dates={rng}&limit=300")
         ev = d.get("events", [])
         line = f"{name}: {len(ev)} games"
+        if name == "UFC" and ev:
+            comps = ev[0].get("competitions", [])
+            c0 = comps[0] if comps else {}
+            line += (f" | first card '{ev[0].get('name')}' has {len(comps)} fights; first fight: " +
+                     " vs ".join(f"{x.get('athlete', x.get('team', {})).get('displayName')}" for x in c0.get("competitors", [])) +
+                     f"; odds={json.dumps(c0.get('odds'))[:300]}")
+            lines.append(line)
+            continue
         for e in ev[:40]:
             c = e["competitions"][0]
             odds = c.get("odds") or []
@@ -53,9 +61,9 @@ notice("ESPN", lines)
 for base in ("https://external-api.kalshi.com/trade-api/v2", "https://api.elections.kalshi.com/trade-api/v2"):
     try:
         s = get(f"{base}/series?category=Sports")
-        tickers = sorted(x["ticker"] for x in s.get("series", []) if "GAME" in x["ticker"])
+        tickers = sorted(x["ticker"] for x in s.get("series", []) if "GAME" in x["ticker"] or "UFC" in x["ticker"] or "FIGHT" in x["ticker"])
         lines = [f"base {base}: {len(s.get('series', []))} sports series; GAME ones: {', '.join(tickers)[:1500]}"]
-        for t in ("KXNFLGAME", "KXNCAAFGAME", "KXNBAGAME", "KXNCAAMBGAME", "KXNHLGAME", "KXMLBGAME", "KXMLSGAME", "KXEPLGAME", "KXUCLGAME"):
+        for t in ("KXNFLGAME", "KXNCAAFGAME", "KXNBAGAME", "KXNCAAMBGAME", "KXNHLGAME", "KXMLBGAME", "KXMLSGAME", "KXEPLGAME", "KXUCLGAME", "KXUFCFIGHT", "KXUFC"):
             try:
                 ev = get(f"{base}/events?series_ticker={t}&status=open&with_nested_markets=true&limit=200").get("events", [])
                 sample = ""
@@ -71,7 +79,7 @@ for base in ("https://external-api.kalshi.com/trade-api/v2", "https://api.electi
         notice("Kalshi", [f"{base} failed: {e}"])
 
 lines = []
-for tag in ("nfl", "cfb", "nba", "ncaab", "cbb", "nhl", "mlb", "mls", "epl", "ucl", "soccer", "sports"):
+for tag in ("nfl", "cfb", "nba", "ncaab", "cbb", "nhl", "mlb", "mls", "epl", "ucl", "soccer", "ufc", "mma", "sports"):
     try:
         ev = get(f"https://gamma-api.polymarket.com/events?tag_slug={tag}&closed=false&active=true&limit=50")
         sample = ""
