@@ -28,7 +28,7 @@ struct PredictionsView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 } footer: {
-                    Text("Live odds from Kalshi, a federally regulated prediction market open in Illinois. A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke.")
+                    Text("Live odds from Kalshi and Polymarket, both open in Illinois. A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke. FanDuel and DraftKings don't share their odds, so they can't be shown here.")
                 }
 
                 if let e = error {
@@ -58,7 +58,9 @@ struct PredictionsView: View {
                                         Text(String(format: "%.0f%%", o.prob * 100)).font(.subheadline.weight(.bold))
                                     }
                                 }
-                                Text("\(ev.category) · \(Int(ev.volume24).formatted()) contracts traded today")
+                                Text("\(ev.source) · \(ev.category) · " + (ev.source == "Polymarket"
+                                     ? "$\(Int(ev.volume24).formatted()) traded today"
+                                     : "\(Int(ev.volume24).formatted()) contracts traded today"))
                                     .font(.caption2).foregroundStyle(.secondary)
                             }
                             .contentShape(Rectangle())

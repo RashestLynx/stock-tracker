@@ -10,18 +10,20 @@ struct PredOutcome: Identifiable {
 
 struct PredEvent: Identifiable {
     let id: String
+    let source: String          // "Kalshi" or "Polymarket"
     let title: String
     let category: String        // "Sports", "Politics", "Economics" or "Other"
     let url: String
     let outcomes: [PredOutcome] // most likely first, at most two
-    let volume24: Double        // contracts traded in the last 24 hours
+    let volume24: Double        // traded in the last 24 hours (Kalshi: contracts, Polymarket: dollars)
     let move: Double            // biggest one-day change in odds among its outcomes, signed
 }
 
-/// Live odds from Kalshi, a federally regulated prediction market open to Illinois residents.
+/// Live odds from Kalshi and Polymarket, both open to Illinois residents.
 ///
 /// A contract pays $1 if something happens, so its price is the crowd's estimate of the chance:
-/// 62 cents means about 62%. Kalshi's market data is public and needs no key or account.
+/// 62 cents means about 62%. Both publish their market data openly, with no key or account.
+/// FanDuel Predicts and DraftKings Predictions don't publish their odds, so they aren't included.
 /// Mirrors Predictions.kt in the Android app.
 enum Predictions {
     private static let bases = [
@@ -32,8 +34,93 @@ enum Predictions {
     private static var cache: [PredEvent] = []
     private static var cachedAt = Date.distantPast
 
+    /// Shows whichever sources load; fails only if both fail.
     static func load(force: Bool) async throws -> [PredEvent] {
         if !force, !cache.isEmpty, Date().timeIntervalSince(cachedAt) < 120 { return cache }
+        var out: [PredEvent] = []
+        var firstError: Error?
+        do { out += try await loadKalshi() } catch { firstError = error }
+        do { out += try await loadPolymarket() } catch { if firstError == nil { firstError = error } }
+        if out.isEmpty { throw firstError ?? AppError("No open markets right now") }
+        cache = out
+        cachedAt = Date()
+        return out
+    }
+
+    private static func loadPolymarket() async throws -> [PredEvent] {
+        var out: [PredEvent] = []
+        for page in 0..<3 {
+            let data = try await getData("https://gamma-api.polymarket.com/events?closed=false&active=true&order=volume24hr&ascending=false&limit=100&offset=\(page * 100)")
+            let arr = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+            out += parsePolymarket(arr)
+            if arr.count < 100 { break }
+        }
+        return out
+    }
+
+    /// Polymarket events: one market per outcome ("Will X win?"), or one market with named outcomes.
+    static func parsePolymarket(_ events: [[String: Any]]) -> [PredEvent] {
+        var out: [PredEvent] = []
+        for e in events {
+            let markets = e["markets"] as? [[String: Any]] ?? []
+            var outcomes: [PredOutcome] = []
+            for m in markets {
+                if m["closed"] as? Bool == true || m["active"] as? Bool == false { continue }
+                let names = strings(m["outcomes"])
+                let prices = strings(m["outcomePrices"]).map { Double($0) ?? .nan }
+                guard names.count == prices.count, !names.isEmpty else { continue }
+                let change = (m["oneDayPriceChange"] as? NSNumber)?.doubleValue
+                if let yes = names.firstIndex(where: { $0.lowercased() == "yes" }) {
+                    let p = prices[yes]
+                    guard p.isFinite, p > 0, p < 1 else { continue }
+                    var label = m["groupItemTitle"] as? String ?? ""
+                    if label.isEmpty { label = markets.count == 1 ? "Yes" : (m["question"] as? String ?? "Yes") }
+                    outcomes.append(PredOutcome(label: label, prob: p, change: change))
+                } else {
+                    // e.g. a game with outcomes ["Bears", "Lions"]; the daily change is for the first one.
+                    for (j, n) in names.enumerated() {
+                        let p = prices[j]
+                        guard p.isFinite, p > 0, p < 1 else { continue }
+                        outcomes.append(PredOutcome(label: n, prob: p, change: change.map { j == 0 ? $0 : -$0 }))
+                    }
+                }
+            }
+            let volume = (e["volume24hr"] as? NSNumber)?.doubleValue ?? 0
+            if outcomes.isEmpty || volume < 100 { continue }
+            outcomes.sort { $0.prob > $1.prob }
+            let top = outcomes[0]
+            if top.prob >= 0.98 || (outcomes.count == 1 && top.prob <= 0.02) { continue }
+            guard let title = e["title"] as? String, !title.isEmpty else { continue }
+            var labels = e["category"] as? String ?? ""
+            for t in e["tags"] as? [Any] ?? [] {
+                if let d = t as? [String: Any] { labels += " " + (d["label"] as? String ?? "") }
+                else if let str = t as? String { labels += " " + str }
+            }
+            let slug = e["slug"] as? String ?? ""
+            out.append(PredEvent(
+                id: "pm-" + (slug.isEmpty ? UUID().uuidString : slug),
+                source: "Polymarket",
+                title: title,
+                category: category(labels),
+                url: "https://polymarket.com/event/" + slug,
+                outcomes: Array(outcomes.prefix(2)),
+                volume24: volume,
+                move: outcomes.compactMap(\.change).max { abs($0) < abs($1) } ?? 0))
+        }
+        return out
+    }
+
+    /// Polymarket sends some lists as JSON text ("[\"Yes\",\"No\"]") and some as real arrays.
+    private static func strings(_ v: Any?) -> [String] {
+        if let a = v as? [Any] { return a.map { "\($0)" } }
+        if let s = v as? String, let d = s.data(using: .utf8),
+           let a = try? JSONSerialization.jsonObject(with: d) as? [Any] {
+            return a.map { "\($0)" }
+        }
+        return []
+    }
+
+    private static func loadKalshi() async throws -> [PredEvent] {
         var lastError: Error = AppError("Couldn't load prediction markets")
         for base in bases {
             do {
@@ -48,8 +135,6 @@ enum Predictions {
                     if cursor.isEmpty { break }
                 }
                 if out.isEmpty { throw AppError("No open markets right now") }
-                cache = out
-                cachedAt = Date()
                 return out
             } catch {
                 lastError = error
@@ -101,6 +186,7 @@ enum Predictions {
             let sub = e["sub_title"] as? String ?? ""
             out.append(PredEvent(
                 id: eventTicker,
+                source: "Kalshi",
                 title: sub.isEmpty || outcomes.count > 1 ? title : "\(title) (\(sub))",
                 category: category(e["category"] as? String ?? ""),
                 url: "https://kalshi.com/markets/" + series.lowercased(),
@@ -115,7 +201,7 @@ enum Predictions {
         let c = raw.lowercased()
         if c.contains("sport") { return "Sports" }
         if c.contains("politic") || c.contains("election") { return "Politics" }
-        if c.contains("econ") || c.contains("financ") { return "Economics" }
+        if c.contains("econ") || c.contains("financ") || (c + " ").contains("fed ") { return "Economics" }
         return "Other"
     }
 
@@ -134,6 +220,10 @@ enum Predictions {
     }
 
     private static func get(_ url: String) async throws -> [String: Any] {
+        try JSONSerialization.jsonObject(with: try await getData(url)) as? [String: Any] ?? [:]
+    }
+
+    private static func getData(_ url: String) async throws -> Data {
         guard let u = URL(string: url) else { throw AppError("Bad URL") }
         var req = URLRequest(url: u)
         req.setValue("StockTracker-iOS/1.0 (personal app)", forHTTPHeaderField: "User-Agent")
@@ -141,8 +231,9 @@ enum Predictions {
         req.timeoutInterval = 40
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        if code == 429 { throw AppError("Kalshi is busy. Try again in a minute.") }
-        guard (200..<300).contains(code) else { throw AppError("Kalshi returned HTTP \(code)") }
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        let site = url.contains("polymarket") ? "Polymarket" : "Kalshi"
+        if code == 429 { throw AppError("\(site) is busy. Try again in a minute.") }
+        guard (200..<300).contains(code) else { throw AppError("\(site) returned HTTP \(code)") }
+        return data
     }
 }

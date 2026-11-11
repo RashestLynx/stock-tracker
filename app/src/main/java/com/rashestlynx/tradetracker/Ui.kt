@@ -2976,8 +2976,9 @@ private fun PredictionsScreen() {
             item { PillTabs(cats, category, { category = it }) }
             item { PillTabs(listOf("Biggest moves today", "Most traded"), sort, { sort = it }) }
             item {
-                Text("Live odds from Kalshi, a federally regulated prediction market open in Illinois. " +
-                    "A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke.",
+                Text("Live odds from Kalshi and Polymarket, both open in Illinois. " +
+                    "A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke. " +
+                    "FanDuel and DraftKings don't share their odds, so they can't be shown here.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -3011,7 +3012,9 @@ private fun PredictionsScreen() {
                                     style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                         }
-                        Text("${ev.category} · ${String.format(java.util.Locale.US, "%,.0f", ev.volume24)} contracts traded today",
+                        Text("${ev.source} · ${ev.category} · " + if (ev.source == "Polymarket")
+                                String.format(java.util.Locale.US, "\$%,.0f traded today", ev.volume24)
+                            else String.format(java.util.Locale.US, "%,.0f contracts traded today", ev.volume24),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
