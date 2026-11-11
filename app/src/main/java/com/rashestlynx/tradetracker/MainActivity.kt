@@ -18,6 +18,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Ignore taps while another app draws over this one, so a hidden overlay can't trick you into tapping (tapjacking).
+        window.decorView.filterTouchesWhenObscured = true
         CheckWorker.createChannel(this)
 
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -33,8 +35,10 @@ class MainActivity : ComponentActivity() {
         // Live mode: checks every few seconds, even after the app is closed.
         LiveService.start(this)
 
+        // Hide the app in recent apps and block screenshots while the app lock is on.
+        AppLock.applySecureWindow(this, AppLock.active(this, store))
         setContent {
-            AppTheme(store) { StockTrackerApp(store) }
+            AppTheme(store) { LockGate(store) { StockTrackerApp(store) } }
         }
     }
 }

@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published var appNotify: Bool { didSet { d.set(appNotify, forKey: "appNotify") } }
     /// "system", "light" or "dark".
     @Published var appearance: String { didSet { d.set(appearance, forKey: "appearance") } }
+    /// Ask for Face ID, Touch ID or the passcode to open the app.
+    @Published var appLock: Bool { didSet { d.set(appLock, forKey: "appLock") } }
     /// Tint the background green when the S&P 500 is up today, red when it's down.
     @Published var marketBackground: Bool { didSet { d.set(marketBackground, forKey: "marketBackground") } }
     /// Today's S&P 500 move (via SPY). Nil until loaded.
@@ -67,13 +69,14 @@ final class AppModel: ObservableObject {
         backgroundOn = d.object(forKey: "backgroundOn") as? Bool ?? true
         // The user's own Bargo key is built in (hourly Congress checks); a key saved in Settings replaces it.
         let savedBargo = d.string(forKey: "bargoKey") ?? ""
-        bargoKey = savedBargo.isEmpty ? "fak_PAPE7zAnmQGjv-zKB7HlKR_tbVSP-cziSmE12TOfJ_6z" : savedBargo
+        bargoKey = savedBargo
         // The user's own Massive key is built in; a key saved in Settings replaces it.
         let savedMassive = d.string(forKey: "massiveKey") ?? ""
-        massiveKey = savedMassive.isEmpty ? "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" : savedMassive
+        massiveKey = savedMassive
         newsAlerts = d.object(forKey: "newsAlerts") as? Bool ?? true
         appNotify = d.object(forKey: "appNotify") as? Bool ?? true
         appearance = d.string(forKey: "appearance") ?? "system"
+        appLock = d.object(forKey: "appLock") as? Bool ?? true
         marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
         movers = Self.load("movers.json")
         scores = Self.load("scores.json")

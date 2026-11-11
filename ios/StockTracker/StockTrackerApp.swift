@@ -14,7 +14,7 @@ struct StockTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            LockGate { ContentView() }
                 .environmentObject(model)
                 .onAppear { model.requestNotificationPermission() }
         }

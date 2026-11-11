@@ -29,6 +29,9 @@ data class OwnedHolding(
     val cost: Double?,      // average price paid per share, if the brokerage knows it
 )
 
+// Your holdings and typed-in funds are encrypted on the phone the same way as your SnapTrade key
+// (see Secret below), so even someone who copies the app's files can't read them.
+
 /** Something you typed in yourself, e.g. a T. Rowe Price retirement fund. */
 data class ManualHolding(val account: String, val name: String, val ticker: String, val value: Double, val updated: Long)
 
@@ -58,13 +61,13 @@ object Accounts {
     fun saveKey(ctx: Context, clientId: String, consumerKey: String) {
         Secret.put(ctx, "snap_client", clientId.trim())
         Secret.put(ctx, "snap_key", consumerKey.trim())
-        ctx.getSharedPreferences("accounts", Context.MODE_PRIVATE).edit().remove("cache").apply()
+        Secret.put(ctx, "acct_cache", "")
     }
 
     fun forgetKey(ctx: Context) = saveKey(ctx, "", "")
 
     fun manual(ctx: Context): List<ManualHolding> = try {
-        val a = JSONArray(ctx.getSharedPreferences("accounts", Context.MODE_PRIVATE).getString("manual", "[]"))
+        val a = JSONArray(Secret.get(ctx, "acct_manual").ifBlank { "[]" })
         List(a.length()) {
             val o = a.getJSONObject(it)
             ManualHolding(o.optString("a"), o.optString("n"), o.optString("t"), o.optDouble("v", 0.0), o.optLong("u"))
@@ -76,7 +79,7 @@ object Accounts {
     fun saveManual(ctx: Context, list: List<ManualHolding>) {
         val a = JSONArray()
         list.forEach { a.put(JSONObject().put("a", it.account).put("n", it.name).put("t", it.ticker).put("v", it.value).put("u", it.updated)) }
-        ctx.getSharedPreferences("accounts", Context.MODE_PRIVATE).edit().putString("manual", a.toString()).apply()
+        Secret.put(ctx, "acct_manual", a.toString())
     }
 
     // ---------------- loading ----------------
@@ -91,15 +94,16 @@ object Accounts {
         var error: String? = null
         if (!force) {
             val at = prefs.getLong("cache_at", 0)
-            if (System.currentTimeMillis() - at < CACHE_MS) linked = fromJson(prefs.getString("cache", "") ?: "")
+            if (System.currentTimeMillis() - at < CACHE_MS) linked = fromJson(Secret.get(ctx, "acct_cache"))
         }
         if (linked == null) {
             try {
                 linked = fetchLinked(clientId(ctx), Secret.get(ctx, "snap_key"))
-                prefs.edit().putString("cache", toJson(linked)).putLong("cache_at", System.currentTimeMillis()).apply()
+                Secret.put(ctx, "acct_cache", toJson(linked))
+                prefs.edit().putLong("cache_at", System.currentTimeMillis()).apply()
             } catch (e: Exception) {
                 error = e.message ?: "Couldn't reach SnapTrade"
-                linked = fromJson(prefs.getString("cache", "") ?: "") ?: emptyList()
+                linked = fromJson(Secret.get(ctx, "acct_cache")) ?: emptyList()
             }
         }
         return MyMoney(linked + manual, System.currentTimeMillis(), error)
@@ -208,8 +212,7 @@ object Accounts {
 
     /** Shares and value you hold of each ticker, from the last saved account data (no network). */
     fun owned(ctx: Context): Map<String, Pair<Double?, Double>> {
-        val prefs = ctx.getSharedPreferences("accounts", Context.MODE_PRIVATE)
-        val linked = if (hasKey(ctx)) fromJson(prefs.getString("cache", "") ?: "") ?: emptyList() else emptyList()
+        val linked = if (hasKey(ctx)) fromJson(Secret.get(ctx, "acct_cache")) ?: emptyList() else emptyList()
         val all = linked + manual(ctx).filter { it.ticker.isNotBlank() }
             .map { OwnedHolding(it.account, it.ticker.uppercase(Locale.US), it.name, "fund", it.value, null, null) }
         return all.filter { it.ticker.isNotBlank() }.groupBy { it.ticker }.mapValues { (_, l) ->

@@ -143,6 +143,24 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    if LockGate.available {
+                        Toggle(isOn: $model.appLock) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("App lock")
+                                Text("Ask for Face ID, Touch ID or your passcode to open the app, and again after a minute away. Also hides the app in the app switcher.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        Text("Set a passcode on your iPhone to lock this app.").font(.footnote)
+                    }
+                } header: {
+                    Text("Privacy and security")
+                } footer: {
+                    Text("Your keys, holdings and settings stay on this iPhone. Keys and holdings are kept in the Keychain and are never sent anywhere except the service they belong to.")
+                }
+
+                Section {
                     Picker("Appearance", selection: $model.appearance) {
                         Text("System").tag("system")
                         Text("Light").tag("light")

@@ -73,6 +73,14 @@ Both apps check for new filings when you open them and every 5 minutes while the
 
 In the background, Android checks about every 15 minutes, with a backup alarm that's allowed to run while the phone is idle. If Android's battery saving is limiting the app, **Settings → Background checks** shows a button to allow it. On iPhone, iOS decides when background checks run (often every hour or few, less if you rarely open the app), and Background App Refresh must be on. Instant alerts on iPhone would need Apple push notifications, which require a paid Apple Developer account and a server.
 
+## Privacy and security
+
+- **App lock** (on by default): the app asks for your fingerprint, face or PIN to open, and again after a minute away. While it's on, the app is hidden in recent apps and screenshots are blocked.
+- **Your keys and holdings stay on your phone.** They're encrypted (Android Keystore, iPhone Keychain), never written into the code, and left out of phone backups.
+- **Read-only:** linked accounts can be viewed, never traded or moved.
+- **Security check:** every push runs a scan for leaked keys and common mobile-app mistakes (Actions → Security check). Dependabot opens pull requests when a library gets a security fix.
+- **Never put API keys in the code.** Paste them into the app's Settings instead.
+
 ## Desktop
 
 A Python version for PCs (insiders and funds only) is in `desktop/edgar_tracker.py`.

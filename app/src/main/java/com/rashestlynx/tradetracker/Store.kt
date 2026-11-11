@@ -144,7 +144,7 @@ class Store(context: Context) {
 
     var bargoKey: String
         // The user's own Bargo key is built in (hourly Congress checks); a key saved in Settings replaces it.
-        get() = (prefs.getString("bargo_key", "") ?: "").ifBlank { "fak_PAPE7zAnmQGjv-zKB7HlKR_tbVSP-cziSmE12TOfJ_6z" }
+        get() = (prefs.getString("bargo_key", "") ?: "")
         set(v) = prefs.edit().putString("bargo_key", v.trim()).apply()
 
     /** Background notifications for news and SEC filings about watchlist stocks. */
@@ -152,9 +152,14 @@ class Store(context: Context) {
         get() = prefs.getBoolean("news_alerts", true)
         set(v) = prefs.edit().putBoolean("news_alerts", v).apply()
 
+    /** Ask for the phone's screen lock (fingerprint, face or PIN) to open the app. */
+    var appLock: Boolean
+        get() = prefs.getBoolean("app_lock", true)
+        set(v) = prefs.edit().putBoolean("app_lock", v).apply()
+
     var massiveKey: String
-        // The user's own Massive key is built in; a key saved in Settings replaces it.
-        get() = (prefs.getString("massive_key", "") ?: "").ifBlank { "0h37HkvcAnafUh9rx27J_3NePJpqmQpx" }
+        // Your own key, saved on this phone only. Never put keys in the code: the repository is shared.
+        get() = (prefs.getString("massive_key", "") ?: "")
         set(v) = prefs.edit().putString("massive_key", v.trim()).apply()
 
     var moversCache: String

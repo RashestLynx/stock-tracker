@@ -23,6 +23,7 @@ targets:
       path: StockTracker/Info.plist
       properties:
         CFBundleDisplayName: Stock Tracker
+        NSFaceIDUsageDescription: Face ID keeps your accounts and holdings private.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [fetch]

@@ -1095,6 +1095,24 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onSources:
 
         var themeMode by remember { mutableStateOf(Appearance.mode(store)) }
         var marketBg by remember { mutableStateOf(Appearance.marketBg(store)) }
+        var appLock by remember { mutableStateOf(store.appLock) }
+        Section("Privacy and security",
+            "Your keys, holdings and settings stay on this phone. They're never put in backups or sent anywhere " +
+                "except the service they belong to.") {
+            if (AppLock.available(context)) {
+                SwitchRow("App lock",
+                    "Ask for your fingerprint, face or PIN to open the app, and again after a minute away. " +
+                        "Also hides the app in recent apps and blocks screenshots.", appLock) {
+                    appLock = it
+                    store.appLock = it
+                    (context as? android.app.Activity)?.let { a -> AppLock.applySecureWindow(a, it) }
+                }
+            } else {
+                Text("Set a screen lock on your phone (Settings → Security) to lock this app.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
         Section("Appearance") {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEachIndexed { i, (key, label) ->

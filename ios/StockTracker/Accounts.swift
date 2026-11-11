@@ -53,25 +53,28 @@ enum Accounts {
     static func saveKey(clientId: String, consumerKey: String) {
         Keychain.set("snap_client", clientId.trimmingCharacters(in: .whitespacesAndNewlines))
         Keychain.set("snap_key", consumerKey.trimmingCharacters(in: .whitespacesAndNewlines))
-        UserDefaults.standard.removeObject(forKey: "accounts_cache")
+        Keychain.set("acct_cache", "")
     }
 
     static func forgetKey() { saveKey(clientId: "", consumerKey: "") }
 
+    // Holdings and typed-in funds live in the Keychain too, so they're encrypted and never leave this iPhone.
     static var manual: [ManualHolding] {
         get {
-            guard let d = UserDefaults.standard.data(forKey: "accounts_manual") else { return [] }
-            return (try? JSONDecoder().decode([ManualHolding].self, from: d)) ?? []
+            let s = Keychain.get("acct_manual")
+            guard !s.isEmpty else { return [] }
+            return (try? JSONDecoder().decode([ManualHolding].self, from: Data(s.utf8))) ?? []
         }
-        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "accounts_manual") }
+        set { Keychain.set("acct_manual", (try? JSONEncoder().encode(newValue)).flatMap { String(data: $0, encoding: .utf8) } ?? "") }
     }
 
     private static var cached: [OwnedHolding]? {
         get {
-            guard let d = UserDefaults.standard.data(forKey: "accounts_cache") else { return nil }
-            return try? JSONDecoder().decode([OwnedHolding].self, from: d)
+            let s = Keychain.get("acct_cache")
+            guard !s.isEmpty else { return nil }
+            return try? JSONDecoder().decode([OwnedHolding].self, from: Data(s.utf8))
         }
-        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "accounts_cache") }
+        set { Keychain.set("acct_cache", newValue.flatMap { try? JSONEncoder().encode($0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "") }
     }
 
     private static var cachedAt: Date {

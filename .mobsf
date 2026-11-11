@@ -1,0 +1,6 @@
+---
+# mobsfscan settings.
+ignore-rules:
+  # False alarm: the scanner reads targetSdk from AndroidManifest.xml, but the app sets targetSdk 35 in
+  # app/build.gradle.kts, which fixes StrandHogg 2.0 at the platform level. MainActivity also has taskAffinity="".
+  - android_task_hijacking2
