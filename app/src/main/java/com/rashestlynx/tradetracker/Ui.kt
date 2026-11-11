@@ -2961,9 +2961,13 @@ private fun MarketsScreen(
 private fun PredictionsTab(store: Store) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("All markets", "NFL odds check"), view, { view = it },
+        PillTabs(listOf("All markets", "NFL odds check", "My picks"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
-        if (view == 0) PredictionsScreen() else NflOddsScreen(store)
+        when (view) {
+            0 -> PredictionsScreen()
+            1 -> NflOddsScreen(store)
+            else -> MyPredPicksScreen()
+        }
     }
 }
 
@@ -3063,6 +3067,93 @@ private fun NflOddsScreen(store: Store) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MyPredPicksScreen() {
+    val context = LocalContext.current
+    var record by remember { mutableStateOf<PredRecord?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reloadToken by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reloadToken) {
+        loading = true
+        record = withContext(Dispatchers.IO) { PredJournal.grade(context) }
+        loading = false
+    }
+    fun cents(v: Double) = String.format(java.util.Locale.US, "%s\$%.2f", if (v < 0) "-" else "+", kotlin.math.abs(v))
+    val dayFmt = remember { java.text.SimpleDateFormat("MMM d", java.util.Locale.US) }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val r = record
+            item {
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Your picks vs the market", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        if (r == null || r.picks.isEmpty()) {
+                            Text("Nothing logged yet. Tap \"Log a pick\" on any market under All markets.",
+                                style = MaterialTheme.typography.bodyMedium)
+                        } else {
+                            val n = r.settled.size
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                listOf("You won" to "${r.wins} of $n",
+                                    "Market expected" to String.format(java.util.Locale.US, "%.1f", r.expected),
+                                    "\$10 on each" to cents(r.profit * 10)).forEach { (label, v) ->
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(v, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Text(when {
+                                n < 20 -> "Too early to judge: $n settled. You need about 20 or more before luck stops dominating."
+                                r.wins > r.expected + 2 -> "You're winning more than the market's odds predicted. That's what an edge looks like. Keep logging to see if it holds."
+                                r.wins < r.expected - 2 -> "You're winning fewer than the market's odds predicted, so the market has been the better forecaster so far."
+                                else -> "You're winning about as often as the market's odds predicted, which means no edge yet. Most people land here."
+                            }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            if (r != null) items(r.picks.size) { i ->
+                val s = r.picks[i]
+                val p = s.pick
+                ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.url))) }) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(p.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("${p.label} – ${if (p.side == "yes") "Yes" else "No"} at " +
+                            String.format(java.util.Locale.US, "%.0f¢", p.price * 100) + " · ${p.source} · ${dayFmt.format(java.util.Date(p.id))}",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(when (s.won) {
+                                true -> "Won"
+                                false -> "Lost"
+                                null -> s.now?.let { String.format(java.util.Locale.US, "Open · now %.0f¢", it * 100) } ?: "Open"
+                            }, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                                color = when (s.won) { true -> TradeColors.buy(); false -> TradeColors.sell(); null -> MaterialTheme.colorScheme.onSurface })
+                            s.profit?.let { Text(cents(it * 10) + " on \$10", style = MaterialTheme.typography.labelLarge,
+                                color = if (it >= 0) TradeColors.buy() else TradeColors.sell()) }
+                        }
+                        TextButton(onClick = { PredJournal.delete(context, p.id); reloadToken++ }, contentPadding = PaddingValues(0.dp)) {
+                            Text("Remove")
+                        }
+                    }
+                }
+            }
+            item {
+                Text("\"\$10 on each\" is what you'd have made or lost betting \$10 on every pick at the logged price, " +
+                    "before fees. Open picks are valued at today's price. Nothing is ever bought for you.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 /** One plain-English line about the biggest disagreement, e.g. "Kalshi has the Giants 4 points higher…". */
 private fun oddsNote(g: OddsGame): String? {
     val ref = g.books ?: return null
@@ -3094,6 +3185,36 @@ private fun PredictionsScreen() {
         loading = false
     }
 
+    var logging by remember { mutableStateOf<PredEvent?>(null) }
+    var logged by remember { mutableStateOf("") }
+    logging?.let { ev ->
+        AlertDialog(
+            onDismissRequest = { logging = null },
+            title = { Text("Log a pick") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(ev.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Pick what you think will happen. It's logged at today's price, and My picks follows it until it " +
+                        "settles. Nothing is bought.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ev.outcomes.filter { it.ref.isNotEmpty() }.forEach { o ->
+                        Text(o.label, style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                PredJournal.log(context, ev, o, "yes"); logging = null; logged = "Logged: ${o.label} – Yes"
+                            }) { Text(String.format(java.util.Locale.US, "Yes %.0f¢", o.prob * 100)) }
+                            OutlinedButton(onClick = {
+                                PredJournal.log(context, ev, o, "no"); logging = null; logged = "Logged: ${o.label} – No"
+                            }) { Text(String.format(java.util.Locale.US, "No %.0f¢", (1 - o.prob) * 100)) }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { logging = null }) { Text("Cancel") } },
+        )
+    }
+
     val cats = listOf("All", "Sports", "Politics", "Economics")
     val shown = events
         .filter { category == 0 || it.category == cats[category] }
@@ -3117,6 +3238,9 @@ private fun PredictionsScreen() {
             }
             error?.let { e ->
                 item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+            if (logged.isNotEmpty()) {
+                item { Text("$logged. See it under My picks.", color = TradeColors.buy(), style = MaterialTheme.typography.bodyMedium) }
             }
             if (!loading && error == null && shown.isEmpty()) {
                 item { Text("Nothing to show yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -3144,6 +3268,9 @@ private fun PredictionsScreen() {
                                 Text(String.format(java.util.Locale.US, "%.0f%%", o.prob * 100),
                                     style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
+                        }
+                        if (ev.outcomes.any { it.ref.isNotEmpty() }) {
+                            TextButton(onClick = { logging = ev }, contentPadding = PaddingValues(0.dp)) { Text("Log a pick") }
                         }
                         Text("${ev.source} · ${ev.category} · " + if (ev.source == "Polymarket")
                                 String.format(java.util.Locale.US, "\$%,.0f traded today", ev.volume24)

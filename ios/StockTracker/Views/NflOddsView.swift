@@ -5,9 +5,13 @@ struct PredictionsTabView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "All markets"), (1, "NFL odds check")], selection: $view)
+            PillTabs(options: [(0, "All markets"), (1, "NFL odds check"), (2, "My picks")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 4)
-            if view == 0 { PredictionsView() } else { NflOddsView() }
+            switch view {
+            case 0: PredictionsView()
+            case 1: NflOddsView()
+            default: MyPredPicksView()
+            }
         }
     }
 }

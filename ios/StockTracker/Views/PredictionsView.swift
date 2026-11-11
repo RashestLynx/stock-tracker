@@ -8,6 +8,8 @@ struct PredictionsView: View {
     @State private var error: String?
     @State private var category = 0   // 0 all, 1 sports, 2 politics, 3 economics
     @State private var sort = 0       // 0 biggest moves, 1 most traded
+    @State private var logging: PredEvent?
+    @State private var logged = ""
 
     private let cats = ["All", "Sports", "Politics", "Economics"]
 
@@ -33,6 +35,9 @@ struct PredictionsView: View {
 
                 if let e = error {
                     Section { Text(e).foregroundStyle(.red) }
+                }
+                if !logged.isEmpty {
+                    Section { Text("\(logged). See it under My picks.").foregroundStyle(.green) }
                 }
                 if loading && events.isEmpty {
                     Section { ProgressView().frame(maxWidth: .infinity) }
@@ -66,6 +71,9 @@ struct PredictionsView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        if ev.outcomes.contains(where: { !$0.ref.isEmpty }) {
+                            Button("Log a pick") { logging = ev }.font(.caption)
+                        }
                     }
                 }
 
@@ -79,6 +87,31 @@ struct PredictionsView: View {
             .marketBackground()
             .navigationTitle("Predictions")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
+            .sheet(item: $logging) { ev in
+                NavigationStack {
+                    Form {
+                        Section {
+                            Text(ev.title).font(.headline)
+                        } footer: {
+                            Text("Pick what you think will happen. It's logged at today's price, and My picks follows it until it settles. Nothing is bought.")
+                        }
+                        ForEach(ev.outcomes.filter { !$0.ref.isEmpty }) { o in
+                            Section(o.label) {
+                                Button(String(format: "Yes  %.0f¢", o.prob * 100)) {
+                                    PredJournal.log(ev, o, side: "yes"); logged = "Logged: \(o.label) – Yes"; logging = nil
+                                }
+                                Button(String(format: "No  %.0f¢", (1 - o.prob) * 100)) {
+                                    PredJournal.log(ev, o, side: "no"); logged = "Logged: \(o.label) – No"; logging = nil
+                                }
+                            }
+                        }
+                    }
+                    .navigationTitle("Log a pick")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { logging = nil } } }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .refreshable { await load(force: true) }
             .task { await load(force: false) }
         }

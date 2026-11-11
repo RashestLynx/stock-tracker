@@ -9,7 +9,10 @@ import java.util.Locale
 import kotlin.math.abs
 
 /** One possible result of an event, with the market's odds (0-1) and how far they moved in a day. */
-data class PredOutcome(val label: String, val prob: Double, val change: Double?)
+data class PredOutcome(val label: String, val prob: Double, val change: Double?, val ref: String = "")
+// ref identifies the exact market, so a logged pick can be followed until it settles:
+// "k:<Kalshi market ticker>" or "p:<Polymarket market id>:<outcome index>". For Kalshi, "No" is the other side of
+// the same market; for Polymarket, "No" is the other outcome (index 1 - i).
 
 data class PredEvent(
     val source: String,          // "Kalshi" or "Polymarket"
@@ -86,7 +89,7 @@ object Predictions {
                     val label = m.optString("groupItemTitle").ifBlank {
                         if (markets.length() == 1) "Yes" else m.optString("question").ifBlank { "Yes" }
                     }
-                    outcomes.add(PredOutcome(label, p, change))
+                    outcomes.add(PredOutcome(label, p, change, "p:" + m.optString("id") + ":" + yes))
                 } else {
                     // Game events also hold point-spread and over/under markets; keep only who wins.
                     val kind = m.optString("sportsMarketType").lowercase(Locale.US)
@@ -98,7 +101,7 @@ object Predictions {
                     names.forEachIndexed { j, n ->
                         val p = prices[j]
                         if (!p.isNaN() && p > 0 && p < 1) {
-                            outcomes.add(PredOutcome(n, p, change?.let { if (j == 0) it else -it }))
+                            outcomes.add(PredOutcome(n, p, change?.let { if (j == 0) it else -it }, "p:" + m.optString("id") + ":" + j))
                         }
                     }
                 }
@@ -189,7 +192,7 @@ object Predictions {
                 volume += count(m, "volume_24h")
                 val label = m.optString("yes_sub_title").ifBlank { m.optString("subtitle") }.ifBlank { "Yes" }
                 if (label.equals("Tie", true) || label.equals("Draw", true)) continue // rare; would hide the game
-                outcomes.add(PredOutcome(label, prob, if (prev > 0 && prev < 1) prob - prev else null))
+                outcomes.add(PredOutcome(label, prob, if (prev > 0 && prev < 1) prob - prev else null, "k:" + m.optString("ticker")))
             }
             if (outcomes.isEmpty() || volume < 100) continue
             outcomes.sortByDescending { it.prob }
@@ -235,7 +238,19 @@ object Predictions {
     private fun count(m: JSONObject, name: String): Double =
         m.optString("${name}_fp").toDoubleOrNull() ?: m.optDouble(name, 0.0).let { if (it.isNaN()) 0.0 else it }
 
-    private fun get(url: String): String {
+    /** Current chance (0-1) for one market from its parts, as used in [parse]. Null when there's no usable price. */
+    fun kalshiProb(m: JSONObject): Double? {
+        val bid = price(m, "yes_bid")
+        val ask = price(m, "yes_ask")
+        val last = price(m, "last_price")
+        return when {
+            bid > 0 && ask > 0 && ask <= 1 && ask - bid <= 0.10 -> (bid + ask) / 2
+            last > 0 && last < 1 -> last
+            else -> null
+        }
+    }
+
+    fun get(url: String): String {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.setRequestProperty("User-Agent", "StockTracker-Android/2.0 (personal app)")
         conn.setRequestProperty("Accept", "application/json")

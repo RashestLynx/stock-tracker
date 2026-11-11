@@ -5,6 +5,9 @@ struct PredOutcome: Identifiable {
     let label: String
     let prob: Double
     let change: Double?
+    /// Identifies the exact market so a logged pick can be followed until it settles:
+    /// "k:<Kalshi market ticker>" or "p:<Polymarket market id>:<outcome index>".
+    var ref = ""
     var id: String { label }
 }
 
@@ -76,7 +79,7 @@ enum Predictions {
                     guard p.isFinite, p > 0, p < 1 else { continue }
                     var label = m["groupItemTitle"] as? String ?? ""
                     if label.isEmpty { label = markets.count == 1 ? "Yes" : (m["question"] as? String ?? "Yes") }
-                    outcomes.append(PredOutcome(label: label, prob: p, change: change))
+                    outcomes.append(PredOutcome(label: label, prob: p, change: change, ref: "p:\(polyId(m)):\(yes)"))
                 } else {
                     // Game events also hold point-spread and over/under markets; keep only who wins.
                     let kind = (m["sportsMarketType"] as? String ?? "").lowercased()
@@ -88,7 +91,7 @@ enum Predictions {
                     for (j, n) in names.enumerated() {
                         let p = prices[j]
                         guard p.isFinite, p > 0, p < 1 else { continue }
-                        outcomes.append(PredOutcome(label: n, prob: p, change: change.map { j == 0 ? $0 : -$0 }))
+                        outcomes.append(PredOutcome(label: n, prob: p, change: change.map { j == 0 ? $0 : -$0 }, ref: "p:\(polyId(m)):\(j)"))
                     }
                 }
             }
@@ -116,6 +119,19 @@ enum Predictions {
                 count: outcomes.count))
         }
         return out
+    }
+
+    private static func polyId(_ m: [String: Any]) -> String {
+        if let s = m["id"] as? String { return s }
+        return (m["id"] as? NSNumber)?.stringValue ?? ""
+    }
+
+    /// Current chance (0-1) for one Kalshi market, the same way `parse` works it out.
+    static func kalshiProb(_ m: [String: Any]) -> Double? {
+        let bid = price(m, "yes_bid"), ask = price(m, "yes_ask"), last = price(m, "last_price")
+        if bid > 0 && ask > 0 && ask <= 1 && ask - bid <= 0.10 { return (bid + ask) / 2 }
+        if last > 0 && last < 1 { return last }
+        return nil
     }
 
     /// Polymarket sends some lists as JSON text ("[\"Yes\",\"No\"]") and some as real arrays.
@@ -180,7 +196,8 @@ enum Predictions {
                 if label.isEmpty { label = m["subtitle"] as? String ?? "" }
                 if label.isEmpty { label = "Yes" }
                 if ["tie", "draw"].contains(label.lowercased()) { continue }   // rare; would hide the game
-                outcomes.append(PredOutcome(label: label, prob: prob, change: prev > 0 && prev < 1 ? prob - prev : nil))
+                outcomes.append(PredOutcome(label: label, prob: prob, change: prev > 0 && prev < 1 ? prob - prev : nil,
+                                            ref: "k:" + (m["ticker"] as? String ?? "")))
             }
             if outcomes.isEmpty || volume < 100 { continue }
             outcomes.sort { $0.prob > $1.prob }
