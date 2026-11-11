@@ -24,6 +24,9 @@ data class OddsGame(
     val model: Double,         // our rating model
     val kalshiUrl: String,
     val polymarketUrl: String,
+    /** The matched markets, so a pick can be logged: (event, home outcome, away outcome). */
+    val kalshiPick: Triple<PredEvent, PredOutcome, PredOutcome>? = null,
+    val polymarketPick: Triple<PredEvent, PredOutcome, PredOutcome>? = null,
 ) {
     /** Biggest gap in points between a prediction market and the sportsbooks (or the other market). */
     val gap: Double get() {
@@ -132,13 +135,14 @@ object Odds {
             if (hs == null || aw == null) {
                 val day = r[cDay]
                 if (day >= today && day <= horizon) {
-                    val (ka, ku) = market(kalshi, a, h)
-                    val (pa, pu) = market(poly, a, h)
+                    val km = match(kalshi, a, h)
+                    val pm = match(poly, a, h)
                     upcoming.add(OddsGame(
                         away = TEAMS[a]?.second ?: a, home = TEAMS[h]?.second ?: h,
                         kickoff = kickoff(day, r[cTime], et), books = book,
-                        kalshi = ka, polymarket = pa, model = p,
-                        kalshiUrl = ku, polymarketUrl = pu,
+                        kalshi = km?.first, polymarket = pm?.first, model = p,
+                        kalshiUrl = km?.second?.first?.url ?: "", polymarketUrl = pm?.second?.first?.url ?: "",
+                        kalshiPick = km?.second, polymarketPick = pm?.second,
                     ))
                 }
                 continue
@@ -174,7 +178,11 @@ object Odds {
     private fun implied(ml: Double) = if (ml > 0) 100 / (ml + 100) else -ml / (-ml + 100)
 
     /** Finds this game in a market's list and returns the home team's chance (normalized) and a link. */
-    fun market(events: List<PredEvent>, away: String, home: String): Pair<Double?, String> {
+    fun market(events: List<PredEvent>, away: String, home: String): Pair<Double?, String> =
+        match(events, away, home)?.let { it.first to it.second.first.url } ?: (null to "")
+
+    /** Like [market], but also returns the matched event with its (home, away) outcomes. */
+    fun match(events: List<PredEvent>, away: String, home: String): Pair<Double, Triple<PredEvent, PredOutcome, PredOutcome>>? {
         for (e in events) {
             if (e.count != 2 || e.outcomes.size != 2) continue
             val o0 = e.outcomes[0]
@@ -182,12 +190,12 @@ object Odds {
             val t0 = teamFor(o0.label, away, home) ?: continue
             val t1 = teamFor(o1.label, away, home) ?: continue
             if (t0 == t1) continue
-            val homeP = if (t0 == home) o0.prob else o1.prob
-            val awayP = if (t0 == home) o1.prob else o0.prob
-            if (homeP + awayP <= 0) continue
-            return homeP / (homeP + awayP) to e.url
+            val homeO = if (t0 == home) o0 else o1
+            val awayO = if (t0 == home) o1 else o0
+            if (homeO.prob + awayO.prob <= 0) continue
+            return homeO.prob / (homeO.prob + awayO.prob) to Triple(e, homeO, awayO)
         }
-        return null to ""
+        return null
     }
 
     /** Which of the two teams an outcome label like "Detroit", "Lions" or "New York G" means. */

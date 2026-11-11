@@ -12,6 +12,9 @@ struct OddsGame: Identifiable {
     let model: Double         // our rating model
     let kalshiURL: String
     let polymarketURL: String
+    /// The matched markets, so a pick can be logged.
+    var kalshiPick: GameMarket?
+    var polymarketPick: GameMarket?
 
     /// Biggest gap in points between a prediction market and the sportsbooks (or the other market).
     var gap: Double {
@@ -21,6 +24,12 @@ struct OddsGame: Identifiable {
         }
         return max(kalshi.map { abs($0 - ref) } ?? 0, polymarket.map { abs($0 - ref) } ?? 0) * 100
     }
+}
+
+struct GameMarket {
+    let event: PredEvent
+    let home: PredOutcome
+    let away: PredOutcome
 }
 
 struct OddsResult {
@@ -117,12 +126,14 @@ enum Odds {
             guard let hs = Int(r[cHs]), let aw = Int(r[cAs]) else {
                 let day = r[cDay]
                 if day >= today && day <= horizon {
-                    let km = market(kalshi, away: a, home: h)
-                    let pm = market(poly, away: a, home: h)
+                    let km = match(kalshi, away: a, home: h)
+                    let pm = match(poly, away: a, home: h)
                     upcoming.append(OddsGame(
                         id: "\(day)-\(a)-\(h)", away: teams[a]?.nick ?? a, home: teams[h]?.nick ?? h,
                         kickoff: kickoff(day, r[cTime], et), books: book,
-                        kalshi: km.0, polymarket: pm.0, model: p, kalshiURL: km.1, polymarketURL: pm.1))
+                        kalshi: km?.prob, polymarket: pm?.prob, model: p,
+                        kalshiURL: km?.market.event.url ?? "", polymarketURL: pm?.market.event.url ?? "",
+                        kalshiPick: km?.market, polymarketPick: pm?.market))
                 }
                 continue
             }
@@ -157,16 +168,22 @@ enum Odds {
 
     /// Finds this game in a market's list and returns the home team's chance (normalized) and a link.
     static func market(_ events: [PredEvent], away: String, home: String) -> (Double?, String) {
+        guard let m = match(events, away: away, home: home) else { return (nil, "") }
+        return (m.prob, m.market.event.url)
+    }
+
+    /// Like `market`, but also returns the matched event with its home and away outcomes.
+    static func match(_ events: [PredEvent], away: String, home: String) -> (prob: Double, market: GameMarket)? {
         for e in events where e.count == 2 && e.outcomes.count == 2 {
             let o0 = e.outcomes[0], o1 = e.outcomes[1]
             guard let t0 = teamFor(o0.label, away: away, home: home),
                   let t1 = teamFor(o1.label, away: away, home: home), t0 != t1 else { continue }
-            let homeP = t0 == home ? o0.prob : o1.prob
-            let awayP = t0 == home ? o1.prob : o0.prob
-            if homeP + awayP <= 0 { continue }
-            return (homeP / (homeP + awayP), e.url)
+            let homeO = t0 == home ? o0 : o1
+            let awayO = t0 == home ? o1 : o0
+            if homeO.prob + awayO.prob <= 0 { continue }
+            return (homeO.prob / (homeO.prob + awayO.prob), GameMarket(event: e, home: homeO, away: awayO))
         }
-        return (nil, "")
+        return nil
     }
 
     /// Which of the two teams an outcome label like "Detroit", "Lions" or "New York G" means.

@@ -22,10 +22,15 @@ struct NflOddsView: View {
     @State private var result: OddsResult?
     @State private var loading = false
     @State private var error: String?
+    @State private var logging: OddsGame?
+    @State private var logged = ""
 
     var body: some View {
         NavigationStack {
             List {
+                if !logged.isEmpty {
+                    Section { Text("\(logged). See it under My picks.").foregroundStyle(.green) }
+                }
                 Section {
                     EmptyView()
                 } footer: {
@@ -60,6 +65,34 @@ struct NflOddsView: View {
             .marketBackground()
             .navigationTitle("NFL odds check")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { SettingsButton() } }
+            .sheet(item: $logging) { g in
+                NavigationStack {
+                    Form {
+                        Section {
+                            EmptyView()
+                        } footer: {
+                            Text("Who wins? It's logged at that site's price today and followed under My picks. Nothing is bought.")
+                        }
+                        ForEach([("Kalshi", g.kalshiPick), ("Polymarket", g.polymarketPick)], id: \.0) { item in
+                            if let m = item.1 {
+                                Section(item.0) {
+                                    ForEach([(g.away, m.away), (g.home, m.home)], id: \.0) { team in
+                                        Button(String(format: "%@  %.0f¢", team.0, team.1.prob * 100)) {
+                                            PredJournal.log(m.event, team.1, side: "yes")
+                                            logged = "Logged: \(team.0) on \(item.0)"
+                                            logging = nil
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .navigationTitle("\(g.away) at \(g.home)")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { logging = nil } } }
+                }
+                .presentationDetents([.medium])
+            }
             .refreshable { await load(force: true) }
             .task { await load(force: false) }
         }
@@ -87,6 +120,9 @@ struct NflOddsView: View {
             }
             if let note = note(g) {
                 Text(note).font(.footnote).foregroundStyle(g.gap >= 3 ? .green : .secondary)
+            }
+            if g.kalshiPick != nil || g.polymarketPick != nil {
+                Button("Log my pick") { logging = g }.buttonStyle(.borderless).font(.caption)
             }
             HStack(spacing: 12) {
                 if let u = URL(string: g.kalshiURL), !g.kalshiURL.isEmpty {

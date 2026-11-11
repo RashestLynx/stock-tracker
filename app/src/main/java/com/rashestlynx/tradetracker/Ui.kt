@@ -2989,6 +2989,36 @@ private fun NflOddsScreen(store: Store) {
     }
 
     fun pct(v: Double?) = if (v == null) "–" else String.format(java.util.Locale.US, "%.0f%%", v * 100)
+    var loggingGame by remember { mutableStateOf<OddsGame?>(null) }
+    var gameLogged by remember { mutableStateOf("") }
+    loggingGame?.let { g ->
+        AlertDialog(
+            onDismissRequest = { loggingGame = null },
+            title = { Text("${g.away} at ${g.home}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Who wins? It's logged at that site's price today and followed under My picks. Nothing is bought.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOfNotNull(g.kalshiPick?.let { "Kalshi" to it }, g.polymarketPick?.let { "Polymarket" to it })
+                        .forEach { (site, m) ->
+                            val (ev, homeO, awayO) = m
+                            Text(site, style = MaterialTheme.typography.labelLarge)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(g.away to awayO, g.home to homeO).forEach { (team, o) ->
+                                    OutlinedButton(onClick = {
+                                        PredJournal.log(context, ev, o, "yes")
+                                        loggingGame = null
+                                        gameLogged = "Logged: $team on $site"
+                                    }) { Text(String.format(java.util.Locale.US, "%s %.0f¢", team, o.prob * 100)) }
+                                }
+                            }
+                        }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { loggingGame = null }) { Text("Cancel") } },
+        )
+    }
 
     PullToRefreshBox(isRefreshing = loading, onRefresh = { reloadToken++ }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -2996,6 +3026,9 @@ private fun NflOddsScreen(store: Store) {
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (gameLogged.isNotEmpty()) {
+                item { Text("$gameLogged. See it under My picks.", color = TradeColors.buy(), style = MaterialTheme.typography.bodyMedium) }
+            }
             item {
                 Text("Each game's chance of the home team winning, from four sources. Sportsbooks are usually the " +
                     "sharpest estimate. When Kalshi or Polymarket is several points away from them, one side of " +
@@ -3035,6 +3068,9 @@ private fun NflOddsScreen(store: Store) {
                         oddsNote(g)?.let { note ->
                             Text(note, style = MaterialTheme.typography.bodySmall,
                                 color = if (g.gap >= 3) TradeColors.buy() else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (g.kalshiPick != null || g.polymarketPick != null) {
+                            TextButton(onClick = { loggingGame = g }, contentPadding = PaddingValues(0.dp)) { Text("Log my pick") }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (g.kalshiUrl.isNotEmpty()) OutlinedButton(onClick = {
