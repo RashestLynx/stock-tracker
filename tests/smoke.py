@@ -82,9 +82,26 @@ def check_ok(where):
     return True
 
 
-def tap(text, where, wait=4, required=True):
+def width():
+    m = re.search(r"(\d+)x(\d+)", adb("shell", "wm", "size"))
+    return int(m.group(1)) if m else 1080
+
+
+def tap(text, where, wait=4, required=True, row=None):
     root = screen()
     pos = find(root, text)
+    # Buttons further along a scrolling row are off-screen: swipe that row left and look again.
+    tries = 0
+    while pos is None and row and tries < 3:
+        anchor = next((find(root, r) for r in row if find(root, r)), None)
+        if anchor is None:
+            break
+        w = width()
+        adb("shell", "input", "swipe", str(int(w * 0.85)), str(anchor[1]), str(int(w * 0.15)), str(anchor[1]), "300")
+        time.sleep(1.5)
+        root = screen()
+        pos = find(root, text)
+        tries += 1
     if pos is None:
         if required:
             fail(f"Couldn't find '{text}' on screen ({where}). Visible: {', '.join(texts(root)[:25])}")
@@ -114,7 +131,7 @@ def tour(label):
         if not tap(tab, label):
             return
         for v in inner:
-            if not tap(v, f"{label} / {tab}", wait=5):
+            if not tap(v, f"{label} / {tab}", wait=5, row=inner):
                 return
     note(f"{label}: opened every tab and view without crashing")
 
