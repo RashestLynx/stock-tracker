@@ -170,6 +170,35 @@ def check_market_sources():
             note(f"Market source {url} -> failed: {e}")
 
 
+def check_market_color():
+    """Takes a screenshot and checks that the background is tinted green (market up) or red (market down)."""
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        note("Market color: Pillow isn't installed, so the screenshot check was skipped")
+        return
+    tints = {"green (market up)": [(0xE6, 0xF6, 0xEA), (0x06, 0x18, 0x0C)],
+             "red (market down)": [(0xFC, 0xE9, 0xE8), (0x1D, 0x08, 0x08)]}
+    for attempt in range(4):
+        png = subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True, timeout=60).stdout
+        img = Image.open(io.BytesIO(png)).convert("RGB")
+        small = img.resize((img.width // 8, img.height // 8))
+        px = list(small.getdata())
+        for name, colors in tints.items():
+            share = sum(1 for p in px if any(all(abs(p[i] - c[i]) <= 3 for i in range(3)) for c in colors)) / len(px)
+            if share > 0.05:
+                note(f"Market color: background is {name} ({share:.0%} of the screen)")
+                return
+        time.sleep(8)
+    common = {}
+    for p in px:
+        common[p] = common.get(p, 0) + 1
+    top = sorted(common.items(), key=lambda kv: -kv[1])[:3]
+    print("::warning::Market color: no green or red background found. Most common colors: " +
+          ", ".join(f"#{c[0]:02X}{c[1]:02X}{c[2]:02X}" for c, _ in top))
+
+
 def main(apk):
     check_market_sources()
     adb("wait-for-device")
@@ -183,6 +212,7 @@ def main(apk):
         if find(root, "Markets") is None:
             fail("First launch (no screen lock): the tabs didn't appear. Visible: " + ", ".join(texts(root)[:25]))
         else:
+            check_market_color()
             tour("No screen lock")
 
     # 2) With a PIN: the app lock should ask, then open after the PIN.
