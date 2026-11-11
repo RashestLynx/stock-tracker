@@ -111,7 +111,7 @@ fun AppTheme(store: Store, content: @Composable () -> Unit) {
     var market by remember { mutableStateOf<LiveQuote?>(null) }
     LaunchedEffect(Unit) {
         while (true) {
-            withContext(Dispatchers.IO) { runCatching { Live.quote("SPY", store) }.getOrNull() }?.let { market = it }
+            withContext(Dispatchers.IO) { Live.market(store) }?.let { market = it }
             delay(5 * 60_000L)
         }
     }

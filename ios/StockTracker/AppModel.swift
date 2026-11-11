@@ -50,7 +50,7 @@ final class AppModel: ObservableObject {
     @Published var market: LiveQuote?
 
     func refreshMarket() async {
-        if let q = await Live.quote("SPY") { market = q }
+        if let q = await Live.market() { market = q }
     }
     private var seen: [String]
 

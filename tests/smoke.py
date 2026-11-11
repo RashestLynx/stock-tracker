@@ -136,7 +136,22 @@ def tour(label):
     note(f"{label}: opened every tab and view without crashing")
 
 
+def check_market_sources():
+    """Reports which free market-price address works, for the green/red background without a key."""
+    import urllib.request
+    for url in ("https://stooq.com/q/l/?s=spy.us&f=sd2t2ohlcp&h&e=csv",
+                "https://stooq.com/q/d/l/?s=spy.us&i=d",
+                "https://stooq.com/q/l/?s=spy.us&f=sd2t2oc&h&e=csv"):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "StockTracker-Android/2.0"})
+            text = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", "replace").strip().splitlines()
+            note(f"Market source {url} -> {' / '.join(text[:2])[:200]} ... ({len(text)} lines, last: {text[-1][:80] if text else ''})")
+        except Exception as e:
+            note(f"Market source {url} -> failed: {e}")
+
+
 def main(apk):
+    check_market_sources()
     adb("wait-for-device")
     adb("install", "-r", apk, check=True)
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
