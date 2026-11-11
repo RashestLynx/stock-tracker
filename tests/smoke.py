@@ -29,8 +29,13 @@ def fail(msg):
     problems.append(msg)
 
 
+notes = []
+
+
 def note(msg):
-    print(f"::notice::{msg}")
+    # Collected and printed as one summary at the end: GitHub only shows a few notices per step.
+    print(msg)
+    notes.append(msg)
 
 
 def alive():
@@ -325,6 +330,8 @@ def main(apk):
                     tour("With PIN")
     adb("shell", "locksettings", "clear", "--old", PIN)
 
+    summary = "%0A".join(n.replace("%", " pct").replace("\n", " ")[:300] for n in notes)
+    print(f"::notice title=Smoke test results::{summary}")
     if problems:
         print(f"{len(problems)} problem(s) found")
         sys.exit(1)

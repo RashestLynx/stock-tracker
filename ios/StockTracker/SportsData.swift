@@ -29,6 +29,17 @@ struct SportGame: Identifiable {
     let polyEvent: PredEvent?
     let volume: Double
     var id: String { kalshiEvent.id }
+    /// The side where Kalshi and Polymarket disagree most.
+    var widest: SportSide? {
+        var best: SportSide?
+        var bestGap = -1.0
+        for s in sides {
+            guard let k = s.kalshiP, let p = s.polyP else { continue }
+            if abs(k - p) > bestGap { bestGap = abs(k - p); best = s }
+        }
+        return best
+    }
+
     /// Biggest gap in points between Kalshi and Polymarket on any side.
     var gap: Double {
         sides.map { s in (s.kalshiP != nil && s.polyP != nil) ? abs(s.kalshiP! - s.polyP!) * 100 : 0 }.max() ?? 0

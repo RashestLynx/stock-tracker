@@ -93,3 +93,23 @@ for tag in ("nfl", "cfb", "nba", "ncaab", "cbb", "nhl", "mlb", "mls", "epl", "uc
     except Exception as e:
         lines.append(f"{tag}: failed {e}")
 notice("Polymarket", lines)
+
+
+# Links: does a Kalshi event page show the right game?
+lines = []
+for t in ("KXNFLGAME", "KXNBAGAME", "KXUFCFIGHT"):
+    try:
+        ev = get(f"https://external-api.kalshi.com/trade-api/v2/events?series_ticker={t}&status=open&with_nested_markets=true&limit=5").get("events", [])
+        if not ev:
+            lines.append(f"{t}: no open events"); continue
+        e = ev[0]
+        url = "https://kalshi.com/events/" + e["event_ticker"].lower()
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        resp = urllib.request.urlopen(req, timeout=25)
+        html = resp.read().decode("utf-8", "replace")
+        labels = [m.get("yes_sub_title", "") for m in e.get("markets", [])]
+        found = [l for l in labels if l and l in html]
+        lines.append(f"{t}: {url} -> HTTP {resp.status}, final {resp.geturl()}, page mentions {found} of {labels}; ticker in page: {e['event_ticker'] in html.upper()}")
+    except Exception as ex:
+        lines.append(f"{t}: failed {ex}")
+notice("Links", lines)

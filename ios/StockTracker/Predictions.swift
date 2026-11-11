@@ -226,7 +226,9 @@ enum Predictions {
                 source: "Kalshi",
                 title: sub.isEmpty || outcomes.count > 1 ? title : "\(title) (\(sub))",
                 category: category(e["category"] as? String ?? ""),
-                url: "https://kalshi.com/markets/" + series.lowercased(),
+                // The page for this exact event (one game, one question), not the whole series.
+                url: e["event_ticker"] is String ? "https://kalshi.com/events/" + eventTicker.lowercased()
+                                                 : "https://kalshi.com/markets/" + series.lowercased(),
                 outcomes: Array(outcomes.prefix(2)),
                 volume24: volume,
                 move: move,

@@ -219,7 +219,11 @@ object Predictions {
                 source = "Kalshi",
                 title = if (sub.isBlank() || outcomes.size > 1) title else "$title ($sub)",
                 category = category(e.optString("category")),
-                url = "https://kalshi.com/markets/" + series.lowercase(Locale.US),
+                // The page for this exact event (one game, one question), not the whole series.
+                url = e.optString("event_ticker").let {
+                    if (it.isNotBlank()) "https://kalshi.com/events/" + it.lowercase(Locale.US)
+                    else "https://kalshi.com/markets/" + series.lowercase(Locale.US)
+                },
                 outcomes = outcomes.take(2),
                 volume24 = volume,
                 move = move,

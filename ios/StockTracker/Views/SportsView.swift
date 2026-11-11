@@ -120,11 +120,9 @@ struct LeagueView: View {
                     Text(pct(s.polyP)).font(.caption).frame(width: 52, alignment: .trailing)
                 }
             }
-            if g.gap >= 3, let s = g.sides.max(by: { a, b in
-                abs((a.kalshiP ?? 0) - (a.polyP ?? (a.kalshiP ?? 0))) < abs((b.kalshiP ?? 0) - (b.polyP ?? (b.kalshiP ?? 0)))
-            }) {
-                Text(String(format: "The sites differ by %.0f points on %@. It's cheaper on %@.", g.gap, s.label,
-                            (s.kalshiP ?? 0) < (s.polyP ?? 0) ? "Kalshi" : "Polymarket"))
+            if g.gap >= 3, let s = g.widest {
+                let cheaper = (s.kalshiP ?? 0) < (s.polyP ?? 0) ? "Kalshi" : "Polymarket"
+                Text(String(format: "The sites differ by %.0f points on %@. It's cheaper on %@.", g.gap, s.label, cheaper))
                     .font(.footnote).foregroundStyle(.green)
             }
             HStack(spacing: 16) {
