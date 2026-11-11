@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.text.format.DateUtils
+import java.util.Locale
 import kotlin.math.abs
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
@@ -1179,6 +1180,11 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onSources:
                     }
                 }
             }
+            var priceOn by remember { mutableStateOf(store.priceAlertsOn) }
+            SwitchRow("Price alerts", "While the market is open: your watchlist and last night's strongest patterns breaking " +
+                "a 20-day or 52-week high or low, or moving 5% in a day. About every 5 minutes with live alerts on, else every 15.", priceOn) {
+                priceOn = it; store.priceAlertsOn = it
+            }
             SwitchRow("Notifications from this app", "Turn off to stop all filing notifications from the app.", appNotify) {
                 appNotify = it; store.appNotify = it
             }
@@ -1381,6 +1387,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
 
             // ---- price ----
             PriceChartBlock(t.ticker, store, liveQ)
+            NightlyBlock(t.ticker)
             PatternsBlock(t.ticker, store)
             liveQ?.let { q ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2946,13 +2953,14 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Top 30", "Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
+        PillTabs(listOf("Top 30", "Patterns", "Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> ScoresScreen(store, onOpen = onOpen)
-            1 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            2 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
-            3 -> WsbScreen(store, onOpen = onOpen)
+            1 -> NightlyPatternsScreen(store, onOpen = onOpen)
+            2 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
+            3 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            4 -> WsbScreen(store, onOpen = onOpen)
             else -> CryptoScreen(store, onOpen = onOpen)
         }
     }
@@ -4548,5 +4556,168 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDr
             event.changes.forEach { if (it.pressed) { onMove(it.position.x); it.consume() } }
         } while (event.changes.any { it.pressed })
         onEnd()
+    }
+}
+
+// ============================================================ Patterns: last night's scan of every stock + live price alerts
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NightlyPatternsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    var view by rememberSaveable { mutableIntStateOf(0) }   // 0 = signals, 1 = track records
+    var kind by rememberSaveable { mutableIntStateOf(0) }
+    var dir by rememberSaveable { mutableIntStateOf(0) }    // 0 = both, 1 = up, 2 = down
+    var result by remember { mutableStateOf<NightlyResult?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+    var showN by rememberSaveable { mutableIntStateOf(60) }
+    val alerts = remember(reload) { store.priceAlertLog().filter { System.currentTimeMillis() - it.time < 3 * 86_400_000L } }
+    val kinds = listOf("All", "Candlesticks", "Chart shapes", "Indicators", "Smart money")
+    val kindName = listOf("", "Candlestick", "Chart shape", "Indicator", "Smart money")
+
+    LaunchedEffect(reload) {
+        loading = true
+        withContext(Dispatchers.IO) { runCatching { Nightly.load(context, force = reload > 0) } }
+            .onSuccess { result = it; error = null }.onFailure { error = it.message ?: "Couldn't load the scan" }
+        loading = false
+    }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (alerts.isNotEmpty()) {
+                item { Text("Live price alerts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                items(alerts.take(8), key = { "a" + it.key }) { a ->
+                    ModernCard(onClick = { onOpen(StockTarget(a.ticker, "", "", "", emptyList(), "", 0.0)) },
+                        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row {
+                                Text(if (a.up) "▲ " else "▼ ", color = if (a.up) TradeColors.buy() else TradeColors.sell(), fontWeight = FontWeight.Bold)
+                                Text(a.title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Text(DateUtils.getRelativeTimeSpanString(a.time).toString(), style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (a.text.isNotEmpty()) Text(a.text, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+            item { PillTabs(listOf("Signals", "Track records"), view, { view = it }) }
+            item { PillTabs(kinds, kind, { kind = it; showN = 60 }) }
+            if (view == 0) item { PillTabs(listOf("Up and down", "Up signals", "Down signals"), dir, { dir = it; showN = 60 }) }
+            val r = result
+            item {
+                Text(
+                    if (r != null) "Last night's scan of ${String.format(Locale.US, "%,d", r.scanned)} U.S. stocks (prices from ${r.date}). " +
+                        "The track record is every time each pattern showed up in any stock over the last 2 years. " +
+                        "Live alerts check your watchlist and today's strongest setups while the market is open."
+                    else "Every U.S. stock is scanned each night for about 70 patterns.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            error?.let { e -> item { EmptyState("No scan yet", e) } }
+            if (r != null && view == 0) {
+                val shown = r.signals().filter { (_, h) ->
+                    (kind == 0 || h.pattern.kind == kindName[kind]) &&
+                        (dir == 0 || (dir == 1 && h.pattern.mood > 0) || (dir == 2 && h.pattern.mood < 0))
+                }
+                if (shown.isEmpty()) item { EmptyState("No signals", "Nothing matches these filters today.") }
+                items(shown.take(showN), key = { (s, h) -> s.ticker + h.pattern.id }) { (s, h) ->
+                    NightlySignalRow(s, h) { onOpen(StockTarget(s.ticker, "", "", "", emptyList(), "", 0.0)) }
+                }
+                if (shown.size > showN) item {
+                    TextButton(onClick = { showN += 60 }, modifier = Modifier.fillMaxWidth()) { Text("Show more (${shown.size - showN} left)") }
+                }
+            }
+            if (r != null && view == 1) {
+                val list = r.patterns.filter { (kind == 0 || it.kind == kindName[kind]) && it.n > 0 }.sortedByDescending { it.edge }
+                if (list.isEmpty()) item { EmptyState("No track records", "Smart-money signals come from filings, not prices, so they have no price history here.") }
+                items(list, key = { "p" + it.id }) { p ->
+                    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                MoodMark(p.mood)
+                                Text(p.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Text(if (p.edge > 0) "Worked" else "Didn't work", style = MaterialTheme.typography.labelMedium,
+                                    color = if (p.edge > 0) TradeColors.buy() else TradeColors.sell())
+                            }
+                            Text(p.desc, style = MaterialTheme.typography.bodySmall)
+                            Text(p.record, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Patterns are hints, not predictions. \"Worked\" means it beat the S&P 500 on average in the direction it points; " +
+                    "past results don't guarantee future ones.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoodMark(mood: Int) {
+    Text(when { mood > 0 -> "▲ "; mood < 0 -> "▼ "; else -> "• " },
+        color = when { mood > 0 -> TradeColors.buy(); mood < 0 -> TradeColors.sell(); else -> MaterialTheme.colorScheme.onSurfaceVariant },
+        fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun NightlySignalRow(s: NightlyStock, h: NightlyHit, onClick: () -> Unit) {
+    ModernCard(onClick = onClick, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(s.ticker, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.width(8.dp))
+                Text(String.format(Locale.US, "\$%,.2f  %+.1f%%", s.price, s.chg * 100), style = MaterialTheme.typography.labelMedium,
+                    color = if (s.chg >= 0) TradeColors.buy() else TradeColors.sell(), modifier = Modifier.weight(1f))
+                Text(h.whenText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row { MoodMark(h.pattern.mood); Text(h.pattern.name, fontWeight = FontWeight.SemiBold) }
+            if (h.note.isNotEmpty()) Text(h.note, style = MaterialTheme.typography.bodySmall)
+            if (h.pattern.record.isNotEmpty()) Text(h.pattern.record, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (h.ownRecord.isNotEmpty()) Text(h.ownRecord, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** On a stock's page: what last night's scan found for it (uses the saved copy; loads it if missing). */
+@Composable
+private fun NightlyBlock(ticker: String) {
+    val context = LocalContext.current
+    var stock by remember(ticker) { mutableStateOf<NightlyStock?>(null) }
+    var date by remember(ticker) { mutableStateOf("") }
+    LaunchedEffect(ticker) {
+        withContext(Dispatchers.IO) { runCatching { Nightly.cached(context) ?: Nightly.load(context) } }.getOrNull()?.let {
+            stock = it.stocks[ticker.uppercase()]; date = it.date
+        }
+    }
+    val s = stock ?: return
+    if (s.hits.isEmpty()) return
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Last night's scan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            s.hits.forEach { h ->
+                Column {
+                    Row { MoodMark(h.pattern.mood); Text(h.pattern.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(h.whenText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text(h.note.ifEmpty { h.pattern.desc }, style = MaterialTheme.typography.bodySmall)
+                    if (h.pattern.record.isNotEmpty()) Text(h.pattern.record, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (h.ownRecord.isNotEmpty()) Text(h.ownRecord, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(String.format(Locale.US, "Live alerts fire if it breaks \$%,.2f (20-day high) or \$%,.2f (20-day low). Prices from %s.",
+                s.hi20, s.lo20, date), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

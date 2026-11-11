@@ -40,6 +40,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
     override fun doWork(): Result {
         val ua = store.userAgent
         if (!ua.contains("@")) {
+            runCatching { PriceWatch.check(applicationContext, store) }
             store.lastStatus = "Add your email in Settings to start"
             return Result.success()
         }
@@ -70,6 +71,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
             if (!firstRun && store.appNotify) notifyAll(newAlerts)
             firstRun
         }
+        // Live price alerts, after filings so those aren't held up (only while the market is open).
+        if (!fast) runCatching { PriceWatch.check(applicationContext, store) }
+
         // A quick check with nothing new leaves the status line alone.
         if (fast && newAlerts.isEmpty() && errors.isEmpty()) return Result.success()
 

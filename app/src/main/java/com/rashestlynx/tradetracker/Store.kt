@@ -157,6 +157,27 @@ class Store(context: Context) {
         get() = prefs.getFloat("bet_budget", 0f).toDouble()
         set(v) = prefs.edit().putFloat("bet_budget", v.toFloat()).apply()
 
+    /** Live price alerts while the market is open (watchlist and last night's strongest patterns). */
+    var priceAlertsOn: Boolean
+        get() = prefs.getBoolean("price_alerts", true)
+        set(v) = prefs.edit().putBoolean("price_alerts", v).apply()
+
+    /** Today's and recent price alerts, newest first (kept to 40). */
+    fun priceAlertLog(): List<PriceAlert> = runCatching {
+        val arr = org.json.JSONArray(prefs.getString("price_alert_log", "[]"))
+        List(arr.length()) { i -> arr.getJSONObject(i).let {
+            PriceAlert(it.getString("k"), it.getString("t"), it.getString("h"), it.optString("x"), it.getLong("w"), it.optBoolean("u"))
+        } }
+    }.getOrDefault(emptyList())
+
+    fun addPriceAlerts(add: List<PriceAlert>) {
+        val all = (add.sortedByDescending { it.time } + priceAlertLog()).distinctBy { it.key }.take(40)
+        val arr = org.json.JSONArray()
+        all.forEach { arr.put(org.json.JSONObject().put("k", it.key).put("t", it.ticker).put("h", it.title)
+            .put("x", it.text).put("w", it.time).put("u", it.up)) }
+        prefs.edit().putString("price_alert_log", arr.toString()).apply()
+    }
+
     /** Ask for the phone's screen lock (fingerprint, face or PIN) to open the app. */
     var appLock: Boolean
         get() = prefs.getBoolean("app_lock", true)
