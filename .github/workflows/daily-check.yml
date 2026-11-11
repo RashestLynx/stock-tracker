@@ -6,6 +6,9 @@ on:
   schedule:
     - cron: "41 12 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["tests/health.py", ".github/workflows/daily-check.yml"]
 
 permissions:
   contents: read
