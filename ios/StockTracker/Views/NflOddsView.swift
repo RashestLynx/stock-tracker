@@ -76,11 +76,12 @@ struct NflOddsView: View {
                         ForEach([("Kalshi", g.kalshiPick), ("Polymarket", g.polymarketPick)], id: \.0) { item in
                             if let m = item.1 {
                                 Section(item.0) {
-                                    ForEach([(g.away, m.away), (g.home, m.home)], id: \.0) { team in
-                                        Button(String(format: "%@  %.0f¢", team.0, team.1.prob * 100)) {
-                                            PredJournal.log(m.event, team.1, side: "yes")
-                                            logged = "Logged: \(team.0) on \(item.0)"
-                                            logging = nil
+                                    ForEach([(g.away, m.away, 1 - g.best), (g.home, m.home, g.best)], id: \.0) { team in
+                                        NavigationLink(String(format: "%@  %.0f¢", team.0, team.1.prob * 100)) {
+                                            BetSheetView(target: BetTarget(event: m.event, outcome: team.1, side: "yes", estimate: team.2,
+                                                estimateNote: String(format: "Best estimate for the %@: %.0f%%, from the sportsbooks, Kalshi, Polymarket and the math model combined.", team.0, team.2 * 100))) {
+                                                logged = $0; logging = nil
+                                            }
                                         }
                                     }
                                 }
@@ -91,7 +92,7 @@ struct NflOddsView: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { logging = nil } } }
                 }
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
             }
             .refreshable { await load(force: true) }
             .task { await load(force: false) }
@@ -108,6 +109,8 @@ struct NflOddsView: View {
                 Spacer()
                 Text(g.kickoff).font(.caption2).foregroundStyle(.secondary)
             }
+            Text(String(format: "Best estimate: %@ %.0f%%", g.best >= 0.5 ? g.home : g.away, max(g.best, 1 - g.best) * 100))
+                .font(.subheadline.weight(.semibold))
             Text("Chance the \(g.home) win").font(.caption).foregroundStyle(.secondary)
             HStack {
                 ForEach([("Sportsbooks", g.books), ("Kalshi", g.kalshi), ("Polymarket", g.polymarket), ("Math model", Optional(g.model))], id: \.0) { item in

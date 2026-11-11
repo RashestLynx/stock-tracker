@@ -74,7 +74,8 @@ struct MyPredPicksView: View {
                     .foregroundStyle(s.won == true ? .green : s.won == false ? .red : .primary)
                 Spacer()
                 if let pr = s.profit {
-                    Text(money(pr * 10) + " on $10").font(.caption.weight(.semibold)).foregroundStyle(pr >= 0 ? .green : .red)
+                    let st = p.stake ?? 10
+                    Text(money(pr * st) + " on $" + Format.number(st)).font(.caption.weight(.semibold)).foregroundStyle(pr >= 0 ? .green : .red)
                 }
             }
             Button("Remove", role: .destructive) { PredJournal.delete(p.id); Task { await load() } }

@@ -28,6 +28,17 @@ data class OddsGame(
     val kalshiPick: Triple<PredEvent, PredOutcome, PredOutcome>? = null,
     val polymarketPick: Triple<PredEvent, PredOutcome, PredOutcome>? = null,
 ) {
+    /**
+     * Best estimate of the home team's chance: sportsbooks 45%, Kalshi 20%, Polymarket 20%, rating model 15%,
+     * re-weighted over whichever are available. Markets get most of the weight because they've been the most
+     * accurate (the model's record is shown on screen).
+     */
+    val best: Double get() {
+        val parts = listOfNotNull(books?.let { it to 0.45 }, kalshi?.let { it to 0.20 },
+            polymarket?.let { it to 0.20 }, model to 0.15)
+        return parts.sumOf { it.first * it.second } / parts.sumOf { it.second }
+    }
+
     /** Biggest gap in points between a prediction market and the sportsbooks (or the other market). */
     val gap: Double get() {
         val ref = books ?: return if (kalshi != null && polymarket != null) abs(kalshi - polymarket) * 100 else 0.0

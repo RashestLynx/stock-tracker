@@ -97,11 +97,13 @@ struct PredictionsView: View {
                         }
                         ForEach(ev.outcomes.filter { !$0.ref.isEmpty }) { o in
                             Section(o.label) {
-                                Button(String(format: "Yes  %.0f¢", o.prob * 100)) {
-                                    PredJournal.log(ev, o, side: "yes"); logged = "Logged: \(o.label) – Yes"; logging = nil
-                                }
-                                Button(String(format: "No  %.0f¢", (1 - o.prob) * 100)) {
-                                    PredJournal.log(ev, o, side: "no"); logged = "Logged: \(o.label) – No"; logging = nil
+                                ForEach([("yes", o.prob), ("no", 1 - o.prob)], id: \.0) { side in
+                                    NavigationLink(String(format: "%@  %.0f¢", side.0 == "yes" ? "Yes" : "No", side.1 * 100)) {
+                                        BetSheetView(target: BetTarget(event: ev, outcome: o, side: side.0, estimate: side.1,
+                                                                       estimateNote: "This is the market's own chance. Change it if you think differently.")) {
+                                            logged = $0; logging = nil
+                                        }
+                                    }
                                 }
                             }
                         }

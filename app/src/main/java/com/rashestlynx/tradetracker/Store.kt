@@ -152,6 +152,11 @@ class Store(context: Context) {
         get() = prefs.getBoolean("news_alerts", true)
         set(v) = prefs.edit().putBoolean("news_alerts", v).apply()
 
+    /** Money set aside for prediction-market bets; suggested amounts are a small share of it. 0 = not set. */
+    var betBudget: Double
+        get() = prefs.getFloat("bet_budget", 0f).toDouble()
+        set(v) = prefs.edit().putFloat("bet_budget", v.toFloat()).apply()
+
     /** Ask for the phone's screen lock (fingerprint, face or PIN) to open the app. */
     var appLock: Boolean
         get() = prefs.getBoolean("app_lock", true)

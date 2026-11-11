@@ -2993,6 +2993,8 @@ private fun NflOddsScreen(store: Store) {
     fun pct(v: Double?) = if (v == null) "–" else String.format(java.util.Locale.US, "%.0f%%", v * 100)
     var loggingGame by remember { mutableStateOf<OddsGame?>(null) }
     var gameLogged by remember { mutableStateOf("") }
+    var gameBet by remember { mutableStateOf<BetTarget?>(null) }
+    gameBet?.let { t -> BetSheet(t, onDone = { gameLogged = it; gameBet = null }, onCancel = { gameBet = null }) }
     loggingGame?.let { g ->
         AlertDialog(
             onDismissRequest = { loggingGame = null },
@@ -3006,11 +3008,12 @@ private fun NflOddsScreen(store: Store) {
                             val (ev, homeO, awayO) = m
                             Text(site, style = MaterialTheme.typography.labelLarge)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf(g.away to awayO, g.home to homeO).forEach { (team, o) ->
+                                listOf(Triple(g.away, awayO, 1 - g.best), Triple(g.home, homeO, g.best)).forEach { (team, o, est) ->
                                     OutlinedButton(onClick = {
-                                        PredJournal.log(context, ev, o, "yes")
                                         loggingGame = null
-                                        gameLogged = "Logged: $team on $site"
+                                        gameBet = BetTarget(ev, o, "yes", est, String.format(java.util.Locale.US,
+                                            "Best estimate for the %s: %.0f%%, from the sportsbooks, Kalshi, Polymarket and the math model combined.",
+                                            team, est * 100))
                                     }) { Text(String.format(java.util.Locale.US, "%s %.0f¢", team, o.prob * 100)) }
                                 }
                             }
@@ -3067,6 +3070,9 @@ private fun NflOddsScreen(store: Store) {
                                 }
                             }
                         }
+                        Text(String.format(java.util.Locale.US, "Best estimate: %s %.0f%%",
+                            if (g.best >= 0.5) g.home else g.away, maxOf(g.best, 1 - g.best) * 100),
+                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         oddsNote(g)?.let { note ->
                             Text(note, style = MaterialTheme.typography.bodySmall,
                                 color = if (g.gap >= 3) TradeColors.buy() else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3174,8 +3180,12 @@ private fun MyPredPicksScreen() {
                                 null -> s.now?.let { String.format(java.util.Locale.US, "Open · now %.0f¢", it * 100) } ?: "Open"
                             }, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
                                 color = when (s.won) { true -> TradeColors.buy(); false -> TradeColors.sell(); null -> MaterialTheme.colorScheme.onSurface })
-                            s.profit?.let { Text(cents(it * 10) + " on \$10", style = MaterialTheme.typography.labelLarge,
-                                color = if (it >= 0) TradeColors.buy() else TradeColors.sell()) }
+                            s.profit?.let {
+                                val st = p.stake ?: 10.0
+                                Text(cents(it * st) + " on " + String.format(java.util.Locale.US, "\$%.0f", st),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (it >= 0) TradeColors.buy() else TradeColors.sell())
+                            }
                         }
                         TextButton(onClick = { PredJournal.delete(context, p.id); reloadToken++ }, contentPadding = PaddingValues(0.dp)) {
                             Text("Remove")
@@ -3190,6 +3200,75 @@ private fun MyPredPicksScreen() {
             }
         }
     }
+}
+
+/** A pick being sized: [estimate] is the chance the app (or you) gives [side] of [outcome]. */
+private data class BetTarget(val event: PredEvent, val outcome: PredOutcome, val side: String,
+                             val estimate: Double, val estimateNote: String)
+
+/** How much to bet, and what you'd get back if it wins. Logs the pick with the amount. Never places a bet. */
+@Composable
+private fun BetSheet(t: BetTarget, onDone: (String) -> Unit, onCancel: () -> Unit) {
+    val context = LocalContext.current
+    val store = remember { Store(context) }
+    val price = if (t.side == "yes") t.outcome.prob else 1 - t.outcome.prob
+    val sideText = "${t.outcome.label}${if (t.side == "no") " – No" else if (t.outcome.label == "Yes") "" else " – Yes"}"
+    var budgetText by remember { mutableStateOf(if (store.betBudget > 0) String.format(java.util.Locale.US, "%.0f", store.betBudget) else "") }
+    var estText by remember { mutableStateOf(String.format(java.util.Locale.US, "%.0f", t.estimate * 100)) }
+    var amountText by remember { mutableStateOf("") }
+    var amountEdited by remember { mutableStateOf(false) }
+    fun money(v: Double) = String.format(java.util.Locale.US, "\$%,.2f", v)
+
+    val budget = budgetText.replace(",", "").replace("$", "").toDoubleOrNull() ?: 0.0
+    val est = ((estText.toDoubleOrNull() ?: (t.estimate * 100)) / 100).coerceIn(0.0, 1.0)
+    val sug = Bets.suggest(budget, est, price, t.event.source, t.event.category)
+    val shownAmount = if (amountEdited) amountText else if (sug.amount > 0) String.format(java.util.Locale.US, "%.0f", sug.amount) else ""
+    val amount = shownAmount.replace(",", "").replace("$", "").toDoubleOrNull() ?: 0.0
+    val plan = Bets.plan(amount, price, t.event.source, t.event.category)
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("How much?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(t.event.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(String.format(java.util.Locale.US, "%s at %.0f¢ on %s", sideText, price * 100, t.event.source),
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(budgetText, { budgetText = it }, label = { Text("Your betting budget (\$)") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(estText, { estText = it }, label = { Text("Chance it happens (%)") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth())
+                Text(t.estimateNote, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(sug.why, style = MaterialTheme.typography.bodySmall,
+                    color = if (sug.amount > 0) TradeColors.buy() else MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(shownAmount, { amountText = it; amountEdited = true }, label = { Text("Amount to bet (\$)") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth())
+                if (plan.contracts > 0) {
+                    Text("${plan.contracts} contracts for ${money(plan.cost)} (includes ${money(plan.fee)} fee)",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("If it wins: you get ${money(plan.payout)} back, ${money(plan.profit)} profit",
+                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TradeColors.buy())
+                    Text("If it loses: you lose ${money(plan.cost)}", style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold, color = TradeColors.sell())
+                } else if (amount > 0) {
+                    Text("That's not enough for one contract at this price.", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Only bet money you can afford to lose. The app never places bets; it just logs your pick.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (budget > 0) store.betBudget = budget
+                PredJournal.log(context, t.event, t.outcome, t.side, plan.cost.takeIf { it > 0 })
+                onDone("Logged: $sideText" + if (plan.cost > 0) " (${money(plan.cost)} planned)" else "")
+            }) { Text("Log pick") }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
 }
 
 /** One plain-English line about the biggest disagreement, e.g. "Kalshi has the Giants 4 points higher…". */
@@ -3225,6 +3304,8 @@ private fun PredictionsScreen() {
 
     var logging by remember { mutableStateOf<PredEvent?>(null) }
     var logged by remember { mutableStateOf("") }
+    var betting by remember { mutableStateOf<BetTarget?>(null) }
+    betting?.let { t -> BetSheet(t, onDone = { logged = it; betting = null }, onCancel = { betting = null }) }
     logging?.let { ev ->
         AlertDialog(
             onDismissRequest = { logging = null },
@@ -3239,10 +3320,12 @@ private fun PredictionsScreen() {
                         Text(o.label, style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = {
-                                PredJournal.log(context, ev, o, "yes"); logging = null; logged = "Logged: ${o.label} – Yes"
+                                logging = null
+                                betting = BetTarget(ev, o, "yes", o.prob, "This is the market's own chance. Change it if you think differently.")
                             }) { Text(String.format(java.util.Locale.US, "Yes %.0f¢", o.prob * 100)) }
                             OutlinedButton(onClick = {
-                                PredJournal.log(context, ev, o, "no"); logging = null; logged = "Logged: ${o.label} – No"
+                                logging = null
+                                betting = BetTarget(ev, o, "no", 1 - o.prob, "This is the market's own chance. Change it if you think differently.")
                             }) { Text(String.format(java.util.Locale.US, "No %.0f¢", (1 - o.prob) * 100)) }
                         }
                     }

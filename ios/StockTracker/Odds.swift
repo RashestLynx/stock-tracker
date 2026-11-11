@@ -16,6 +16,16 @@ struct OddsGame: Identifiable {
     var kalshiPick: GameMarket?
     var polymarketPick: GameMarket?
 
+    /// Best estimate of the home team's chance: sportsbooks 45%, Kalshi 20%, Polymarket 20%, model 15%,
+    /// re-weighted over whichever are available.
+    var best: Double {
+        var parts: [(Double, Double)] = [(model, 0.15)]
+        if let b = books { parts.append((b, 0.45)) }
+        if let k = kalshi { parts.append((k, 0.20)) }
+        if let p = polymarket { parts.append((p, 0.20)) }
+        return parts.reduce(0) { $0 + $1.0 * $1.1 } / parts.reduce(0) { $0 + $1.1 }
+    }
+
     /// Biggest gap in points between a prediction market and the sportsbooks (or the other market).
     var gap: Double {
         guard let ref = books else {

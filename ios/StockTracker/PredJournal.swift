@@ -10,6 +10,7 @@ struct PredPick: Codable, Identifiable {
     var side: String        // "yes" or "no"
     var price: Double       // what one $1 contract cost then, 0-1 (the market's chance)
     var ref: String
+    var stake: Double? = nil   // dollars you planned to bet, if you entered an amount
 }
 
 /// Where a pick stands now. `won` is nil until the market settles.
@@ -51,10 +52,10 @@ enum PredJournal {
         set { Keychain.set("pred_journal", (try? JSONEncoder().encode(newValue)).flatMap { String(data: $0, encoding: .utf8) } ?? "") }
     }
 
-    static func log(_ e: PredEvent, _ o: PredOutcome, side: String) {
+    static func log(_ e: PredEvent, _ o: PredOutcome, side: String, stake: Double? = nil) {
         guard !o.ref.isEmpty else { return }
         all.append(PredPick(id: Date(), source: e.source, title: e.title, url: e.url, label: o.label, side: side,
-                            price: side == "yes" ? o.prob : 1 - o.prob, ref: o.ref))
+                            price: side == "yes" ? o.prob : 1 - o.prob, ref: o.ref, stake: (stake ?? 0) > 0 ? stake : nil))
     }
 
     static func delete(_ id: Date) { all.removeAll { $0.id == id } }

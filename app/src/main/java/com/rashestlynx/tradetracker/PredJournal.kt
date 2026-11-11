@@ -14,6 +14,7 @@ data class PredPick(
     val side: String,       // "yes" or "no"
     val price: Double,      // what one $1 contract cost then, 0-1 (the market's chance)
     val ref: String,        // see PredOutcome.ref
+    val stake: Double? = null, // dollars you planned to bet, if you entered an amount
 )
 
 /** Where a pick stands now. won is null until the market settles. */
@@ -46,7 +47,8 @@ object PredJournal {
         List(a.length()) {
             val o = a.getJSONObject(it)
             PredPick(o.getLong("id"), o.optString("src"), o.optString("t"), o.optString("u"), o.optString("l"),
-                o.optString("s", "yes"), o.getDouble("p"), o.optString("r"))
+                o.optString("s", "yes"), o.getDouble("p"), o.optString("r"),
+                o.optDouble("st").takeIf { d -> !d.isNaN() && d > 0 })
         }
     } catch (_: Exception) {
         emptyList()
@@ -56,15 +58,16 @@ object PredJournal {
         val a = JSONArray()
         list.forEach {
             a.put(JSONObject().put("id", it.id).put("src", it.source).put("t", it.title).put("u", it.url).put("l", it.label)
-                .put("s", it.side).put("p", it.price).put("r", it.ref))
+                .put("s", it.side).put("p", it.price).put("r", it.ref).put("st", it.stake ?: JSONObject.NULL))
         }
         Secret.put(ctx, "pred_journal", a.toString())
     }
 
-    fun log(ctx: Context, e: PredEvent, o: PredOutcome, side: String) {
+    fun log(ctx: Context, e: PredEvent, o: PredOutcome, side: String, stake: Double? = null) {
         if (o.ref.isEmpty()) return
         val price = if (side == "yes") o.prob else 1 - o.prob
-        save(ctx, all(ctx) + PredPick(System.currentTimeMillis(), e.source, e.title, e.url, o.label, side, price, o.ref))
+        save(ctx, all(ctx) + PredPick(System.currentTimeMillis(), e.source, e.title, e.url, o.label, side, price, o.ref,
+            stake?.takeIf { it > 0 }))
     }
 
     fun delete(ctx: Context, id: Long) = save(ctx, all(ctx).filter { it.id != id })
