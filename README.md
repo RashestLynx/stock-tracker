@@ -93,6 +93,7 @@ In the background, Android checks about every 15 minutes, with a backup alarm th
 - **Your keys and holdings stay on your phone.** They're encrypted (Android Keystore, iPhone Keychain), never written into the code, and left out of phone backups.
 - **Read-only:** linked accounts can be viewed, never traded or moved.
 - **Security check:** the separate security-scanner repo scans this one every week for leaked keys and common mobile-app mistakes. Dependabot opens pull requests when a library gets a security fix.
+- **Daily data check:** every morning a check confirms each free data source (Kalshi, Polymarket, Yahoo, Cboe, SEC, nflverse) still works the way the app expects, and GitHub emails you if one breaks. Every app build is also tested on a virtual Android phone before it reaches the download link.
 - **Never put API keys in the code.** Paste them into the app's Settings instead.
 
 ## Desktop
