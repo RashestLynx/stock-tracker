@@ -250,6 +250,10 @@ def check_market_color():
 
 def main(apk):
     check_market_sources()
+    try:
+        subprocess.run([sys.executable, "tests/probe_sports.py"], timeout=300)
+    except Exception as e:
+        note(f"Sports probe failed to run: {e}")
     adb("wait-for-device")
     adb("install", "-r", apk, check=True)
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
