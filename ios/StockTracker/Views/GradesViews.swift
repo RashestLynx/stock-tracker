@@ -35,7 +35,7 @@ private let goalAbout = [
 /// Markets → Grades: every stock graded for growth, income and wealth, plus the "next big thing" list.
 struct GradesView: View {
     @EnvironmentObject var model: AppModel
-    @State private var goal = 0
+    @State private var goal = 5
     @State private var query = ""
     @State private var showN = 50
     @State private var result: GradesResult?
@@ -44,15 +44,15 @@ struct GradesView: View {
     var body: some View {
         List {
             Section {
-                PillTabs(options: [(0, "Growth"), (1, "Income"), (2, "Wealth"), (3, "Moat"), (4, "Next big thing")], selection: $goal)
-                Text(goalAbout[goal]).font(.footnote).foregroundStyle(.secondary)
+                PillTabs(options: [(5, "Overall"), (0, "Growth"), (1, "Income"), (2, "Wealth"), (3, "Moat"), (4, "Next big thing")], selection: $goal)
+                Text(goal == 5 ? "Overall: growth and wealth together. Stocks that tend to beat the market and also hold up when it falls. The best single grade if you're not sure which to use." : goalAbout[goal]).font(.footnote).foregroundStyle(.secondary)
             }
             if let e = error, result == nil {
                 EmptyStateView(title: "No grades yet", message: e, systemImage: "graduationcap")
             }
             if let r = result {
                 Section { GradeRecordView(r: r, goal: goal) }
-                if goal < 4 {
+                if goal != 4 {
                     Section {
                         TextField("Find a ticker", text: $query).textInputAutocapitalization(.characters).autocorrectionDisabled()
                         let list = r.ranked(goal).filter { query.isEmpty || $0.ticker.hasPrefix(query.uppercased()) }
@@ -68,7 +68,7 @@ struct GradesView: View {
                                         if let w = g.why(goal).first { Text(w).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
                                     }
                                     Spacer()
-                                    GradeBadge(grade: g.grade(goal), label: g.odds[goal].map { String(format: "%.0f%% odds", $0 * 100) })
+                                    GradeBadge(grade: g.grade(goal), label: g.odd(goal).map { String(format: "%.0f%% odds", $0 * 100) })
                                 }.contentShape(Rectangle())
                             }.buttonStyle(.plain)
                         }
@@ -128,7 +128,7 @@ struct GradeRecordView: View {
                              : String(format: "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100))
                     }
                 } else {
-                    ForEach(r.record[["g", "i", "w", "m"][min(goal, 3)]] ?? []) { b in
+                    ForEach(r.record[[0: "g", 1: "i", 2: "w", 3: "m", 5: "b"][goal] ?? "g"] ?? []) { b in
                         HStack {
                             Text(b.letter + "s").fontWeight(.bold).foregroundStyle(gradeColor(b.letter)).frame(width: 36, alignment: .leading)
                             Text(bucketText(b)).font(.footnote)
@@ -159,7 +159,7 @@ extension GradeRecordView {
 struct GradeCard: View {
     let ticker: String
     @State private var grade: StockGrade?
-    @State private var open = 0
+    @State private var open = 5
 
     var body: some View {
         Group {
@@ -167,17 +167,17 @@ struct GradeCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Grades").font(.headline)
                     HStack {
-                        ForEach(0..<4, id: \.self) { i in
+                        ForEach([5, 0, 1, 2, 3], id: \.self) { i in
                             Spacer()
-                            Button { open = i } label: { GradeBadge(grade: g.grade(i), label: ["Growth", "Income", "Wealth", "Moat"][i]) }
+                            Button { open = i } label: { GradeBadge(grade: g.grade(i), label: [5: "Overall", 0: "Growth", 1: "Income", 2: "Wealth", 3: "Moat"][i] ?? "") }
                                 .buttonStyle(.plain)
                             Spacer()
                         }
                     }
-                    Text(["Growth", "Income", "Wealth preservation", "Moat"][open] + ":").font(.footnote).fontWeight(.semibold)
-                    if let o = g.odds[open] {
+                    Text(([5: "Overall", 0: "Growth", 1: "Income", 2: "Wealth preservation", 3: "Moat"][open] ?? "") + ":").font(.footnote).fontWeight(.semibold)
+                    if let o = g.odd(open) {
                         Text(String(format: "Measured odds: %.0f%% chance to beat the S&P 500 over 3 months", o * 100) +
-                             (g.drops[open].map { String(format: ", typical worst drop %.0f%%", $0 * 100) } ?? "") + ".")
+                             (g.drop(open).map { String(format: ", typical worst drop %.0f%%", $0 * 100) } ?? "") + ".")
                             .font(.footnote).fontWeight(.semibold)
                     }
                     ForEach(g.why(open), id: \.self) { Text("• " + $0).font(.footnote) }

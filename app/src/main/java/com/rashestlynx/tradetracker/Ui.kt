@@ -4797,7 +4797,8 @@ private fun GradeBadge(g: String, label: String? = null) {
     }
 }
 
-private val GOALS = listOf("Growth", "Income", "Wealth", "Moat", "Next big thing")
+private val GOALS = listOf("Overall", "Growth", "Income", "Wealth", "Moat", "Next big thing")
+private val TAB_GOALS = listOf(5, 0, 1, 2, 3, 4)   // tab position -> goal number
 private val GOAL_ABOUT = listOf(
     "Sales and profit rising fast (and speeding up), margins improving, and the stock beating the S&P 500.",
     "A dividend that's paid every year, covered by the cash the business makes, growing, and a fair yield. Non-payers get an F.",
@@ -4810,7 +4811,7 @@ private val GOAL_ABOUT = listOf(
 @Composable
 private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
     val context = LocalContext.current
-    var goal by rememberSaveable { mutableIntStateOf(0) }
+    var goal by rememberSaveable { mutableIntStateOf(5) }
     var query by rememberSaveable { mutableStateOf("") }
     var showN by rememberSaveable { mutableIntStateOf(50) }
     var result by remember { mutableStateOf<GradesResult?>(null) }
@@ -4826,13 +4827,13 @@ private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
     PullToRefreshBox(isRefreshing = loading, onRefresh = { reload++ }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { PillTabs(GOALS, goal, { goal = it; showN = 50 }) }
-            item { Text(GOAL_ABOUT[goal], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item { PillTabs(GOALS, TAB_GOALS.indexOf(goal), { goal = TAB_GOALS[it]; showN = 50 }) }
+            item { Text(if (goal == 5) "Overall: growth and wealth together. Stocks that tend to beat the market and also hold up when it falls. The best single grade if you're not sure which to use." else GOAL_ABOUT[goal], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             error?.let { e -> if (result == null) item { EmptyState("No grades yet", e) } }
             val r = result
             if (r != null) {
                 item { GradeRecordCard(r, goal) }
-                if (goal < 4) {
+                if (goal != 4) {
                     item {
                         OutlinedTextField(query, { query = it.uppercase(Locale.US).take(6) }, Modifier.fillMaxWidth(),
                             singleLine = true, label = { Text("Find a ticker") })
@@ -4853,7 +4854,7 @@ private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
                                     g.why(goal).firstOrNull()?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
                                 }
-                                GradeBadge(g.grade(goal), g.odds[goal]?.let { String.format(Locale.US, "%.0f%% odds", it * 100) })
+                                GradeBadge(g.grade(goal), g.odds.getOrNull(g.slot(goal))?.let { String.format(Locale.US, "%.0f%% odds", it * 100) })
                             }
                         }
                     }
@@ -4910,7 +4911,7 @@ private fun GradeRecordCard(r: GradesResult, goal: Int) {
                     else "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
                     style = MaterialTheme.typography.bodyMedium)
             } else {
-                val buckets = r.record[listOf("g", "i", "w", "m")[goal]].orEmpty()
+                val buckets = r.record[mapOf(0 to "g", 1 to "i", 2 to "w", 3 to "m", 5 to "b")[goal]].orEmpty()
                 buckets.forEach { b ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(b.letter + "s", fontWeight = FontWeight.Bold, color = gradeColor(b.letter), modifier = Modifier.width(36.dp))
@@ -4946,18 +4947,18 @@ private fun GradeCard(ticker: String) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Grades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf("Growth", "Income", "Wealth", "Moat").forEachIndexed { i, label ->
-                    Box(Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = if (open == i) -1 else i }.padding(4.dp)) {
+                listOf(5 to "Overall", 0 to "Growth", 1 to "Income", 2 to "Wealth", 3 to "Moat").forEach { (i, label) ->
+                    Box(Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = i }.padding(2.dp)) {
                         GradeBadge(s.grade(i), label)
                     }
                 }
             }
-            val shown = if (open >= 0) open else 0
-            Text(listOf("Growth", "Income", "Wealth preservation", "Moat")[shown] + ":", fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.bodySmall)
-            s.odds[shown]?.let { o ->
+            val shown = if (open >= 0) open else 5
+            Text(mapOf(5 to "Overall", 0 to "Growth", 1 to "Income", 2 to "Wealth preservation", 3 to "Moat")[shown] + ":",
+                fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+            s.odds.getOrNull(s.slot(shown))?.let { o ->
                 Text(String.format(Locale.US, "Measured odds: %.0f%% chance to beat the S&P 500 over 3 months", o * 100) +
-                    (s.drops[shown]?.let { String.format(Locale.US, ", typical worst drop %.0f%%", it * 100) } ?: "") + ".",
+                    (s.drops.getOrNull(s.slot(shown))?.let { String.format(Locale.US, ", typical worst drop %.0f%%", it * 100) } ?: "") + ".",
                     style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             }
             s.why(shown).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
