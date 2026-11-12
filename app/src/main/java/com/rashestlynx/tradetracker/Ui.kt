@@ -14,6 +14,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -1387,6 +1390,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
 
             // ---- price ----
             PriceChartBlock(t.ticker, store, liveQ)
+            AnalystCard(t.ticker, liveQ?.price)
             GradeCard(t.ticker)
             NightlyBlock(t.ticker)
             PatternsBlock(t.ticker, store)
@@ -4903,6 +4907,78 @@ private fun GradeCard(ticker: String) {
             s.why(shown).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
             Text("Tap a grade to see why. Graded against every U.S. stock each night.", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+// ============================================================ Analyst ratings and price targets (like Robinhood's)
+
+@Composable
+private fun AnalystCard(ticker: String, price: Double?) {
+    var view by remember(ticker) { mutableStateOf<AnalystView?>(null) }
+    LaunchedEffect(ticker) {
+        view = withContext(Dispatchers.IO) { runCatching { Analysts.get(ticker) }.getOrNull() }
+    }
+    val v = view ?: return
+    val buyC = TradeColors.buy(); val sellC = TradeColors.sell(); val holdC = Color(0xFFF9A825)
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("${v.total} analyst ratings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (v.total > 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                val top = maxOf(v.buy, v.hold, v.sell)
+                val (topPct, topColor) = when (top) { v.buy -> v.pct(v.buy) to buyC; v.hold -> v.pct(v.hold) to holdC; else -> v.pct(v.sell) to sellC }
+                Box(Modifier.size(64.dp).clip(CircleShape).background(topColor), contentAlignment = Alignment.Center) {
+                    Text("$topPct%", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(Triple("Buy", v.buy, buyC), Triple("Hold", v.hold, holdC), Triple("Sell", v.sell, sellC)).forEach { (label, n, col) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp)).background(track)) {
+                                Box(Modifier.fillMaxWidth(v.pct(n) / 100f).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(col))
+                            }
+                            Text("${v.pct(n)}% $label", style = MaterialTheme.typography.labelMedium, color = col,
+                                modifier = Modifier.width(76.dp).padding(start = 8.dp))
+                        }
+                    }
+                }
+            }
+            val low = v.low; val avg = v.avg; val high = v.high
+            if (low != null && avg != null && high != null && high > low) {
+                Text("Price targets", fontWeight = FontWeight.SemiBold)
+                val lo = minOf(low, price ?: low); val hi = maxOf(high, price ?: high)
+                fun at(x: Double) = ((x - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)
+                BoxWithConstraints(Modifier.fillMaxWidth().height(22.dp)) {
+                    val w = maxWidth
+                    Box(Modifier.align(Alignment.CenterStart).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(track))
+                    // the analysts' range
+                    Box(Modifier.align(Alignment.CenterStart).offset(x = w * at(low)).width(w * (at(high) - at(low))).height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)).background(buyC.copy(alpha = 0.35f)))
+                    Box(Modifier.align(Alignment.CenterStart).offset(x = (w * at(avg) - 1.5.dp).coerceAtLeast(0.dp)).width(3.dp).height(18.dp)
+                        .background(MaterialTheme.colorScheme.onSurface))
+                    price?.let { p ->
+                        Box(Modifier.align(Alignment.CenterStart).offset(x = (w * at(p) - 6.dp).coerceIn(0.dp, w - 12.dp)).size(12.dp)
+                            .clip(CircleShape).background(if (p < avg) sellC else buyC))
+                    }
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    fun m(x: Double) = String.format(Locale.US, "\$%,.2f", x)
+                    Column(Modifier.weight(1f)) { Text("Lowest", style = MaterialTheme.typography.labelSmall); Text(m(low), fontWeight = FontWeight.SemiBold) }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Average", style = MaterialTheme.typography.labelSmall); Text(m(avg), fontWeight = FontWeight.SemiBold) }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                        Text("Highest", style = MaterialTheme.typography.labelSmall); Text(m(high), fontWeight = FontWeight.SemiBold) }
+                }
+                price?.let { p ->
+                    val diff = (p / avg - 1) * 100
+                    Text(String.format(Locale.US, "Current price \$%,.2f is %.1f%% %s the average 12-month target of \$%,.2f.",
+                        p, kotlin.math.abs(diff), if (diff < 0) "below" else "above", avg),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("Wall Street analysts' consensus, from Nasdaq. Analysts lean optimistic and targets are often missed; use it as one input.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

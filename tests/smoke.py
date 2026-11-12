@@ -118,6 +118,35 @@ def check_bet_sheet(label):
     tap("Cancel", f"{label} / How much?", wait=2)
 
 
+def check_stock_page(label):
+    """From Markets → Patterns (real nightly results), opens the first stock and checks its cards load."""
+    time.sleep(8)  # let the scan results download
+    pos = find_prefix(screen(), "Across all stocks")
+    if pos is None:
+        note(f"{label}: no pattern rows on screen, so a stock page wasn't opened. Visible: {', '.join(texts(screen())[:12])}")
+        return
+    adb("shell", "input", "tap", str(pos[0]), str(pos[1]))
+    time.sleep(10)
+    if not check_ok(f"{label} / Patterns → stock page"):
+        return
+    seen = set()
+    for _ in range(6):
+        for t in texts(screen()):
+            if t.endswith("analyst ratings") or t in ("Grades", "Last night's scan", "Price targets") or t.startswith("Current price"):
+                seen.add(t if not t.startswith("Current price") else "Current price vs target")
+        adb("shell", "input", "swipe", "540", "1700", "540", "900", "300")
+        time.sleep(2)
+        if not check_ok(f"{label} / stock page scroll"):
+            return
+    ratings = [t for t in seen if t.endswith("analyst ratings")]
+    if not ratings:
+        fail(f"{label}: the stock page didn't show analyst ratings. Cards seen: {sorted(seen)}")
+    else:
+        note(f"{label}: stock page showed {', '.join(sorted(seen))}")
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(3)
+
+
 def check_leagues(label):
     """Opens each league from the Sports menu and reports how many games it shows."""
     for league in ("NBA", "UFC", "Premier League", "College football", "NHL"):
@@ -211,6 +240,10 @@ def tour(label):
             if tab == "Predictions" and v == "All markets" and label == "No screen lock":
                 time.sleep(8)  # let the markets load
                 check_bet_sheet(label)
+            if tab == "Markets" and v == "Patterns" and label == "No screen lock":
+                check_stock_page(label)
+                if not tap(v, f"{label} / {tab}", wait=3, row=inner):
+                    return
             if tab == "Predictions" and v == "Sports" and label == "No screen lock":
                 check_leagues(label)
     note(f"{label}: opened every tab and view without crashing")

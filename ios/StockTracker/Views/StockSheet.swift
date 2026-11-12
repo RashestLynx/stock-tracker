@@ -42,6 +42,7 @@ struct StockSheet: View {
                     }
                     .buttonStyle(.bordered)
                     PriceChartView(ticker: target.ticker, live: live)
+                    AnalystCard(ticker: target.ticker, price: live?.price)
                     GradeCard(ticker: target.ticker)
                     NightlyCard(ticker: target.ticker)
                     PatternsCard(ticker: target.ticker)
