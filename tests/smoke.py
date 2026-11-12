@@ -179,6 +179,24 @@ def check_leagues(label):
         err = [t for t in texts(root) if "Couldn't" in t or "HTTP" in t]
         note(f"{label}: {league}: {games} game cards on screen" + (" (none open)" if empty else "") +
              (f"; error: {err[0]}" if err else ""))
+        if games and league in ("NBA", "NHL", "College football"):
+            cpos = find_prefix(root, "Compare")
+            if cpos:
+                adb("shell", "input", "tap", str(cpos[0]), str(cpos[1]))
+                time.sleep(12)
+                if not check_ok(f"{label} / {league} / Compare"):
+                    return
+                seen = set()
+                for _ in range(4):
+                    for t in texts(screen()):
+                        if t in ("Who's more likely to win", "Recent meetings", "Injuries", "How accurate are these ratings?") \
+                                or t.startswith(("Couldn't match", "Team ratings aren't", "No ratings", "Tested on")):
+                            seen.add(t[:60])
+                    scroll_down()
+                    time.sleep(1)
+                note(f"{label}: {league} Compare showed: {', '.join(sorted(seen)) or 'nothing recognizable'}")
+                adb("shell", "input", "keyevent", "4")
+                time.sleep(3)
     pos = find_prefix(screen(), "League:")
     if pos:
         adb("shell", "input", "tap", str(pos[0]), str(pos[1]))

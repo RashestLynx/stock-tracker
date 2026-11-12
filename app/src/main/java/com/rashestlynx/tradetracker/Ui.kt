@@ -3245,8 +3245,10 @@ private fun LeagueScreen(league: League) {
     var error by remember(league.name) { mutableStateOf<String?>(null) }
     var reloadToken by remember { mutableIntStateOf(0) }
     var picking by remember { mutableStateOf<SportGame?>(null) }
+    var comparing by remember { mutableStateOf<SportGame?>(null) }
     var bet by remember { mutableStateOf<BetTarget?>(null) }
     var logged by remember { mutableStateOf("") }
+    comparing?.let { g -> CompareSheet(league, g) { comparing = null } }
     LaunchedEffect(league.name, reloadToken) {
         loading = true
         error = null
@@ -3339,6 +3341,7 @@ private fun LeagueScreen(league: League) {
                                 g.gap, s.label, cheaper), style = MaterialTheme.typography.bodySmall, color = TradeColors.buy())
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { comparing = g }, contentPadding = PaddingValues(0.dp)) { Text("Compare") }
                             TextButton(onClick = { picking = g }, contentPadding = PaddingValues(0.dp)) { Text("Log my pick") }
                             TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(g.kalshiEvent.url))) },
                                 contentPadding = PaddingValues(0.dp)) { Text("Kalshi") }
@@ -5001,6 +5004,146 @@ private fun AnalystCard(ticker: String, price: Double?, store: Store) {
             }
             Text("Analysts lean optimistic and targets are often missed; use this as one input.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+// ============================================================ Sports: two teams side by side, with the tested rating model
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var model by remember { mutableStateOf<SportsModel?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { runCatching { SportsModels.load(context) } }
+            .onSuccess { model = it }.onFailure { error = it.message }
+    }
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(game.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            error?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            val lm = model?.leagues?.get(league.polyTag)
+            if (model != null && lm == null) Text("No ratings for ${league.name} yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (lm != null) {
+                val sides = game.sides.filterNot { SportsData.isDraw(it.label) }
+                val a = sides.getOrNull(0)?.let { lm.find(it.label) }
+                val b = sides.getOrNull(1)?.let { lm.find(it.label) }
+                if (a == null || b == null) {
+                    Text("Couldn't match ${sides.joinToString(" and ") { it.label }} to the ratings.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    val homeLabel = game.title.substringAfter(" at ", "")
+                    val aHome: Boolean? = when {
+                        homeLabel.isEmpty() -> null
+                        SportsData.same(sides[0].label, homeLabel) -> true
+                        SportsData.same(sides[1].label, homeLabel) -> false
+                        else -> null
+                    }
+                    val (pa, pd, pb) = lm.chance(a, b, aHome)
+                    // the model's chance next to the markets'
+                    ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Who's more likely to win", fontWeight = FontWeight.Bold)
+                            Row { Text("", Modifier.weight(1f)); listOf("Ratings", "Markets").forEach {
+                                Text(it, Modifier.width(72.dp), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.End,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                            listOf(Triple(sides[0], a, pa), Triple(sides[1], b, pb)).forEach { (side, team, p) ->
+                                Row { Text(team.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(SportsModels.pct(p), Modifier.width(72.dp), fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                                    Text(SportsModels.pct(side.best), Modifier.width(72.dp), textAlign = TextAlign.End) }
+                            }
+                            if (league.hasDraw) game.sides.firstOrNull { SportsData.isDraw(it.label) }?.let { dr ->
+                                Row { Text("Draw", Modifier.weight(1f))
+                                    Text(SportsModels.pct(pd), Modifier.width(72.dp), fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                                    Text(SportsModels.pct(dr.best), Modifier.width(72.dp), textAlign = TextAlign.End) }
+                            }
+                            Text(if (aHome == null) "No home edge used (neutral or unknown site)."
+                                else "Includes a home edge of ${lm.homeEdge} rating points for ${if (aHome) a.name else b.name}.",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    // side by side
+                    ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row { Text("", Modifier.weight(1f))
+                                Text(a.abbr.ifEmpty { a.name.take(10) }, Modifier.width(96.dp), fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                                Text(b.abbr.ifEmpty { b.name.take(10) }, Modifier.width(96.dp), fontWeight = FontWeight.Bold, textAlign = TextAlign.End) }
+                            val rows = buildList {
+                                add(Triple("Rating", "${a.elo}${a.rank?.let { " (#$it)" } ?: ""}", "${b.elo}${b.rank?.let { " (#$it)" } ?: ""}"))
+                                if (a.w + a.l + b.w + b.l > 0) {
+                                    add(Triple("Record", a.record, b.record))
+                                    add(Triple("Points for (per game)", a.pf?.toString() ?: "–", b.pf?.toString() ?: "–"))
+                                    add(Triple("Points against", a.pa?.toString() ?: "–", b.pa?.toString() ?: "–"))
+                                    add(Triple("Last 10", a.l10, b.l10))
+                                    add(Triple("Home", a.home, b.home))
+                                    add(Triple("Away", a.away, b.away))
+                                    add(Triple("Streak", a.streak, b.streak))
+                                    add(Triple("Opponents' avg rating", a.sos?.toString() ?: "–", b.sos?.toString() ?: "–"))
+                                }
+                                add(Triple("Rating change, 30 days", String.format(Locale.US, "%+d", a.trend), String.format(Locale.US, "%+d", b.trend)))
+                            }
+                            rows.forEach { (label, x, y) ->
+                                Row { Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                    Text(x, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End)
+                                    Text(y, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End) }
+                            }
+                        }
+                    }
+                    // head to head
+                    val h2h = a.games.filter { SportsData.same(it.opp, b.name) || it.opp == b.name }.take(6)
+                    if (h2h.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Recent meetings", fontWeight = FontWeight.Bold)
+                            h2h.forEach { g ->
+                                val res = if (g.pf > g.pa) "won" else if (g.pf < g.pa) "lost" else "tied"
+                                Text("${g.date}: ${a.name} $res ${g.pf}-${g.pa} ${if (g.home) "at home" else "away"}",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    // injuries
+                    if (a.injuries.isNotEmpty() || b.injuries.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Injuries", fontWeight = FontWeight.Bold)
+                            listOf(a, b).forEach { t ->
+                                if (t.injuries.isNotEmpty()) {
+                                    Text(t.name, style = MaterialTheme.typography.labelLarge)
+                                    t.injuries.take(8).forEach { i ->
+                                        Text("• ${i.name}${if (i.pos.isNotEmpty()) " (${i.pos})" else ""}: ${i.status}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                            Text("The rating doesn't adjust for injuries yet; that's coming next.",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                // how good the ratings have been
+                ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("How accurate are these ratings?", fontWeight = FontWeight.Bold)
+                        lm.acc?.let { acc ->
+                            Text(String.format(Locale.US, "Tested on %d %s seasons it never saw (%s to %s, %,d games): the team it favored won %.0f%% of the time.",
+                                lm.seasons, league.name, lm.from, lm.to, lm.n, acc * 100), style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (lm.booksAcc != null && lm.modelSameAcc != null) Text(String.format(Locale.US,
+                            "On the same games, the sportsbooks' favorite won %.0f%% (ratings: %.0f%%). Lower Brier score is better: books %.3f, ratings %.3f.",
+                            lm.booksAcc * 100, lm.modelSameAcc * 100, lm.booksBrier ?: 0.0, lm.modelSameBrier ?: 0.0), style = MaterialTheme.typography.bodySmall)
+                        lm.calibration.filter { it.n >= 50 && it.from >= 50 }.takeLast(3).forEach { c ->
+                            Text(String.format(Locale.US, "When it said %.0f%%, that team won %.0f%% (%,d games).", c.said * 100, c.won * 100, c.n),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                val kb = model?.kalshiBins.orEmpty().filter { it.from <= 20 }
+                if (kb.isNotEmpty()) Text("Kalshi check: " + kb.joinToString("; ") {
+                    String.format(Locale.US, "sides priced %d-%d¢ won %.0f%% of the time (%d)", it.from, it.to, it.won * 100, it.n) } + ".",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

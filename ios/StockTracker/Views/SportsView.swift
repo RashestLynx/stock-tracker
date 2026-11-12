@@ -31,6 +31,7 @@ struct LeagueView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var picking: SportGame?
+    @State private var comparing: SportGame?
     @State private var logged = ""
 
     private func pct(_ v: Double?) -> String { v.map { String(format: "%.0f%%", $0 * 100) } ?? "–" }
@@ -62,6 +63,7 @@ struct LeagueView: View {
             .marketBackground()
             .navigationTitle(league.name)
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $comparing) { g in CompareView(league: league, game: g) }
             .sheet(item: $picking) { g in
                 NavigationStack {
                     Form {
@@ -126,6 +128,7 @@ struct LeagueView: View {
                     .font(.footnote).foregroundStyle(.green)
             }
             HStack(spacing: 16) {
+                Button("Compare") { comparing = g }
                 Button("Log my pick") { picking = g }
                 Button("Kalshi") { if let u = URL(string: g.kalshiEvent.url) { openURL(u) } }
                 if let pe = g.polyEvent { Button("Polymarket") { if let u = URL(string: pe.url) { openURL(u) } } }
