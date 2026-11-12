@@ -22,12 +22,25 @@ data class RecentGame(val date: String, val opp: String, val pf: Int, val pa: In
 data class Injury(val name: String, val pos: String, val status: String, val note: String)
 data class CalBin(val from: Int, val to: Int, val n: Int, val said: Double, val won: Double)
 
+/** A game in the next week: the plain rating chance, the matchup-and-weather chance (if it earned a place), and the forecast. */
+data class Upcoming(val date: String, val home: String, val away: String, val venue: String, val indoor: Boolean,
+                    val elo: Double, val full: Double?, val temp: Int?, val wind: Int?, val rain: Double?,
+                    val rest: Double?, val form: Double?, val season: Double?, val h2h: Double?)
+
+/** How the matchup layer did on unseen seasons: log loss (lower is better) and favorite-win rate for each version. */
+data class MatchupTest(val version: String, val logloss: Double, val acc: Double)
+
 data class LeagueModel(
     val name: String, val teams: Map<String, TeamRow>, val homeEdge: Int, val drawRate: Double?,
     val n: Int, val acc: Double?, val brier: Double?, val seasons: Int, val from: String, val to: String,
     val booksAcc: Double?, val booksBrier: Double?, val modelSameAcc: Double?, val modelSameBrier: Double?,
     val calibration: List<CalBin>,
+    val upcoming: List<Upcoming> = emptyList(), val matchupUsed: String = "elo", val weatherHelped: Boolean = false,
+    val matchupTests: List<MatchupTest> = emptyList(),
 ) {
+    fun upcomingFor(a: TeamRow, b: TeamRow): Upcoming? =
+        upcoming.firstOrNull { (it.home == a.name && it.away == b.name) || (it.home == b.name && it.away == a.name) }
+
     /** The team this label means ("Boston" -> "Boston Celtics"), if exactly one fits. */
     fun find(label: String): TeamRow? {
         val l = label.trim()
@@ -100,10 +113,24 @@ object SportsModels {
             leagues[key] = LeagueModel(l.optString("name"), teams, l.optInt("home_edge"),
                 if (l.isNull("draw_rate")) null else l.optDouble("draw_rate"),
                 rec.optInt("n"), d(rec, "acc"), d(rec, "brier"), rec.optInt("tested_seasons"), rec.optString("from"), rec.optString("to"),
-                d(books, "acc"), d(books, "brier"), d(same, "acc"), d(same, "brier"), bins(rec.optJSONArray("calibration"), "said"))
+                d(books, "acc"), d(books, "brier"), d(same, "acc"), d(same, "brier"), bins(rec.optJSONArray("calibration"), "said"),
+                upcoming(l.optJSONArray("upcoming")), rec.optJSONObject("matchup")?.optString("used") ?: "elo",
+                rec.optJSONObject("matchup")?.optBoolean("weather_helped") ?: false,
+                rec.optJSONObject("matchup")?.optJSONObject("tested")?.let { t -> t.keys().asSequence().map { k ->
+                    MatchupTest(k, t.getJSONObject(k).optDouble("logloss"), t.getJSONObject(k).optDouble("acc")) }.toList() } ?: emptyList())
         }
         val k = o.optJSONObject("kalshi")
         return SportsModel(o.optString("date"), leagues, bins(k?.optJSONArray("bins"), "price"), k?.optInt("n") ?: 0)
+    }
+
+    private fun upcoming(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { i ->
+        val u = a.getJSONObject(i)
+        val wx = u.optJSONObject("wx")
+        val why = u.optJSONObject("why")
+        fun d(j: JSONObject?, k: String) = if (j != null && j.has(k) && !j.isNull(k)) j.optDouble(k) else null
+        Upcoming(u.optString("date"), u.optString("home"), u.optString("away"), u.optString("venue"), u.optBoolean("indoor"),
+            u.optDouble("elo"), d(u, "full"), wx?.optInt("temp"), wx?.optInt("wind"), d(wx, "rain"),
+            d(why, "rest"), d(why, "form"), d(why, "season"), d(why, "h2h"))
     }
 
     fun pct(x: Double) = String.format(Locale.US, "%.0f%%", x * 100)

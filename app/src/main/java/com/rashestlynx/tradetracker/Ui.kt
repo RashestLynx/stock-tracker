@@ -5045,7 +5045,14 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                         SportsData.same(sides[1].label, homeLabel) -> false
                         else -> null
                     }
-                    val (pa, pd, pb) = lm.chance(a, b, aHome)
+                    val up = lm.upcomingFor(a, b)
+                    val (pa0, pd, pb0) = lm.chance(a, b, aHome)
+                    // the matchup-and-weather chance replaces the plain rating where it proved better on unseen seasons
+                    val full = up?.full
+                    val aIsHome = up?.home == a.name
+                    val eA = full?.let { if (aIsHome) it else 1 - it }
+                    val pa = if (eA != null) eA - pd / 2 else pa0
+                    val pb = if (eA != null) 1 - eA - pd / 2 else pb0
                     // the model's chance next to the markets'
                     ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -5063,9 +5070,22 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                                     Text(SportsModels.pct(pd), Modifier.width(72.dp), fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
                                     Text(SportsModels.pct(dr.best), Modifier.width(72.dp), textAlign = TextAlign.End) }
                             }
-                            Text(if (aHome == null) "No home edge used (neutral or unknown site)."
-                                else "Includes a home edge of ${lm.homeEdge} rating points for ${if (aHome) a.name else b.name}.",
+                            Text((if (aHome == null) "No home edge used (neutral or unknown site)."
+                                else "Includes a home edge of ${lm.homeEdge} rating points for ${if (aHome) a.name else b.name}.") +
+                                (if (full != null) " Adjusted for rest, recent form, this season's margins and head-to-head" +
+                                    (if (lm.matchupUsed == "matchup+weather") ", and the weather forecast" else "") + "." else ""),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            up?.let { u ->
+                                val w = when {
+                                    u.indoor -> "Indoors${if (u.venue.isNotEmpty()) " at ${u.venue}" else ""}: weather doesn't matter."
+                                    u.temp != null -> "Forecast${if (u.venue.isNotEmpty()) " at ${u.venue}" else ""}: ${u.temp}°F, wind ${u.wind} mph" +
+                                        (if ((u.rain ?: 0.0) > 0.1) ", rain ${u.rain} mm" else "") + "."
+                                    else -> null
+                                }
+                                w?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                if (u.temp != null && !lm.weatherHelped) Text("In testing, weather didn't improve ${league.name} predictions, so it's shown but not used.",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                     // side by side
@@ -5135,6 +5155,16 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                         if (lm.booksAcc != null && lm.modelSameAcc != null) Text(String.format(Locale.US,
                             "On the same games, the sportsbooks' favorite won %.0f%% (ratings: %.0f%%). Lower Brier score is better: books %.3f, ratings %.3f.",
                             lm.booksAcc * 100, lm.modelSameAcc * 100, lm.booksBrier ?: 0.0, lm.modelSameBrier ?: 0.0), style = MaterialTheme.typography.bodySmall)
+                        val mt = lm.matchupTests.associateBy { it.version }
+                        val e = mt["elo"]
+                        if (e != null) {
+                            val bestV = mt[lm.matchupUsed]
+                            Text(if (lm.matchupUsed == "elo") "Adding rest, form, head-to-head" + (if (mt.containsKey("matchup+weather")) " and weather" else "") +
+                                " didn't beat the plain ratings on unseen seasons, so they're not used."
+                                else String.format(Locale.US, "The matchup adjustments%s beat the plain ratings on unseen seasons (favorite won %.1f%% vs %.1f%%).",
+                                    if (lm.matchupUsed == "matchup+weather") " and weather" else "", (bestV?.acc ?: 0.0) * 100, e.acc * 100),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                         lm.calibration.filter { it.n >= 50 && it.from >= 50 }.takeLast(3).forEach { c ->
                             Text(String.format(Locale.US, "When it said %.0f%%, that team won %.0f%% (%,d games).", c.said * 100, c.won * 100, c.n),
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

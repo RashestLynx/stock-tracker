@@ -4,6 +4,8 @@ import Foundation
 struct RecentGame { let date: String, opp: String, pf: Int, pa: Int, home: Bool }
 struct Injury: Hashable { let name: String, pos: String, status: String }
 struct CalBin { let from: Int, to: Int, n: Int, said: Double, won: Double }
+struct Upcoming { let home: String, away: String, venue: String, indoor: Bool, elo: Double, full: Double?, temp: Int?, wind: Int?, rain: Double? }
+struct MatchupTest { let version: String, logloss: Double, acc: Double }
 
 struct TeamRow {
     let name: String, abbr: String, elo: Int, rank: Int?
@@ -17,6 +19,14 @@ struct LeagueModel {
     let n: Int, acc: Double?, brier: Double?, seasons: Int, from: String, to: String
     let booksAcc: Double?, booksBrier: Double?, modelSameAcc: Double?, modelSameBrier: Double?
     let calibration: [CalBin]
+    var upcoming: [Upcoming] = []
+    var matchupUsed = "elo"
+    var weatherHelped = false
+    var matchupTests: [String: MatchupTest] = [:]
+
+    func upcomingFor(_ a: TeamRow, _ b: TeamRow) -> Upcoming? {
+        upcoming.first { ($0.home == a.name && $0.away == b.name) || ($0.home == b.name && $0.away == a.name) }
+    }
 
     func find(_ label: String) -> TeamRow? {
         let l = label.trimmingCharacters(in: .whitespaces)
@@ -97,12 +107,25 @@ enum SportsModels {
             let rec = lv["record"] as? [String: Any] ?? [:]
             let books = rec["books"] as? [String: Any]
             let same = rec["model_same_games"] as? [String: Any]
+            let up = ((lv["upcoming"] as? [[String: Any]]) ?? []).map { u -> Upcoming in
+                let wx = u["wx"] as? [String: Any]
+                return Upcoming(home: u["home"] as? String ?? "", away: u["away"] as? String ?? "", venue: u["venue"] as? String ?? "",
+                                indoor: u["indoor"] as? Bool ?? false, elo: num(u["elo"]) ?? 0.5, full: num(u["full"]),
+                                temp: int(wx?["temp"]), wind: int(wx?["wind"]), rain: num(wx?["rain"]))
+            }
+            let mj = rec["matchup"] as? [String: Any]
+            var tests: [String: MatchupTest] = [:]
+            for (k, v) in (mj?["tested"] as? [String: [String: Any]]) ?? [:] {
+                tests[k] = MatchupTest(version: k, logloss: num(v["logloss"]) ?? 0, acc: num(v["acc"]) ?? 0)
+            }
             leagues[key] = LeagueModel(name: lv["name"] as? String ?? key, teams: teams, homeEdge: int(lv["home_edge"]) ?? 0,
                                        drawRate: num(lv["draw_rate"]), n: int(rec["n"]) ?? 0, acc: num(rec["acc"]), brier: num(rec["brier"]),
                                        seasons: int(rec["tested_seasons"]) ?? 0, from: rec["from"] as? String ?? "", to: rec["to"] as? String ?? "",
                                        booksAcc: num(books?["acc"]), booksBrier: num(books?["brier"]),
                                        modelSameAcc: num(same?["acc"]), modelSameBrier: num(same?["brier"]),
-                                       calibration: bins(rec["calibration"], "said"))
+                                       calibration: bins(rec["calibration"], "said"), upcoming: up,
+                                       matchupUsed: mj?["used"] as? String ?? "elo", weatherHelped: mj?["weather_helped"] as? Bool ?? false,
+                                       matchupTests: tests)
         }
         let k = o["kalshi"] as? [String: Any]
         return SportsModel(date: o["date"] as? String ?? "", leagues: leagues, kalshiBins: bins(k?["bins"], "price"), kalshiN: int(k?["n"]) ?? 0)

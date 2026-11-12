@@ -28,16 +28,28 @@ struct CompareView: View {
         let sides = game.sides.filter { !SportsData.isDraw($0.label) }
         if sides.count >= 2, let a = lm.find(sides[0].label), let b = lm.find(sides[1].label) {
             let aHome = homeSide(sides)
-            let p = lm.chance(a, b, aHome: aHome)
+            let up = lm.upcomingFor(a, b)
+            let p = adjusted(lm.chance(a, b, aHome: aHome), up, a)
             Section("Who's more likely to win") {
                 row(a.name, SportsModels.pct(p.0), SportsModels.pct(sides[0].best), header: false)
                 row(b.name, SportsModels.pct(p.2), SportsModels.pct(sides[1].best), header: false)
                 if league.hasDraw, let dr = game.sides.first(where: { SportsData.isDraw($0.label) }) {
                     row("Draw", SportsModels.pct(p.1), SportsModels.pct(dr.best), header: false)
                 }
-                Text(aHome == nil ? "Ratings vs. markets. No home edge used (neutral or unknown site)."
+                Text((aHome == nil ? "Ratings vs. markets. No home edge used (neutral or unknown site)."
                      : "Ratings vs. markets. Includes a home edge of \(lm.homeEdge) rating points for \(aHome! ? a.name : b.name).")
+                     + (up?.full != nil ? " Adjusted for rest, recent form, this season's margins and head-to-head" + (lm.matchupUsed == "matchup+weather" ? ", and the weather forecast" : "") + "." : ""))
                     .font(.caption2).foregroundStyle(.secondary)
+                if let u = up {
+                    if u.indoor {
+                        Text("Indoors\(u.venue.isEmpty ? "" : " at \(u.venue)"): weather doesn't matter.").font(.footnote)
+                    } else if let t = u.temp {
+                        Text("Forecast\(u.venue.isEmpty ? "" : " at \(u.venue)"): \(t)°F, wind \(u.wind ?? 0) mph" + ((u.rain ?? 0) > 0.1 ? String(format: ", rain %.1f mm", u.rain!) : "") + ".").font(.footnote)
+                        if !lm.weatherHelped {
+                            Text("In testing, weather didn't improve \(league.name) predictions, so it's shown but not used.").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             Section("Side by side") {
                 row("", a.abbr.isEmpty ? String(a.name.prefix(10)) : a.abbr, b.abbr.isEmpty ? String(b.name.prefix(10)) : b.abbr, header: true)
@@ -86,6 +98,13 @@ struct CompareView: View {
                 Text(String(format: "On the same games, the sportsbooks' favorite won %.0f%% (ratings: %.0f%%). Lower Brier score is better: books %.3f, ratings %.3f.",
                             ba * 100, ma * 100, lm.booksBrier ?? 0, lm.modelSameBrier ?? 0)).font(.footnote)
             }
+            if let e = lm.matchupTests["elo"] {
+                Text(lm.matchupUsed == "elo"
+                     ? "Adding rest, form, head-to-head\(lm.matchupTests["matchup+weather"] != nil ? " and weather" : "") didn't beat the plain ratings on unseen seasons, so they're not used."
+                     : String(format: "The matchup adjustments%@ beat the plain ratings on unseen seasons (favorite won %.1f%% vs %.1f%%).",
+                              lm.matchupUsed == "matchup+weather" ? " and weather" : "", (lm.matchupTests[lm.matchupUsed]?.acc ?? 0) * 100, e.acc * 100))
+                    .font(.footnote)
+            }
             ForEach(Array(lm.calibration.filter { $0.n >= 50 && $0.from >= 50 }.suffix(3).enumerated()), id: \.offset) { _, c in
                 Text(String(format: "When it said %.0f%%, that team won %.0f%% (%d games).", c.said * 100, c.won * 100, c.n))
                     .font(.caption2).foregroundStyle(.secondary)
@@ -96,6 +115,13 @@ struct CompareView: View {
             Text("Kalshi check: " + kb.map { String(format: "sides priced %d-%d¢ won %.0f%% of the time (%d)", $0.from, $0.to, $0.won * 100, $0.n) }.joined(separator: "; ") + ".")
                 .font(.caption2).foregroundStyle(.secondary)
         }
+    }
+
+    /// The matchup-and-weather chance replaces the plain rating where it proved better on unseen seasons.
+    private func adjusted(_ p: (Double, Double, Double), _ up: Upcoming?, _ a: TeamRow) -> (Double, Double, Double) {
+        guard let full = up?.full else { return p }
+        let eA = up!.home == a.name ? full : 1 - full
+        return (eA - p.1 / 2, p.1, 1 - eA - p.1 / 2)
     }
 
     private func homeSide(_ sides: [SportSide]) -> Bool? {
