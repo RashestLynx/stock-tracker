@@ -125,7 +125,12 @@ struct LeagueView: View {
                     Text(pct(s.polyP)).font(.caption).frame(width: 52, alignment: .trailing)
                 }
             }
-            if let bg = BookOdds.find(books, g.sides.map(\.label)) {
+            let bg0 = BookOdds.find(books, g.sides.map(\.label))
+            let verdicts = g.sides.filter { !SportsData.isDraw($0.label) }.compactMap { Coach.verdict($0, bg0?.sideLines($0.label) ?? []) }
+            if let v = verdicts.first(where: \.good) ?? verdicts.first {
+                Text(v.text).font(.footnote.weight(.semibold)).foregroundStyle(v.good ? .green : .secondary)
+            }
+            if let bg = bg0 {
                 ForEach(g.sides.filter { !SportsData.isDraw($0.label) }) { s in
                     let lines = bg.sideLines(s.label)
                     if !lines.isEmpty {

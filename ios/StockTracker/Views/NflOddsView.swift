@@ -2,12 +2,13 @@ import SwiftUI
 
 /// "All markets" and "NFL odds check" under Markets → Predictions.
 struct PredictionsTabView: View {
-    @State private var view = 0
+    @State private var view = 3
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "All markets"), (1, "Sports"), (2, "My picks")], selection: $view)
+            PillTabs(options: [(3, "Start here"), (0, "All markets"), (1, "Sports"), (2, "My picks")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 8)
             switch view {
+            case 3: PredGuideView()
             case 0: PredictionsView()
             case 1: SportsView()
             default: MyPredPicksView()

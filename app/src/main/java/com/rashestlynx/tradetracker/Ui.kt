@@ -2992,11 +2992,12 @@ private fun MarketsScreen(
 private fun PredictionsTab(store: Store) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("All markets", "Sports", "My picks"), view, { view = it },
+        PillTabs(listOf("Start here", "All markets", "Sports", "My picks"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
-            0 -> PredictionsScreen()
-            1 -> SportsScreen(store)
+            0 -> PredGuideScreen()
+            1 -> PredictionsScreen()
+            2 -> SportsScreen(store)
             else -> MyPredPicksScreen()
         }
     }
@@ -3358,7 +3359,13 @@ private fun LeagueScreen(league: League) {
                                     style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        BookOdds.find(books, g.sides.map { it.label })?.let { bg ->
+                        val bg0 = BookOdds.find(books, g.sides.map { it.label })
+                        g.sides.filterNot { SportsData.isDraw(it.label) }.mapNotNull { s -> Coach.verdict(s, bg0?.sideLines(s.label).orEmpty()) }
+                            .let { vs -> vs.firstOrNull { it.good } ?: vs.firstOrNull() }?.let { v ->
+                                Text(v.text, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+                                    color = if (v.good) TradeColors.buy() else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        bg0?.let { bg ->
                             g.sides.filterNot { SportsData.isDraw(it.label) }.forEach { s ->
                                 val lines = bg.sideLines(s.label)
                                 if (lines.isNotEmpty()) {
@@ -5266,6 +5273,40 @@ private fun NewsCard(ticker: String, store: Store) {
             }
             if (l.any { it.sentiment.isNotEmpty() }) Text("Positive/negative labels are Massive's automatic read of each article, not advice.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+
+// ============================================================ Prediction markets for beginners
+
+@Composable
+private fun PredGuideScreen() {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("New to prediction markets? Read this first.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        item {
+            ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("The simple routine", fontWeight = FontWeight.Bold)
+                    listOf("1. Open Sports and pick a league.",
+                        "2. Read the green or gray line on each game. Gray means no edge: skip it.",
+                        "3. Only on a green 'possible value' line, tap the side and use 'How much?'.",
+                        "4. Log it under My picks, then check your record after 50 picks.").forEach {
+                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        items(Coach.GUIDE) { (title, body) ->
+            ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, fontWeight = FontWeight.Bold)
+                    Text(body, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
     }
 }
