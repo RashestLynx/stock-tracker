@@ -123,7 +123,15 @@ def check_stock_page(label):
     time.sleep(20)  # let the scan results download and parse
     pos = None
     for _ in range(5):   # the rows start below the filters
-        pos = find_prefix(screen(), "Across all stocks")
+        root = screen()
+        pos = None
+        for n in (root.iter("node") if root is not None else []):
+            if re.match(r"^\$[\d,]+\.\d\d\s", n.get("text") or ""):   # a row's "$25.96  -0.4%" price line
+                m = re.findall(r"\d+", n.get("bounds", ""))
+                if len(m) == 4:
+                    x1, y1, x2, y2 = map(int, m)
+                    pos = ((x1 + x2) // 2, (y1 + y2) // 2)
+                    break
         if pos is not None:
             break
         scroll_down()
