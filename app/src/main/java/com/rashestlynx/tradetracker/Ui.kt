@@ -1387,6 +1387,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
 
             // ---- price ----
             PriceChartBlock(t.ticker, store, liveQ)
+            GradeCard(t.ticker)
             NightlyBlock(t.ticker)
             PatternsBlock(t.ticker, store)
             liveQ?.let { q ->
@@ -2953,14 +2954,15 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Top 30", "Patterns", "Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
+        PillTabs(listOf("Top 30", "Grades", "Patterns", "Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> ScoresScreen(store, onOpen = onOpen)
-            1 -> NightlyPatternsScreen(store, onOpen = onOpen)
-            2 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            3 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
-            4 -> WsbScreen(store, onOpen = onOpen)
+            1 -> GradesScreen(onOpen = onOpen)
+            2 -> NightlyPatternsScreen(store, onOpen = onOpen)
+            3 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
+            4 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            5 -> WsbScreen(store, onOpen = onOpen)
             else -> CryptoScreen(store, onOpen = onOpen)
         }
     }
@@ -4718,6 +4720,188 @@ private fun NightlyBlock(ticker: String) {
             }
             Text(String.format(Locale.US, "Live alerts fire if it breaks \$%,.2f (20-day high) or \$%,.2f (20-day low). Prices from %s.",
                 s.hi20, s.lo20, date), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+// ============================================================ Grades: every stock graded for growth, income and wealth
+
+@Composable
+private fun gradeColor(g: String): Color = when (g.firstOrNull()) {
+    'A' -> TradeColors.buy()
+    'B' -> Color(0xFF7CB342)
+    'C' -> Color(0xFFF9A825)
+    'D' -> Color(0xFFEF6C00)
+    'F' -> TradeColors.sell()
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun GradeBadge(g: String, label: String? = null) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(shape = RoundedCornerShape(12.dp), color = gradeColor(g).copy(alpha = 0.15f)) {
+            Text(g.ifEmpty { "–" }, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = gradeColor(g),
+                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        }
+        if (label != null) Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private val GOALS = listOf("Growth", "Income", "Wealth", "Next big thing")
+private val GOAL_ABOUT = listOf(
+    "Sales and profit rising fast (and speeding up), margins improving, and the stock beating the S&P 500.",
+    "A dividend that's paid every year, covered by the cash the business makes, growing, and a fair yield. Non-payers get an F.",
+    "Wealth preservation: steady, profitable, low-debt companies whose stock holds up when the market drops.",
+    "Smaller companies (\$300M to \$15B) with sales up 20%+, growth speeding up, margins widening, and the stock already beating the market.",
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
+    val context = LocalContext.current
+    var goal by rememberSaveable { mutableIntStateOf(0) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var showN by rememberSaveable { mutableIntStateOf(50) }
+    var result by remember { mutableStateOf<GradesResult?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reload) {
+        loading = true
+        withContext(Dispatchers.IO) { runCatching { Grades.load(context, force = reload > 0) } }
+            .onSuccess { result = it; error = null }.onFailure { error = it.message }
+        loading = false
+    }
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { PillTabs(GOALS, goal, { goal = it; showN = 50 }) }
+            item { Text(GOAL_ABOUT[goal], style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            error?.let { e -> if (result == null) item { EmptyState("No grades yet", e) } }
+            val r = result
+            if (r != null) {
+                item { GradeRecordCard(r, goal) }
+                if (goal < 3) {
+                    item {
+                        OutlinedTextField(query, { query = it.uppercase(Locale.US).take(6) }, Modifier.fillMaxWidth(),
+                            singleLine = true, label = { Text("Find a ticker") })
+                    }
+                    val list = r.ranked(goal).filter { query.isBlank() || it.ticker.startsWith(query) }
+                    items(list.take(showN), key = { "gr" + it.ticker }) { g ->
+                        ModernCard(onClick = { onOpen(StockTarget(g.ticker, g.name, "", "", emptyList(), "", 0.0)) },
+                            shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.Bottom) {
+                                        Text(g.ticker, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(Grades.money(g.capM), style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text(g.name, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    g.why(goal).firstOrNull()?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                                }
+                                GradeBadge(g.grade(goal))
+                            }
+                        }
+                    }
+                    if (list.size > showN) item {
+                        TextButton(onClick = { showN += 50 }, modifier = Modifier.fillMaxWidth()) { Text("Show more (${list.size - showN} left)") }
+                    }
+                } else {
+                    if (r.stars.isEmpty()) item { EmptyState("Nothing qualifies today", "No company passed every test.") }
+                    items(r.stars, key = { "st" + it.ticker }) { s ->
+                        ModernCard(onClick = { onOpen(StockTarget(s.ticker, s.name, "", "", emptyList(), "", 0.0)) },
+                            shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(s.ticker, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(listOf(Grades.money(s.capM), s.industry).filter { it.isNotBlank() }.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f), maxLines = 1)
+                                    if (s.growth.isNotEmpty()) GradeBadge(s.growth, "growth")
+                                }
+                                Text(s.name, style = MaterialTheme.typography.bodySmall)
+                                Text(s.why.replaceFirstChar { it.uppercase() } + ".", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text("Grades are from ${r.date} using fiscal ${r.fiscalYear} SEC filings and daily prices, ranked against " +
+                        "${String.format(Locale.US, "%,d", r.graded)} U.S. stocks. They're a starting point for research, not advice.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
+/** "Did the grades work?": the same rules run a year ago, and how each grade did since. */
+@Composable
+private fun GradeRecordCard(r: GradesResult, goal: Int) {
+    val spy = r.spy ?: return
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Did it work?", fontWeight = FontWeight.Bold)
+            Text("Graded by the same rules on ${r.recordFrom}, then held a year. S&P 500: " +
+                String.format(Locale.US, "%+.0f%%", spy * 100) + (if (goal == 2 && r.spyDrop != null)
+                    String.format(Locale.US, ", worst drop %.0f%%", r.spyDrop * 100) else "") + ".",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (goal == 3) {
+                val ret = r.starsRet
+                val beat = r.starsBeat
+                if (ret != null && beat != null) Text(String.format(Locale.US,
+                    "Last year's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
+                    style = MaterialTheme.typography.bodyMedium)
+            } else {
+                val buckets = r.record[listOf("g", "i", "w")[goal]].orEmpty()
+                buckets.forEach { b ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(b.letter + "s", fontWeight = FontWeight.Bold, color = gradeColor(b.letter), modifier = Modifier.width(36.dp))
+                        Text(if (goal == 2 && b.drop != null)
+                            String.format(Locale.US, "worst drop %.0f%% · return %+.0f%%", b.drop * 100, b.ret * 100)
+                        else String.format(Locale.US, "median %+.0f%% · %.0f%% beat the S&P 500", b.ret * 100, b.beat * 100),
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Text("${b.n}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text("Only stocks still trading today are counted, which flatters every grade a little. Past results don't guarantee future ones.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** On a stock's page: its three grades, with the reasons behind each. */
+@Composable
+private fun GradeCard(ticker: String) {
+    val context = LocalContext.current
+    var g by remember(ticker) { mutableStateOf<StockGrade?>(null) }
+    var open by remember(ticker) { mutableIntStateOf(-1) }
+    LaunchedEffect(ticker) {
+        g = withContext(Dispatchers.IO) { runCatching { (Grades.cached(context) ?: Grades.load(context)).grades[ticker.uppercase(Locale.US)] }.getOrNull() }
+    }
+    val s = g ?: return
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Grades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf("Growth", "Income", "Wealth").forEachIndexed { i, label ->
+                    Box(Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = if (open == i) -1 else i }.padding(4.dp)) {
+                        GradeBadge(s.grade(i), label)
+                    }
+                }
+            }
+            val shown = if (open >= 0) open else 0
+            Text(listOf("Growth", "Income", "Wealth preservation")[shown] + ":", fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodySmall)
+            s.why(shown).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+            Text("Tap a grade to see why. Graded against every U.S. stock each night.", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -67,7 +67,7 @@ object Nightly {
             runCatching { return remember(f) }
         }
         try {
-            download(f)
+            download(URL_RESULTS, f) { parse(it) }
         } catch (e: Exception) {
             if (f.exists()) return remember(f)   // offline: use the last copy
             throw Exception("The nightly scan isn't available yet. Results appear after the first scan finishes.")
@@ -86,8 +86,9 @@ object Nightly {
         return r
     }
 
-    private fun download(f: File) {
-        var url = URL_RESULTS
+    /** Downloads a release file to [f], checking it with [check] (gunzipped text) before replacing the saved copy. */
+    fun download(from: String, f: File, check: (String) -> Unit) {
+        var url = from
         repeat(5) {   // GitHub release downloads redirect to a storage host
             val c = URL(url).openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
@@ -99,7 +100,7 @@ object Nightly {
                     in 200..299 -> {
                         val tmp = File(f.parentFile, f.name + ".tmp")
                         c.inputStream.use { inp -> tmp.outputStream().use { inp.copyTo(it) } }
-                        parse(GZIPInputStream(tmp.inputStream()).bufferedReader().use { it.readText() })  // check it's valid
+                        check(GZIPInputStream(tmp.inputStream()).bufferedReader().use { it.readText() })  // check it's valid
                         if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
                         return
                     }
