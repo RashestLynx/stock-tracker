@@ -118,12 +118,12 @@ struct GradeRecordView: View {
         if let spy = r.spy {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Did it work?").font(.headline)
-                Text("Graded by the same rules on \(r.recordFrom), then held a year. S&P 500: \(String(format: "%+.0f%%", spy * 100))" +
+                Text("Graded by the same rules on \(r.recordFrom), then held \(r.months == 12 ? "a year" : "\(r.months) months"). S&P 500: \(String(format: "%+.0f%%", spy * 100))" +
                      (goal == 2 && r.spyDrop != nil ? String(format: ", worst drop %.0f%%", r.spyDrop! * 100) : "") + ".")
                     .font(.footnote).foregroundStyle(.secondary)
                 if goal == 3 {
                     if let ret = r.starsRet, let beat = r.starsBeat {
-                        Text(String(format: "Last year's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100))
+                        Text(String(format: "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100))
                     }
                 } else {
                     ForEach(r.record[["g", "i", "w"][goal]] ?? []) { b in

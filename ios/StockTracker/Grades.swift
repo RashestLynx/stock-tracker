@@ -25,6 +25,7 @@ struct GradesResult {
     let date: String, fiscalYear: Int, graded: Int
     let grades: [String: StockGrade], stars: [RisingStar], record: [String: [GradeBucket]]
     let spy: Double?, spyDrop: Double?, recordFrom: String, starsRet: Double?, starsBeat: Double?
+    var months: Int = 12
 
     func ranked(_ goal: Int) -> [StockGrade] {
         grades.values.filter { !$0.grade(goal).isEmpty && (goal != 1 || $0.incomePct >= 0) }.sorted { $0.pct(goal) > $1.pct(goal) }
@@ -99,7 +100,8 @@ enum Grades {
         let st = rj["stars"] as? [String: Any]
         return GradesResult(date: o["date"] as? String ?? "", fiscalYear: int(o["fy"]), graded: int(o["graded"]),
                             grades: grades, stars: stars, record: record, spy: num(rj["spy"]), spyDrop: num(rj["spy_dd"]),
-                            recordFrom: rj["from"] as? String ?? "", starsRet: num(st?["ret"]), starsBeat: num(st?["beat"]))
+                            recordFrom: rj["from"] as? String ?? "", starsRet: num(st?["ret"]), starsBeat: num(st?["beat"]),
+                            months: int(rj["months"], 12))
     }
 
     static func money(_ capM: Int) -> String {

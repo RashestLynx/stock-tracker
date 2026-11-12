@@ -25,7 +25,7 @@ data class GradeBucket(val letter: String, val n: Int, val ret: Double, val beat
 data class GradesResult(
     val date: String, val fiscalYear: Int, val graded: Int, val grades: Map<String, StockGrade>, val stars: List<RisingStar>,
     val record: Map<String, List<GradeBucket>>, val spy: Double?, val spyDrop: Double?, val recordFrom: String,
-    val starsRet: Double?, val starsBeat: Double?,
+    val starsRet: Double?, val starsBeat: Double?, val months: Int = 12,
 ) {
     fun ranked(goal: Int): List<StockGrade> =
         grades.values.filter { it.grade(goal).isNotEmpty() && (goal != 1 || it.incomePct >= 0) }.sortedByDescending { it.pct(goal) }
@@ -89,7 +89,8 @@ object Grades {
         return GradesResult(o.optString("date"), o.optInt("fy"), o.optInt("graded"), grades, stars, record,
             if (rj.has("spy")) rj.optDouble("spy") else null, if (rj.has("spy_dd")) rj.optDouble("spy_dd") else null,
             rj.optString("from"),
-            st?.let { if (it.isNull("ret")) null else it.optDouble("ret") }, st?.let { if (it.isNull("beat")) null else it.optDouble("beat") })
+            st?.let { if (it.isNull("ret")) null else it.optDouble("ret") }, st?.let { if (it.isNull("beat")) null else it.optDouble("beat") },
+            rj.optInt("months", 12))
     }
 
     fun money(capM: Long): String = when {

@@ -4852,7 +4852,7 @@ private fun GradeRecordCard(r: GradesResult, goal: Int) {
     ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Did it work?", fontWeight = FontWeight.Bold)
-            Text("Graded by the same rules on ${r.recordFrom}, then held a year. S&P 500: " +
+            Text("Graded by the same rules on ${r.recordFrom}, then held ${if (r.months == 12) "a year" else "${r.months} months"}. S&P 500: " +
                 String.format(Locale.US, "%+.0f%%", spy * 100) + (if (goal == 2 && r.spyDrop != null)
                     String.format(Locale.US, ", worst drop %.0f%%", r.spyDrop * 100) else "") + ".",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -4860,7 +4860,7 @@ private fun GradeRecordCard(r: GradesResult, goal: Int) {
                 val ret = r.starsRet
                 val beat = r.starsBeat
                 if (ret != null && beat != null) Text(String.format(Locale.US,
-                    "Last year's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
+                    "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
                     style = MaterialTheme.typography.bodyMedium)
             } else {
                 val buckets = r.record[listOf("g", "i", "w")[goal]].orEmpty()
