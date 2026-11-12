@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var key = ""
     @State private var massiveKey = ""
     @State private var finnhubKey = Live.key
+    @State private var oddsKey = BookOdds.key
     @State private var broker = Broker.name
     @State private var customLink = Broker.customTemplate
     @State private var newTicker = ""
@@ -120,6 +121,16 @@ struct SettingsView: View {
                     Text(broker == Broker.custom
                          ? "Open any stock on your brokerage's website, copy the address, and replace the ticker with {T}."
                          : "Stock summaries get a button that opens the ticker in this app. If the app is installed it opens there, otherwise in Safari.")
+                }
+
+                Section {
+                    SecureField("The Odds API key", text: $oddsKey)
+                    Button("Save key") { BookOdds.key = oddsKey }
+                    Link("Get a free key", destination: URL(string: BookOdds.signup)!)
+                } header: {
+                    Text("Sportsbook odds")
+                } footer: {
+                    Text("FanDuel and DraftKings moneylines next to Kalshi and Polymarket on every game (free: 500 lookups a month; the app uses one per league every 30 minutes). Saved in the Keychain.")
                 }
 
                 Section {

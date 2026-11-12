@@ -32,6 +32,8 @@ struct LeagueView: View {
     @State private var error: String?
     @State private var picking: SportGame?
     @State private var comparing: SportGame?
+    @State private var books: [BookGame] = []
+    @State private var booksError: String?
     @State private var logged = ""
 
     private func pct(_ v: Double?) -> String { v.map { String(format: "%.0f%%", $0 * 100) } ?? "–" }
@@ -47,6 +49,7 @@ struct LeagueView: View {
                          "When the two sites differ by 3 points or more, one side is cheaper on one of them.")
                 }
                 if !logged.isEmpty { Section { Text("\(logged). See it under My picks.").foregroundStyle(.green) } }
+                if let e = booksError { Section { Text("Sportsbook odds: \(e)").font(.footnote).foregroundStyle(.red) } }
                 if let e = error { Section { Text(e).foregroundStyle(.red) } }
                 if loading && games == nil { Section { ProgressView().frame(maxWidth: .infinity) } }
                 if let g = games, g.isEmpty {
@@ -122,6 +125,16 @@ struct LeagueView: View {
                     Text(pct(s.polyP)).font(.caption).frame(width: 52, alignment: .trailing)
                 }
             }
+            if let bg = BookOdds.find(books, g.sides.map(\.label)) {
+                ForEach(g.sides.filter { !SportsData.isDraw($0.label) }) { s in
+                    let lines = bg.sideLines(s.label)
+                    if !lines.isEmpty {
+                        Text("\(s.label): " + lines.map { "\($0.book) \($0.oddsText) (\(pct($0.fair)))" }.joined(separator: " · ")
+                             + (lines.count > 1 ? " · pays most: \(bg.best(s.label)?.book ?? "")" : ""))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
             if g.gap >= 3, let s = g.widest {
                 let cheaper = (s.kalshiP ?? 0) < (s.polyP ?? 0) ? "Kalshi" : "Polymarket"
                 Text(String(format: "The sites differ by %.0f points on %@. It's cheaper on %@.", g.gap, s.label, cheaper))
@@ -144,5 +157,6 @@ struct LeagueView: View {
         error = nil
         do { games = try await SportsData.load(league, force: force) } catch { self.error = error.localizedDescription }
         loading = false
+        do { books = try await BookOdds.league(league.polyTag, force: force); booksError = nil } catch { booksError = error.localizedDescription }
     }
 }

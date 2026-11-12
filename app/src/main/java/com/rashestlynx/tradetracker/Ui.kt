@@ -1051,6 +1051,19 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onSources:
             }
         }
 
+        var oddsKey by rememberSaveable { mutableStateOf(BookOdds.key(context)) }
+        Section("Sportsbook odds", "FanDuel and DraftKings moneylines next to Kalshi and Polymarket on every game, from The Odds API " +
+            "(free: 500 lookups a month; the app uses one per league every 30 minutes). Saved encrypted on this phone.") {
+            OutlinedTextField(value = oddsKey, onValueChange = { oddsKey = it }, label = { Text("The Odds API key") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { BookOdds.setKey(context, oddsKey); onMessage("Saved") }) { Text("Save key") }
+                OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BookOdds.SIGNUP))) }) {
+                    Text("Get a free key")
+                }
+            }
+        }
+
         var massiveKey by rememberSaveable { mutableStateOf(store.massiveKey) }
         var broker by remember { mutableStateOf(Broker.name(store)) }
         var customLink by rememberSaveable { mutableStateOf(Broker.customTemplate(store)) }
@@ -3249,6 +3262,8 @@ private fun LeagueScreen(league: League) {
     var comparing by remember { mutableStateOf<SportGame?>(null) }
     var bet by remember { mutableStateOf<BetTarget?>(null) }
     var logged by remember { mutableStateOf("") }
+    var books by remember(league.name) { mutableStateOf<List<BookGame>>(emptyList()) }
+    var booksError by remember(league.name) { mutableStateOf<String?>(null) }
     comparing?.let { g -> CompareSheet(league, g) { comparing = null } }
     LaunchedEffect(league.name, reloadToken) {
         loading = true
@@ -3256,6 +3271,8 @@ private fun LeagueScreen(league: League) {
         val r = withContext(Dispatchers.IO) { runCatching { SportsData.load(league, reloadToken > 0) } }
         r.onSuccess { games = it }.onFailure { error = it.message ?: "Couldn't load ${league.name}" }
         loading = false
+        withContext(Dispatchers.IO) { runCatching { BookOdds.league(context, league.polyTag, reloadToken > 0) } }
+            .onSuccess { books = it; booksError = null }.onFailure { booksError = it.message }
     }
     fun pct(v: Double?) = if (v == null) "–" else String.format(java.util.Locale.US, "%.0f%%", v * 100)
 
@@ -3302,6 +3319,12 @@ private fun LeagueScreen(league: League) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (logged.isNotEmpty()) item { Text("$logged. See it under My picks.", color = TradeColors.buy()) }
+            booksError?.let { e -> item { Text("Sportsbook odds: $e", style = MaterialTheme.typography.bodySmall, color = TradeColors.sell()) } }
+            if (books.isNotEmpty()) item {
+                Text("FanDuel and DraftKings odds from The Odds API, with each one's chance after removing the book's cut" +
+                    (if (BookOdds.remaining.isNotEmpty()) ". ${BookOdds.remaining} free lookups left this month." else "."),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error) } }
             val list = games
             if (list != null && list.isEmpty()) {
@@ -3333,6 +3356,17 @@ private fun LeagueScreen(league: League) {
                                     style = MaterialTheme.typography.bodySmall)
                                 Text(pct(s.polyP), modifier = Modifier.width(56.dp), textAlign = TextAlign.End,
                                     style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        BookOdds.find(books, g.sides.map { it.label })?.let { bg ->
+                            g.sides.filterNot { SportsData.isDraw(it.label) }.forEach { s ->
+                                val lines = bg.sideLines(s.label)
+                                if (lines.isNotEmpty()) {
+                                    val best = bg.best(s.label)
+                                    Text("${s.label}: " + lines.joinToString(" · ") { "${it.book} ${it.oddsText} (${pct(it.fair)})" } +
+                                        (if (lines.size > 1 && best != null) " · pays most: ${best.book}" else ""),
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                         if (g.gap >= 3) {
