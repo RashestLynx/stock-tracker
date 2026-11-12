@@ -54,9 +54,9 @@ enum SportsModels {
         if savedAt.map({ Date().timeIntervalSince($0) > 3 * 3600 }) ?? true {
             var req = URLRequest(url: url, timeoutInterval: 60)
             req.setValue("StockTracker", forHTTPHeaderField: "User-Agent")
-            if let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode ?? 0 < 300,
-               parse(data) != nil {
-                try? data.write(to: file, options: .atomic)
+            if let res = try? await URLSession.shared.data(for: req), (res.1 as? HTTPURLResponse)?.statusCode ?? 0 < 300,
+               parse(res.0) != nil {
+                try? res.0.write(to: file, options: .atomic)
                 memo = nil
             }
         }

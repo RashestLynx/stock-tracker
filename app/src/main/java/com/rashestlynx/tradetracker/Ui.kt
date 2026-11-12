@@ -1392,6 +1392,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
             PriceChartBlock(t.ticker, store, liveQ)
             AnalystCard(t.ticker, liveQ?.price, store)
             GradeCard(t.ticker)
+            NewsCard(t.ticker, store)
             NightlyBlock(t.ticker)
             PatternsBlock(t.ticker, store)
             liveQ?.let { q ->
@@ -4755,11 +4756,12 @@ private fun GradeBadge(g: String, label: String? = null) {
     }
 }
 
-private val GOALS = listOf("Growth", "Income", "Wealth", "Next big thing")
+private val GOALS = listOf("Growth", "Income", "Wealth", "Moat", "Next big thing")
 private val GOAL_ABOUT = listOf(
     "Sales and profit rising fast (and speeding up), margins improving, and the stock beating the S&P 500.",
     "A dividend that's paid every year, covered by the cash the business makes, growing, and a fair yield. Non-payers get an F.",
     "Wealth preservation: steady, profitable, low-debt companies whose stock holds up when the market drops.",
+    "Our own moat score from SEC filings: high gross profit vs assets, high return on equity, profits backed by cash, low debt, and a steady growth record. Tested like the others.",
     "Smaller companies (\$300M to \$15B) with sales up 20%+, growth speeding up, margins widening, and the stock already beating the market.",
 )
 
@@ -4789,7 +4791,7 @@ private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
             val r = result
             if (r != null) {
                 item { GradeRecordCard(r, goal) }
-                if (goal < 3) {
+                if (goal < 4) {
                     item {
                         OutlinedTextField(query, { query = it.uppercase(Locale.US).take(6) }, Modifier.fillMaxWidth(),
                             singleLine = true, label = { Text("Find a ticker") })
@@ -4859,7 +4861,7 @@ private fun GradeRecordCard(r: GradesResult, goal: Int) {
                 String.format(Locale.US, "%+.0f%%", spy * 100) + (if (goal == 2 && r.spyDrop != null)
                     String.format(Locale.US, ", worst drop %.0f%%", r.spyDrop * 100) else "") + "." },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (goal == 3) {
+            if (goal == 4) {
                 val ret = r.starsRet
                 val beat = r.starsBeat
                 if (ret != null && beat != null) Text(String.format(Locale.US,
@@ -4867,7 +4869,7 @@ private fun GradeRecordCard(r: GradesResult, goal: Int) {
                     else "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
                     style = MaterialTheme.typography.bodyMedium)
             } else {
-                val buckets = r.record[listOf("g", "i", "w")[goal]].orEmpty()
+                val buckets = r.record[listOf("g", "i", "w", "m")[goal]].orEmpty()
                 buckets.forEach { b ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(b.letter + "s", fontWeight = FontWeight.Bold, color = gradeColor(b.letter), modifier = Modifier.width(36.dp))
@@ -4903,14 +4905,14 @@ private fun GradeCard(ticker: String) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Grades", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf("Growth", "Income", "Wealth").forEachIndexed { i, label ->
+                listOf("Growth", "Income", "Wealth", "Moat").forEachIndexed { i, label ->
                     Box(Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = if (open == i) -1 else i }.padding(4.dp)) {
                         GradeBadge(s.grade(i), label)
                     }
                 }
             }
             val shown = if (open >= 0) open else 0
-            Text(listOf("Growth", "Income", "Wealth preservation")[shown] + ":", fontWeight = FontWeight.SemiBold,
+            Text(listOf("Growth", "Income", "Wealth preservation", "Moat")[shown] + ":", fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodySmall)
             s.odds[shown]?.let { o ->
                 Text(String.format(Locale.US, "Measured odds: %.0f%% chance to beat the S&P 500 over 3 months", o * 100) +
@@ -5144,6 +5146,43 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                     String.format(Locale.US, "sides priced %d-%d¢ won %.0f%% of the time (%d)", it.from, it.to, it.won * 100, it.n) } + ".",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+// ============================================================ Headlines for one stock
+
+@Composable
+private fun NewsCard(ticker: String, store: Store) {
+    val context = LocalContext.current
+    var list by remember(ticker) { mutableStateOf<List<Headline>?>(null) }
+    LaunchedEffect(ticker) {
+        list = withContext(Dispatchers.IO) { runCatching { StockNews.get(ticker, store.massiveKey, Live.key(store)) }.getOrDefault(emptyList()) }
+    }
+    val l = list ?: return
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Headlines", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (l.isEmpty()) Text(if (store.massiveKey.isBlank() && Live.key(store).isBlank())
+                "Add a Massive or Finnhub key in Settings to see headlines." else "No recent headlines.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            l.forEach { h ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                    .clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(h.url))) } }) {
+                    Text(h.title, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(h.source + if (h.time > 0) " · " + DateUtils.getRelativeTimeSpanString(h.time) else "",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f))
+                        if (h.sentiment.isNotEmpty()) Text(h.sentiment.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+                            color = when (h.sentiment) { "positive" -> TradeColors.buy(); "negative" -> TradeColors.sell()
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant })
+                    }
+                }
+            }
+            if (l.any { it.sentiment.isNotEmpty() }) Text("Positive/negative labels are Massive's automatic read of each article, not advice.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -44,6 +44,7 @@ struct StockSheet: View {
                     PriceChartView(ticker: target.ticker, live: live)
                     AnalystCard(ticker: target.ticker, price: live?.price)
                     GradeCard(ticker: target.ticker)
+                    NewsCard(ticker: target.ticker)
                     NightlyCard(ticker: target.ticker)
                     PatternsCard(ticker: target.ticker)
                     if summary == nil {

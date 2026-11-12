@@ -12,11 +12,13 @@ data class StockGrade(
     val growth: String, val growthPct: Int, val income: String, val incomePct: Int, val wealth: String, val wealthPct: Int,
     val whyGrowth: List<String>, val whyIncome: List<String>, val whyWealth: List<String>,
     /** Measured on past months the model never saw: chance to beat the S&P 500 over 3 months, and the typical worst drop. */
-    val odds: List<Double?> = listOf(null, null, null), val drops: List<Double?> = listOf(null, null, null),
+    val odds: List<Double?> = listOf(null, null, null, null), val drops: List<Double?> = listOf(null, null, null, null),
+    val moat: String = "", val moatPct: Int = -1, val whyMoat: List<String> = emptyList(),
 ) {
-    fun grade(goal: Int) = when (goal) { 0 -> growth; 1 -> income; else -> wealth }
-    fun pct(goal: Int) = when (goal) { 0 -> growthPct; 1 -> incomePct; else -> wealthPct }
-    fun why(goal: Int) = when (goal) { 0 -> whyGrowth; 1 -> whyIncome; else -> whyWealth }
+    /** goal: 0 growth, 1 income, 2 wealth, 3 moat */
+    fun grade(goal: Int) = when (goal) { 0 -> growth; 1 -> income; 2 -> wealth; else -> moat }
+    fun pct(goal: Int) = when (goal) { 0 -> growthPct; 1 -> incomePct; 2 -> wealthPct; else -> moatPct }
+    fun why(goal: Int) = when (goal) { 0 -> whyGrowth; 1 -> whyIncome; 2 -> whyWealth; else -> whyMoat }
 }
 
 data class RisingStar(val ticker: String, val name: String, val capM: Long, val industry: String, val why: String, val growth: String)
@@ -73,8 +75,9 @@ object Grades {
             grades[t] = StockGrade(t, g.optString("name"), g.optLong("cap"),
                 g.optString("g"), g.optInt("gp", -1), g.optString("i"), g.optInt("ip", -1), g.optString("w"), g.optInt("wp", -1),
                 list(why, "g"), list(why, "i"), list(why, "w"),
-                listOf("gb", "ib", "wb").map { if (g.has(it)) g.optDouble(it) else null },
-                listOf("gd", "id", "wd").map { if (g.has(it)) g.optDouble(it) else null })
+                listOf("gb", "ib", "wb", "mb").map { if (g.has(it)) g.optDouble(it) else null },
+                listOf("gd", "id", "wd", "md").map { if (g.has(it)) g.optDouble(it) else null },
+                g.optString("m"), g.optInt("mp", -1), list(why, "m"))
         }
         val sj = o.optJSONArray("stars")
         val stars = if (sj == null) emptyList() else List(sj.length()) {
@@ -83,7 +86,7 @@ object Grades {
         }
         val rj = o.optJSONObject("record") ?: JSONObject()
         val record = HashMap<String, List<GradeBucket>>()
-        for (goal in listOf("g", "i", "w")) {
+        for (goal in listOf("g", "i", "w", "m")) {
             val b = rj.optJSONObject(goal) ?: continue
             record[goal] = b.keys().asSequence().sorted().map { k ->
                 val x = b.getJSONObject(k)

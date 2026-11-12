@@ -6,12 +6,16 @@ struct StockGrade: Identifiable {
     let growth: String, growthPct: Int, income: String, incomePct: Int, wealth: String, wealthPct: Int
     let whyGrowth: [String], whyIncome: [String], whyWealth: [String]
     /// Measured on past months the model never saw: chance to beat the S&P 500 over 3 months, and the typical worst drop.
-    var odds: [Double?] = [nil, nil, nil]
-    var drops: [Double?] = [nil, nil, nil]
+    var odds: [Double?] = [nil, nil, nil, nil]
+    var drops: [Double?] = [nil, nil, nil, nil]
+    var moat = ""
+    var moatPct = -1
+    var whyMoat: [String] = []
     var id: String { ticker }
-    func grade(_ goal: Int) -> String { goal == 0 ? growth : goal == 1 ? income : wealth }
-    func pct(_ goal: Int) -> Int { goal == 0 ? growthPct : goal == 1 ? incomePct : wealthPct }
-    func why(_ goal: Int) -> [String] { goal == 0 ? whyGrowth : goal == 1 ? whyIncome : whyWealth }
+    /// goal: 0 growth, 1 income, 2 wealth, 3 moat
+    func grade(_ goal: Int) -> String { [growth, income, wealth, moat][min(goal, 3)] }
+    func pct(_ goal: Int) -> Int { [growthPct, incomePct, wealthPct, moatPct][min(goal, 3)] }
+    func why(_ goal: Int) -> [String] { [whyGrowth, whyIncome, whyWealth, whyMoat][min(goal, 3)] }
 }
 
 struct RisingStar: Identifiable {
@@ -88,7 +92,8 @@ enum Grades {
                                    income: g["i"] as? String ?? "", incomePct: int(g["ip"], -1),
                                    wealth: g["w"] as? String ?? "", wealthPct: int(g["wp"], -1),
                                    whyGrowth: why["g"] ?? [], whyIncome: why["i"] ?? [], whyWealth: why["w"] ?? [],
-                                   odds: ["gb", "ib", "wb"].map { num(g[$0]) }, drops: ["gd", "id", "wd"].map { num(g[$0]) })
+                                   odds: ["gb", "ib", "wb", "mb"].map { num(g[$0]) }, drops: ["gd", "id", "wd", "md"].map { num(g[$0]) },
+                                   moat: g["m"] as? String ?? "", moatPct: int(g["mp"], -1), whyMoat: why["m"] ?? [])
         }
         let stars = (o["stars"] as? [[String: Any]] ?? []).map { s in
             RisingStar(ticker: s["t"] as? String ?? "", name: s["name"] as? String ?? "", capM: int(s["cap"]),
@@ -96,7 +101,7 @@ enum Grades {
         }
         let rj = o["record"] as? [String: Any] ?? [:]
         var record: [String: [GradeBucket]] = [:]
-        for goal in ["g", "i", "w"] {
+        for goal in ["g", "i", "w", "m"] {
             guard let b = rj[goal] as? [String: [String: Any]] else { continue }
             record[goal] = b.keys.sorted().map { k in
                 let x = b[k]!
