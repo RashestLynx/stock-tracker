@@ -5,6 +5,9 @@ struct StockGrade: Identifiable {
     let ticker: String, name: String, capM: Int
     let growth: String, growthPct: Int, income: String, incomePct: Int, wealth: String, wealthPct: Int
     let whyGrowth: [String], whyIncome: [String], whyWealth: [String]
+    /// Measured on past months the model never saw: chance to beat the S&P 500 over 3 months, and the typical worst drop.
+    var odds: [Double?] = [nil, nil, nil]
+    var drops: [Double?] = [nil, nil, nil]
     var id: String { ticker }
     func grade(_ goal: Int) -> String { goal == 0 ? growth : goal == 1 ? income : wealth }
     func pct(_ goal: Int) -> Int { goal == 0 ? growthPct : goal == 1 ? incomePct : wealthPct }
@@ -26,6 +29,8 @@ struct GradesResult {
     let grades: [String: StockGrade], stars: [RisingStar], record: [String: [GradeBucket]]
     let spy: Double?, spyDrop: Double?, recordFrom: String, starsRet: Double?, starsBeat: Double?
     var months: Int = 12
+    var note: String = ""
+    var learned: Bool = false
 
     func ranked(_ goal: Int) -> [StockGrade] {
         grades.values.filter { !$0.grade(goal).isEmpty && (goal != 1 || $0.incomePct >= 0) }.sorted { $0.pct(goal) > $1.pct(goal) }
@@ -82,7 +87,8 @@ enum Grades {
                                    growth: g["g"] as? String ?? "", growthPct: int(g["gp"], -1),
                                    income: g["i"] as? String ?? "", incomePct: int(g["ip"], -1),
                                    wealth: g["w"] as? String ?? "", wealthPct: int(g["wp"], -1),
-                                   whyGrowth: why["g"] ?? [], whyIncome: why["i"] ?? [], whyWealth: why["w"] ?? [])
+                                   whyGrowth: why["g"] ?? [], whyIncome: why["i"] ?? [], whyWealth: why["w"] ?? [],
+                                   odds: ["gb", "ib", "wb"].map { num(g[$0]) }, drops: ["gd", "id", "wd"].map { num(g[$0]) })
         }
         let stars = (o["stars"] as? [[String: Any]] ?? []).map { s in
             RisingStar(ticker: s["t"] as? String ?? "", name: s["name"] as? String ?? "", capM: int(s["cap"]),
@@ -101,7 +107,8 @@ enum Grades {
         return GradesResult(date: o["date"] as? String ?? "", fiscalYear: int(o["fy"]), graded: int(o["graded"]),
                             grades: grades, stars: stars, record: record, spy: num(rj["spy"]), spyDrop: num(rj["spy_dd"]),
                             recordFrom: rj["from"] as? String ?? "", starsRet: num(st?["ret"]), starsBeat: num(st?["beat"]),
-                            months: int(rj["months"], 12))
+                            months: int(rj["months"], 12), note: rj["note"] as? String ?? "",
+                            learned: (rj["method"] as? String) == "model")
     }
 
     static func money(_ capM: Int) -> String {

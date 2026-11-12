@@ -11,6 +11,8 @@ data class StockGrade(
     val ticker: String, val name: String, val capM: Long,
     val growth: String, val growthPct: Int, val income: String, val incomePct: Int, val wealth: String, val wealthPct: Int,
     val whyGrowth: List<String>, val whyIncome: List<String>, val whyWealth: List<String>,
+    /** Measured on past months the model never saw: chance to beat the S&P 500 over 3 months, and the typical worst drop. */
+    val odds: List<Double?> = listOf(null, null, null), val drops: List<Double?> = listOf(null, null, null),
 ) {
     fun grade(goal: Int) = when (goal) { 0 -> growth; 1 -> income; else -> wealth }
     fun pct(goal: Int) = when (goal) { 0 -> growthPct; 1 -> incomePct; else -> wealthPct }
@@ -26,6 +28,7 @@ data class GradesResult(
     val date: String, val fiscalYear: Int, val graded: Int, val grades: Map<String, StockGrade>, val stars: List<RisingStar>,
     val record: Map<String, List<GradeBucket>>, val spy: Double?, val spyDrop: Double?, val recordFrom: String,
     val starsRet: Double?, val starsBeat: Double?, val months: Int = 12,
+    val note: String = "", val learned: Boolean = false,
 ) {
     fun ranked(goal: Int): List<StockGrade> =
         grades.values.filter { it.grade(goal).isNotEmpty() && (goal != 1 || it.incomePct >= 0) }.sortedByDescending { it.pct(goal) }
@@ -69,7 +72,9 @@ object Grades {
             val why = g.optJSONObject("why")
             grades[t] = StockGrade(t, g.optString("name"), g.optLong("cap"),
                 g.optString("g"), g.optInt("gp", -1), g.optString("i"), g.optInt("ip", -1), g.optString("w"), g.optInt("wp", -1),
-                list(why, "g"), list(why, "i"), list(why, "w"))
+                list(why, "g"), list(why, "i"), list(why, "w"),
+                listOf("gb", "ib", "wb").map { if (g.has(it)) g.optDouble(it) else null },
+                listOf("gd", "id", "wd").map { if (g.has(it)) g.optDouble(it) else null })
         }
         val sj = o.optJSONArray("stars")
         val stars = if (sj == null) emptyList() else List(sj.length()) {
@@ -90,7 +95,7 @@ object Grades {
             if (rj.has("spy")) rj.optDouble("spy") else null, if (rj.has("spy_dd")) rj.optDouble("spy_dd") else null,
             rj.optString("from"),
             st?.let { if (it.isNull("ret")) null else it.optDouble("ret") }, st?.let { if (it.isNull("beat")) null else it.optDouble("beat") },
-            rj.optInt("months", 12))
+            rj.optInt("months", 12), rj.optString("note"), rj.optString("method") == "model")
     }
 
     fun money(capM: Long): String = when {

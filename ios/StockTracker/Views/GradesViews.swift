@@ -67,7 +67,7 @@ struct GradesView: View {
                                         if let w = g.why(goal).first { Text(w).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
                                     }
                                     Spacer()
-                                    GradeBadge(grade: g.grade(goal))
+                                    GradeBadge(grade: g.grade(goal), label: g.odds[goal].map { String(format: "%.0f%% odds", $0 * 100) })
                                 }.contentShape(Rectangle())
                             }.buttonStyle(.plain)
                         }
@@ -118,20 +118,19 @@ struct GradeRecordView: View {
         if let spy = r.spy {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Did it work?").font(.headline)
-                Text("Graded by the same rules on \(r.recordFrom), then held \(r.months == 12 ? "a year" : "\(r.months) months"). S&P 500: \(String(format: "%+.0f%%", spy * 100))" +
+                Text(!r.note.isEmpty ? r.note : "Graded by the same rules on \(r.recordFrom), then held \(r.months == 12 ? "a year" : "\(r.months) months"). S&P 500: \(String(format: "%+.0f%%", spy * 100))" +
                      (goal == 2 && r.spyDrop != nil ? String(format: ", worst drop %.0f%%", r.spyDrop! * 100) : "") + ".")
                     .font(.footnote).foregroundStyle(.secondary)
                 if goal == 3 {
                     if let ret = r.starsRet, let beat = r.starsBeat {
-                        Text(String(format: "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100))
+                        Text(r.learned ? String(format: "Past lists: %.0f%% of picks beat the S&P 500, median %+.1f%% vs it.", beat * 100, ret * 100)
+                             : String(format: "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100))
                     }
                 } else {
                     ForEach(r.record[["g", "i", "w"][goal]] ?? []) { b in
                         HStack {
                             Text(b.letter + "s").fontWeight(.bold).foregroundStyle(gradeColor(b.letter)).frame(width: 36, alignment: .leading)
-                            Text(goal == 2 && b.drop != nil
-                                 ? String(format: "worst drop %.0f%% · return %+.0f%%", b.drop! * 100, b.ret * 100)
-                                 : String(format: "median %+.0f%% · %.0f%% beat the S&P 500", b.ret * 100, b.beat * 100)).font(.footnote)
+                            Text(bucketText(b)).font(.footnote)
                             Spacer()
                             Text("\(b.n)").font(.caption2).foregroundStyle(.secondary)
                         }
@@ -141,6 +140,17 @@ struct GradeRecordView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+extension GradeRecordView {
+    func bucketText(_ b: GradeBucket) -> String {
+        if goal == 2, let d = b.drop {
+            return r.learned ? String(format: "typical worst drop %.0f%% · beat the S&P 500 %.0f%%", d * 100, b.beat * 100)
+                             : String(format: "worst drop %.0f%% · return %+.0f%%", d * 100, b.ret * 100)
+        }
+        return r.learned ? String(format: "beat the S&P 500 %.0f%% · median %+.1f%% vs it", b.beat * 100, b.ret * 100)
+                         : String(format: "median %+.0f%% · %.0f%% beat the S&P 500", b.ret * 100, b.beat * 100)
     }
 }
 
@@ -164,8 +174,14 @@ struct GradeCard: View {
                         }
                     }
                     Text(["Growth", "Income", "Wealth preservation"][open] + ":").font(.footnote).fontWeight(.semibold)
+                    if let o = g.odds[open] {
+                        Text(String(format: "Measured odds: %.0f%% chance to beat the S&P 500 over 3 months", o * 100) +
+                             (g.drops[open].map { String(format: ", typical worst drop %.0f%%", $0 * 100) } ?? "") + ".")
+                            .font(.footnote).fontWeight(.semibold)
+                    }
                     ForEach(g.why(open), id: \.self) { Text("• " + $0).font(.footnote) }
-                    Text("Tap a grade to see why. Graded against every U.S. stock each night.").font(.caption2).foregroundStyle(.secondary)
+                    Text("Tap a grade to see why. Weights are learned from history and the odds are measured on months the model never saw. Odds aren't promises.")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -4807,7 +4807,7 @@ private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
                                     g.why(goal).firstOrNull()?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
                                 }
-                                GradeBadge(g.grade(goal))
+                                GradeBadge(g.grade(goal), g.odds[goal]?.let { String.format(Locale.US, "%.0f%% odds", it * 100) })
                             }
                         }
                     }
@@ -4852,24 +4852,29 @@ private fun GradeRecordCard(r: GradesResult, goal: Int) {
     ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Did it work?", fontWeight = FontWeight.Bold)
-            Text("Graded by the same rules on ${r.recordFrom}, then held ${if (r.months == 12) "a year" else "${r.months} months"}. S&P 500: " +
+            Text(r.note.ifEmpty { "Graded by the same rules on ${r.recordFrom}, then held ${if (r.months == 12) "a year" else "${r.months} months"}. S&P 500: " +
                 String.format(Locale.US, "%+.0f%%", spy * 100) + (if (goal == 2 && r.spyDrop != null)
-                    String.format(Locale.US, ", worst drop %.0f%%", r.spyDrop * 100) else "") + ".",
+                    String.format(Locale.US, ", worst drop %.0f%%", r.spyDrop * 100) else "") + "." },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (goal == 3) {
                 val ret = r.starsRet
                 val beat = r.starsBeat
                 if (ret != null && beat != null) Text(String.format(Locale.US,
-                    "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
+                    if (r.learned) "Past lists: %2\$.0f%% of picks beat the S&P 500, median %1\$+.1f%% vs it."
+                    else "That day's list: median %+.0f%%, %.0f%% of them beat the S&P 500.", ret * 100, beat * 100),
                     style = MaterialTheme.typography.bodyMedium)
             } else {
                 val buckets = r.record[listOf("g", "i", "w")[goal]].orEmpty()
                 buckets.forEach { b ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(b.letter + "s", fontWeight = FontWeight.Bold, color = gradeColor(b.letter), modifier = Modifier.width(36.dp))
-                        Text(if (goal == 2 && b.drop != null)
-                            String.format(Locale.US, "worst drop %.0f%% · return %+.0f%%", b.drop * 100, b.ret * 100)
-                        else String.format(Locale.US, "median %+.0f%% · %.0f%% beat the S&P 500", b.ret * 100, b.beat * 100),
+                        Text(when {
+                            goal == 2 && b.drop != null && r.learned -> String.format(Locale.US,
+                                "typical worst drop %.0f%% · beat the S&P 500 %.0f%%", b.drop * 100, b.beat * 100)
+                            goal == 2 && b.drop != null -> String.format(Locale.US, "worst drop %.0f%% · return %+.0f%%", b.drop * 100, b.ret * 100)
+                            r.learned -> String.format(Locale.US, "beat the S&P 500 %.0f%% · median %+.1f%% vs it", b.beat * 100, b.ret * 100)
+                            else -> String.format(Locale.US, "median %+.0f%% · %.0f%% beat the S&P 500", b.ret * 100, b.beat * 100)
+                        },
                             style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                         Text("${b.n}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -4904,8 +4909,14 @@ private fun GradeCard(ticker: String) {
             val shown = if (open >= 0) open else 0
             Text(listOf("Growth", "Income", "Wealth preservation")[shown] + ":", fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodySmall)
+            s.odds[shown]?.let { o ->
+                Text(String.format(Locale.US, "Measured odds: %.0f%% chance to beat the S&P 500 over 3 months", o * 100) +
+                    (s.drops[shown]?.let { String.format(Locale.US, ", typical worst drop %.0f%%", it * 100) } ?: "") + ".",
+                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            }
             s.why(shown).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-            Text("Tap a grade to see why. Graded against every U.S. stock each night.", style = MaterialTheme.typography.labelSmall,
+            Text("Tap a grade to see why. Weights are learned from history and the odds are measured on months the model " +
+                "never saw. Odds aren't promises.", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
