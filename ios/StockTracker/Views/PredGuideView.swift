@@ -10,6 +10,9 @@ struct PredGuideView: View {
                 Text("3. Only on a green 'possible value' line, tap the side and use 'How much?'.")
                 Text("4. Log it under My picks, then check your record after 50 picks.")
             }
+            ForEach(Coach.sports, id: \.0) { item in
+                Section(item.0) { Text(item.1) }
+            }
             ForEach(Coach.guide, id: \.0) { item in
                 Section(item.0) { Text(item.1) }
             }

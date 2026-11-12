@@ -5300,6 +5300,16 @@ private fun PredGuideScreen() {
                 }
             }
         }
+        item { Text("How each sport works", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        items(Coach.SPORTS) { (title, body) ->
+            ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, fontWeight = FontWeight.Bold)
+                    Text(body, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        item { Text("How betting works", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         items(Coach.GUIDE) { (title, body) ->
             ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
