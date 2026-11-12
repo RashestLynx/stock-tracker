@@ -121,7 +121,13 @@ def check_bet_sheet(label):
 def check_stock_page(label):
     """From Markets → Patterns (real nightly results), opens the first stock and checks its cards load."""
     time.sleep(8)  # let the scan results download
-    pos = find_prefix(screen(), "Across all stocks")
+    pos = None
+    for _ in range(4):   # the rows start below the filters
+        pos = find_prefix(screen(), "Across all stocks")
+        if pos is not None:
+            break
+        adb("shell", "input", "swipe", "540", "1700", "540", "1000", "300")
+        time.sleep(2)
     if pos is None:
         note(f"{label}: no pattern rows on screen, so a stock page wasn't opened. Visible: {', '.join(texts(screen())[:12])}")
         return
