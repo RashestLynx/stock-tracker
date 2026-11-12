@@ -4575,6 +4575,7 @@ private fun NightlyPatternsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
     var showN by rememberSaveable { mutableIntStateOf(60) }
+    val signalsCache = remember { HashMap<Triple<NightlyResult, Int, Int>, List<Pair<NightlyStock, NightlyHit>>>() }
     val alerts = remember(reload) { store.priceAlertLog().filter { System.currentTimeMillis() - it.time < 3 * 86_400_000L } }
     val kinds = listOf("All", "Candlesticks", "Chart shapes", "Indicators", "Smart money")
     val kindName = listOf("", "Candlestick", "Chart shape", "Indicator", "Smart money")
@@ -4594,7 +4595,7 @@ private fun NightlyPatternsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
         ) {
             if (alerts.isNotEmpty()) {
                 item { Text("Live price alerts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                items(alerts.take(8), key = { "a" + it.key }) { a ->
+                itemsIndexed(alerts.take(8), key = { i, a -> "alert|${a.key}|$i" }) { _, a ->
                     ModernCard(onClick = { onOpen(StockTarget(a.ticker, "", "", "", emptyList(), "", 0.0)) },
                         shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp)) {
@@ -4623,12 +4624,12 @@ private fun NightlyPatternsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
             }
             error?.let { e -> item { EmptyState("No scan yet", e) } }
             if (r != null && view == 0) {
-                val shown = r.signals().filter { (_, h) ->
+                val shown = signalsCache.getOrPut(Triple(r, kind, dir)) { r.signals().filter { (_, h) ->
                     (kind == 0 || h.pattern.kind == kindName[kind]) &&
                         (dir == 0 || (dir == 1 && h.pattern.mood > 0) || (dir == 2 && h.pattern.mood < 0))
-                }
+                } }
                 if (shown.isEmpty()) item { EmptyState("No signals", "Nothing matches these filters today.") }
-                items(shown.take(showN), key = { (s, h) -> s.ticker + h.pattern.id }) { (s, h) ->
+                itemsIndexed(shown.take(showN), key = { i, (s, h) -> "sig|${s.ticker}|${h.pattern.id}|$i" }) { _, (s, h) ->
                     NightlySignalRow(s, h) { onOpen(StockTarget(s.ticker, "", "", "", emptyList(), "", 0.0)) }
                 }
                 if (shown.size > showN) item {
@@ -4638,7 +4639,7 @@ private fun NightlyPatternsScreen(store: Store, onOpen: (StockTarget) -> Unit) {
             if (r != null && view == 1) {
                 val list = r.patterns.filter { (kind == 0 || it.kind == kindName[kind]) && it.n > 0 }.sortedByDescending { it.edge }
                 if (list.isEmpty()) item { EmptyState("No track records", "Smart-money signals come from filings, not prices, so they have no price history here.") }
-                items(list, key = { "p" + it.id }) { p ->
+                itemsIndexed(list, key = { i, p -> "rec|${p.id}|$i" }) { _, p ->
                     ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4787,7 +4788,7 @@ private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
                             singleLine = true, label = { Text("Find a ticker") })
                     }
                     val list = r.ranked(goal).filter { query.isBlank() || it.ticker.startsWith(query) }
-                    items(list.take(showN), key = { "gr" + it.ticker }) { g ->
+                    itemsIndexed(list.take(showN), key = { i, g -> "gr|${g.ticker}|$i" }) { _, g ->
                         ModernCard(onClick = { onOpen(StockTarget(g.ticker, g.name, "", "", emptyList(), "", 0.0)) },
                             shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4811,7 +4812,7 @@ private fun GradesScreen(onOpen: (StockTarget) -> Unit) {
                     }
                 } else {
                     if (r.stars.isEmpty()) item { EmptyState("Nothing qualifies today", "No company passed every test.") }
-                    items(r.stars, key = { "st" + it.ticker }) { s ->
+                    itemsIndexed(r.stars, key = { i, s -> "st|${s.ticker}|$i" }) { _, s ->
                         ModernCard(onClick = { onOpen(StockTarget(s.ticker, s.name, "", "", emptyList(), "", 0.0)) },
                             shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

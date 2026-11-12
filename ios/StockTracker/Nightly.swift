@@ -29,8 +29,8 @@ struct NightlyStock {
 }
 
 struct NightlySignal: Identifiable {
-    let stock: NightlyStock, hit: NightlyHit
-    var id: String { stock.ticker + hit.pattern.id }
+    let stock: NightlyStock, hit: NightlyHit, n: Int
+    var id: String { "\(stock.ticker)|\(hit.pattern.id)|\(n)" }
 }
 
 struct NightlyResult {
@@ -39,7 +39,7 @@ struct NightlyResult {
     /// Every signal, best track record first; smart-money signals (no price history) after the strongest ones.
     func signals() -> [NightlySignal] {
         func score(_ s: NightlySignal) -> Double { s.hit.pattern.kind == "Smart money" ? 0.02 : s.hit.pattern.edge }
-        return stocks.values.flatMap { s in s.hits.map { NightlySignal(stock: s, hit: $0) } }
+        return stocks.values.flatMap { s in s.hits.enumerated().map { NightlySignal(stock: s, hit: $0.element, n: $0.offset) } }
             .sorted { a, b in score(a) != score(b) ? score(a) > score(b) : a.hit.ago < b.hit.ago }
     }
 }
