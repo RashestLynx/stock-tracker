@@ -1390,7 +1390,7 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
 
             // ---- price ----
             PriceChartBlock(t.ticker, store, liveQ)
-            AnalystCard(t.ticker, liveQ?.price)
+            AnalystCard(t.ticker, liveQ?.price, store)
             GradeCard(t.ticker)
             NightlyBlock(t.ticker)
             PatternsBlock(t.ticker, store)
@@ -4914,10 +4914,10 @@ private fun GradeCard(ticker: String) {
 // ============================================================ Analyst ratings and price targets (like Robinhood's)
 
 @Composable
-private fun AnalystCard(ticker: String, price: Double?) {
+private fun AnalystCard(ticker: String, price: Double?, store: Store) {
     var view by remember(ticker) { mutableStateOf<AnalystView?>(null) }
     LaunchedEffect(ticker) {
-        view = withContext(Dispatchers.IO) { runCatching { Analysts.get(ticker) }.getOrNull() }
+        view = withContext(Dispatchers.IO) { runCatching { Analysts.get(ticker, Live.key(store)) }.getOrNull() }
     }
     val v = view ?: return
     val buyC = TradeColors.buy(); val sellC = TradeColors.sell(); val holdC = Color(0xFFF9A825)
@@ -4977,7 +4977,18 @@ private fun AnalystCard(ticker: String, price: Double?) {
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("Wall Street analysts' consensus, from Nasdaq. Analysts lean optimistic and targets are often missed; use it as one input.",
+            val src = buildString {
+                append("Ratings from ${v.ratings?.name ?: "–"}")
+                v.targets?.let { tg -> append(if (tg.name == v.ratings?.name) " (targets too)" else "; targets from ${tg.name}" +
+                    (if (tg.targetAnalysts > 0) " (${tg.targetAnalysts} analysts)" else "")) }
+                append(".")
+            }
+            Text(src, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            v.all.filter { it !== v.ratings && it.total > 0 }.forEach { o ->
+                Text("${o.name}: ${o.total} analysts, ${o.pct(o.buy)}% buy, ${o.pct(o.hold)}% hold, ${o.pct(o.sell)}% sell",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("Analysts lean optimistic and targets are often missed; use this as one input.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

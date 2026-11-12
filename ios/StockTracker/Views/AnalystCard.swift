@@ -15,7 +15,12 @@ struct AnalystCard: View {
                     Text("\(v.total) analyst ratings").font(.headline)
                     if v.total > 0 { ratings(v) }
                     if let low = v.low, let avg = v.avg, let high = v.high, high > low { targets(low: low, avg: avg, high: high) }
-                    Text("Wall Street analysts' consensus, from Nasdaq. Analysts lean optimistic and targets are often missed; use it as one input.")
+                    Text(sourceLine(v)).font(.caption2).foregroundStyle(.secondary)
+                    ForEach(v.all.filter { $0.name != v.ratings?.name && $0.total > 0 }, id: \.name) { o in
+                        Text("\(o.name): \(o.total) analysts, \(o.pct(o.buy))% buy, \(o.pct(o.hold))% hold, \(o.pct(o.sell))% sell")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Text("Analysts lean optimistic and targets are often missed; use this as one input.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 .padding()
@@ -24,6 +29,14 @@ struct AnalystCard: View {
             }
         }
         .task(id: ticker) { view = await Analysts.get(ticker) }
+    }
+
+    private func sourceLine(_ v: AnalystView) -> String {
+        var s = "Ratings from \(v.ratings?.name ?? "–")"
+        if let tg = v.targets {
+            s += tg.name == v.ratings?.name ? " (targets too)" : "; targets from \(tg.name)" + (tg.targetAnalysts > 0 ? " (\(tg.targetAnalysts) analysts)" : "")
+        }
+        return s + "."
     }
 
     private func ratings(_ v: AnalystView) -> some View {

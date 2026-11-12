@@ -126,7 +126,7 @@ def check_stock_page(label):
         pos = find_prefix(screen(), "Across all stocks")
         if pos is not None:
             break
-        adb("shell", "input", "swipe", "540", "1700", "540", "1000", "300")
+        scroll_down()
         time.sleep(2)
     if pos is None:
         note(f"{label}: no pattern rows on screen, so a stock page wasn't opened. Visible after scrolling: {' | '.join(texts(screen())[:40])[:900]}")
@@ -138,9 +138,10 @@ def check_stock_page(label):
     seen = set()
     for _ in range(6):
         for t in texts(screen()):
-            if t.endswith("analyst ratings") or t in ("Grades", "Last night's scan", "Price targets") or t.startswith("Current price"):
+            if t.endswith("analyst ratings") or t in ("Grades", "Last night's scan", "Price targets") or t.startswith("Current price") \
+                    or t.startswith(("Ratings from", "Nasdaq:", "Yahoo Finance:", "Finnhub:")):
                 seen.add(t if not t.startswith("Current price") else "Current price vs target")
-        adb("shell", "input", "swipe", "540", "1700", "540", "900", "300")
+        scroll_down()
         time.sleep(2)
         if not check_ok(f"{label} / stock page scroll"):
             return
@@ -195,6 +196,13 @@ def check_ok(where):
 def width():
     m = re.search(r"(\d+)x(\d+)", adb("shell", "wm", "size"))
     return int(m.group(1)) if m else 1080
+
+
+def scroll_down():
+    """Scrolls the screen's list down by about half a screen, whatever the emulator's size."""
+    m = re.search(r"(\d+)x(\d+)", adb("shell", "wm", "size"))
+    w, h = (int(m.group(1)), int(m.group(2))) if m else (1080, 2400)
+    adb("shell", "input", "swipe", str(w // 2), str(int(h * 0.75)), str(w // 2), str(int(h * 0.30)), "400")
 
 
 def tap(text, where, wait=4, required=True, row=None):
