@@ -55,13 +55,13 @@ object Analysts {
         return AnalystSource("Nasdaq", buy, hold, sell, num("lowPriceTarget"), num("priceTarget"), num("highPriceTarget"), buy + hold + sell)
     }
 
-    private fun nasdaq(t: String): AnalystSource? = parseNasdaq(get("https://api.nasdaq.com/api/analyst/${t.replace(".", "-")}/targetprice",
+    private fun nasdaq(t: String): AnalystSource? = parseNasdaq(http("https://api.nasdaq.com/api/analyst/${t.replace(".", "-")}/targetprice",
         mapOf("User-Agent" to BROWSER, "Accept" to "application/json, text/plain, */*", "Accept-Language" to "en-US,en;q=0.9",
             "Origin" to "https://www.nasdaq.com", "Referer" to "https://www.nasdaq.com/")).second)
 
     /** Finnhub's latest monthly count (free with a key; ratings only, its price targets are a paid feature). */
     private fun finnhub(t: String, key: String): AnalystSource? {
-        val body = get("https://finnhub.io/api/v1/stock/recommendation?symbol=${URLEncoder.encode(t, "UTF-8")}&token=$key").second
+        val body = http("https://finnhub.io/api/v1/stock/recommendation?symbol=${URLEncoder.encode(t, "UTF-8")}&token=$key").second
         val arr = org.json.JSONArray(body)
         if (arr.length() == 0) return null
         val o = arr.getJSONObject(0)   // newest month first
@@ -72,15 +72,15 @@ object Analysts {
     /** Yahoo Finance: ratings and price targets. Yahoo needs a session cookie and a "crumb" first. */
     private fun yahoo(t: String): AnalystSource? {
         val (cookie, crumb) = yahoo ?: run {
-            val first = get("https://fc.yahoo.com", mapOf("User-Agent" to BROWSER), okCodes = 200..599)
+            val first = http("https://fc.yahoo.com", mapOf("User-Agent" to BROWSER), okCodes = 200..599)
             val ck = first.third.filter { it.startsWith("A3=") || it.startsWith("A1=") }.joinToString("; ") { it.substringBefore(";") }
             if (ck.isEmpty()) return null
-            val cr = get("https://query2.finance.yahoo.com/v1/test/getcrumb", mapOf("User-Agent" to BROWSER, "Cookie" to ck)).second.trim()
+            val cr = http("https://query2.finance.yahoo.com/v1/test/getcrumb", mapOf("User-Agent" to BROWSER, "Cookie" to ck)).second.trim()
             if (cr.isEmpty() || cr.contains("<")) return null
             (ck to cr).also { yahoo = it }
         }
         val sym = t.replace(".", "-")
-        val (code, body) = get("https://query2.finance.yahoo.com/v10/finance/quoteSummary/$sym?modules=financialData,recommendationTrend&crumb=" +
+        val (code, body) = http("https://query2.finance.yahoo.com/v10/finance/quoteSummary/$sym?modules=financialData,recommendationTrend&crumb=" +
             URLEncoder.encode(crumb, "UTF-8"), mapOf("User-Agent" to BROWSER, "Cookie" to cookie), okCodes = 200..499).let { it.first to it.second }
         if (code == 401 || code == 403) { yahoo = null; return null }
         return parseYahoo(body)
@@ -103,7 +103,7 @@ object Analysts {
     }
 
     /** (status, body, Set-Cookie values) */
-    private fun get(url: String, headers: Map<String, String> = mapOf("User-Agent" to "StockTracker"),
+    private fun http(url: String, headers: Map<String, String> = mapOf("User-Agent" to "StockTracker"),
                     okCodes: IntRange = 200..299): Triple<Int, String, List<String>> {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 12_000; c.readTimeout = 15_000
