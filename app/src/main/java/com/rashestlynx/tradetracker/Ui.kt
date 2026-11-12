@@ -5127,6 +5127,25 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                             }
                         }
                     }
+                    // weather record
+                    if (a.weather.isNotEmpty() || b.weather.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Weather record (last 7 seasons)", fontWeight = FontWeight.Bold)
+                            listOf(a, b).forEach { t ->
+                                if (t.weather.isNotEmpty()) {
+                                    Text(t.name, style = MaterialTheme.typography.labelLarge)
+                                    t.weather.sortedBy { it.z }.forEach { w ->
+                                        Text(String.format(Locale.US, "• %s: %d-%d, ratings expected %.1f wins: %s", w.label, w.wins, w.n - w.wins,
+                                            w.expected, w.verdict), style = MaterialTheme.typography.bodySmall,
+                                            color = when { w.z <= -2 -> TradeColors.sell(); w.z >= 2 -> TradeColors.buy(); else -> MaterialTheme.colorScheme.onSurface })
+                                    }
+                                }
+                            }
+                            Text("Compared with what each team's rating expected before those games, so a strong team winning in the cold " +
+                                "doesn't count as a cold-weather team. With many teams and conditions, a few 'could be luck' results are expected by chance.",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     // injuries
                     if (a.injuries.isNotEmpty() || b.injuries.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

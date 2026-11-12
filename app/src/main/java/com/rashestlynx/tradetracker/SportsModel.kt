@@ -13,9 +13,24 @@ data class TeamRow(
     val name: String, val abbr: String, val elo: Int, val rank: Int?, val of: Int?,
     val w: Int, val l: Int, val t: Int, val pf: Double?, val pa: Double?, val home: String, val away: String,
     val l10: String, val streak: String, val sos: Int?, val trend: Int,
-    val games: List<RecentGame>, val injuries: List<Injury>,
+    val games: List<RecentGame>, val injuries: List<Injury>, val weather: List<WeatherSplit> = emptyList(),
 ) {
     val record: String get() = if (t > 0) "$w-$l-$t" else "$w-$l"
+}
+
+/** How a team did in one kind of weather vs. what the ratings expected before those games. */
+data class WeatherSplit(val condition: String, val n: Int, val wins: Int, val expected: Double, val z: Double) {
+    val label: String get() = when (condition) {
+        "rain" -> "In rain"; "cold" -> "At 40°F or colder"; "heat" -> "At 85°F or hotter"
+        "wind" -> "Wind 15+ mph"; else -> "Mild, dry weather"
+    }
+    val verdict: String get() = when {
+        z <= -3 -> "clearly worse than expected"
+        z <= -2 -> "worse than expected (could still be luck)"
+        z >= 3 -> "clearly better than expected"
+        z >= 2 -> "better than expected (could still be luck)"
+        else -> "about as expected"
+    }
 }
 
 data class RecentGame(val date: String, val opp: String, val pf: Int, val pa: Int, val home: Boolean)
@@ -104,7 +119,9 @@ object SportsModels {
                     t.optInt("w"), t.optInt("l"), t.optInt("t"), if (t.has("pf")) t.optDouble("pf") else null,
                     if (t.has("pa")) t.optDouble("pa") else null, t.optString("home"), t.optString("away"),
                     t.optString("l10"), t.optString("streak"), if (t.has("sos")) t.optInt("sos") else null, t.optInt("trend"),
-                    games, injuries)
+                    games, injuries, t.optJSONObject("weather")?.let { wj -> wj.keys().asSequence().map { c ->
+                        val x = wj.getJSONObject(c)
+                        WeatherSplit(c, x.optInt("n"), x.optInt("w"), x.optDouble("exp"), x.optDouble("z")) }.toList() } ?: emptyList())
             }
             val rec = l.optJSONObject("record") ?: JSONObject()
             val books = rec.optJSONObject("books")

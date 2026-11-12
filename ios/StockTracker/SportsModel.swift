@@ -1,6 +1,14 @@
 import Foundation
 
 /// Nightly team ratings and side-by-side numbers (from sports.py), tested on seasons the model never saw. Mirrors SportsModel.kt.
+struct WeatherSplit: Hashable {
+    let condition: String, n: Int, wins: Int, expected: Double, z: Double
+    var label: String { ["rain": "In rain", "cold": "At 40°F or colder", "heat": "At 85°F or hotter", "wind": "Wind 15+ mph"][condition] ?? "Mild, dry weather" }
+    var verdict: String {
+        z <= -3 ? "clearly worse than expected" : z <= -2 ? "worse than expected (could still be luck)"
+            : z >= 3 ? "clearly better than expected" : z >= 2 ? "better than expected (could still be luck)" : "about as expected"
+    }
+}
 struct RecentGame { let date: String, opp: String, pf: Int, pa: Int, home: Bool }
 struct Injury: Hashable { let name: String, pos: String, status: String }
 struct CalBin { let from: Int, to: Int, n: Int, said: Double, won: Double }
@@ -11,6 +19,7 @@ struct TeamRow {
     let name: String, abbr: String, elo: Int, rank: Int?
     let w: Int, l: Int, t: Int, pf: Double?, pa: Double?, home: String, away: String, l10: String, streak: String
     let sos: Int?, trend: Int, games: [RecentGame], injuries: [Injury]
+    var weather: [WeatherSplit] = []
     var record: String { t > 0 ? "\(w)-\(l)-\(t)" : "\(w)-\(l)" }
 }
 
@@ -102,7 +111,9 @@ enum SportsModels {
                                       w: int(t["w"]) ?? 0, l: int(t["l"]) ?? 0, t: int(t["t"]) ?? 0, pf: num(t["pf"]), pa: num(t["pa"]),
                                       home: t["home"] as? String ?? "", away: t["away"] as? String ?? "", l10: t["l10"] as? String ?? "",
                                       streak: t["streak"] as? String ?? "", sos: int(t["sos"]), trend: int(t["trend"]) ?? 0,
-                                      games: games, injuries: injuries)
+                                      games: games, injuries: injuries,
+                                      weather: ((t["weather"] as? [String: [String: Any]]) ?? [:]).map { c, x in
+                                          WeatherSplit(condition: c, n: int(x["n"]) ?? 0, wins: int(x["w"]) ?? 0, expected: num(x["exp"]) ?? 0, z: num(x["z"]) ?? 0) })
             }
             let rec = lv["record"] as? [String: Any] ?? [:]
             let books = rec["books"] as? [String: Any]

@@ -74,6 +74,21 @@ struct CompareView: View {
                     }
                 }
             }
+            if !a.weather.isEmpty || !b.weather.isEmpty {
+                Section {
+                    ForEach([a, b], id: \.name) { t in
+                        if !t.weather.isEmpty {
+                            Text(t.name).font(.subheadline.bold())
+                            ForEach(t.weather.sorted { $0.z < $1.z }, id: \.self) { w in
+                                Text(String(format: "• %@: %d-%d, ratings expected %.1f wins: %@", w.label, w.wins, w.n - w.wins, w.expected, w.verdict))
+                                    .font(.footnote).foregroundStyle(w.z <= -2 ? .red : w.z >= 2 ? .green : .primary)
+                            }
+                        }
+                    }
+                } header: { Text("Weather record (last 7 seasons)") } footer: {
+                    Text("Compared with what each team's rating expected before those games, so a strong team winning in the cold doesn't count as a cold-weather team. With many teams and conditions, a few 'could be luck' results are expected by chance.")
+                }
+            }
             if !a.injuries.isEmpty || !b.injuries.isEmpty {
                 Section {
                     ForEach([a, b], id: \.name) { t in
