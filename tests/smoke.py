@@ -195,8 +195,10 @@ def check_leagues(label):
                     scroll_down()
                     time.sleep(1)
                 note(f"{label}: {league} Compare showed: {', '.join(sorted(seen)) or 'nothing recognizable'}")
-                adb("shell", "input", "keyevent", "4")
-                time.sleep(3)
+                # Close the sheet only if it's still open: a back press with no sheet would leave the app.
+                if find_prefix(screen(), "League:") is None:
+                    adb("shell", "input", "keyevent", "4")
+                    time.sleep(3)
     pos = find_prefix(screen(), "League:")
     if pos:
         adb("shell", "input", "tap", str(pos[0]), str(pos[1]))
