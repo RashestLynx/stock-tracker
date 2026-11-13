@@ -270,7 +270,7 @@ def tour(label):
         "Markets": ["Top 30", "Grades", "Patterns", "Movers", "Common picks", "WSB", "Crypto"],
         "Predictions": ["Start here", "All markets", "Sports", "My picks"],
         "Feed": ["Filings", "News"],
-        "Portfolio": ["Watchlist", "My accounts", "Track record"],
+        "Portfolio": ["Watchlist", "My accounts", "Covered calls", "Track record"],
         "Home": [],
     }
     for tab, inner in views.items():
@@ -288,7 +288,42 @@ def tour(label):
                     return
             if tab == "Predictions" and v == "Sports" and label == "No screen lock":
                 check_leagues(label)
+            if tab == "Portfolio" and v == "Covered calls" and label == "No screen lock":
+                check_covered_calls(label)
     note(f"{label}: opened every tab and view without crashing")
+
+
+def check_covered_calls(label):
+    """Types a stock into the covered-call checker and reports whether live calls show up."""
+    s = screen()
+    if find_prefix(s, "Options & covered calls") is None:
+        note(f"{label}: problem: Covered calls screen didn't show its guide")
+        return
+    pos = find_prefix(s, "Ticker")
+    if pos is None:
+        scroll_down(); time.sleep(1); pos = find_prefix(screen(), "Ticker")
+    if pos is None:
+        note(f"{label}: Covered calls: couldn't find the ticker box")
+        return
+    adb("shell", "input", "tap", str(pos[0]), str(pos[1])); time.sleep(1)
+    adb("shell", "input", "text", "KO"); time.sleep(1)
+    adb("shell", "input", "keyevent", "4"); time.sleep(1)
+    b = find_prefix(screen(), "Show covered calls")
+    if b is None:
+        note(f"{label}: Covered calls: no Show button"); return
+    adb("shell", "input", "tap", str(b[0]), str(b[1]))
+    seen = ""
+    for _ in range(12):
+        time.sleep(3)
+        scroll_down()
+        s = screen()
+        for k in ("Three to consider", "No option prices", "Sell the $"):
+            if find_prefix(s, k) is not None:
+                seen = k
+        if seen in ("Three to consider", "Sell the $"):
+            break
+    note(f"{label}: Covered calls for KO: {'live calls shown' if seen.startswith(('Three', 'Sell')) else seen or 'nothing showed'}")
+    tap("Covered calls", label, wait=3)
 
 
 def check_market_sources():
