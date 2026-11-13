@@ -5519,6 +5519,7 @@ private fun CoveredCallsScreen(store: Store) {
     var tick by rememberSaveable { mutableStateOf("") }
     var sh by rememberSaveable { mutableStateOf("100") }
     var checking by rememberSaveable { mutableStateOf("") }
+    var checkShares by rememberSaveable { mutableStateOf(100.0) }
     var openGuide by rememberSaveable { mutableIntStateOf(-1) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -5559,11 +5560,11 @@ private fun CoveredCallsScreen(store: Store) {
                         OutlinedTextField(sh, { sh = it.filter(Char::isDigit).take(7) }, Modifier.weight(1f), label = { Text("Shares you own") },
                             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
                     }
-                    Button(onClick = { checking = tick.trim() }, enabled = tick.isNotBlank()) { Text("Show covered calls") }
+                    Button(onClick = { checking = tick.trim(); checkShares = sh.toDoubleOrNull() ?: 0.0 }, enabled = tick.isNotBlank()) { Text("Show covered calls") }
                 }
             }
         }
-        if (checking.isNotBlank()) item(key = "check-$checking-$sh") { OptionsCard(checking, sh.toDoubleOrNull() ?: 0.0, store, startOpen = true) }
+        if (checking.isNotBlank()) item(key = "check-$checking-$checkShares") { OptionsCard(checking, checkShares, store, startOpen = true) }
         item {
             Text(if (positions.isEmpty()) "Your positions with 100+ shares show here once your brokerage is linked in My accounts."
                  else "Your positions with 100+ shares", fontWeight = FontWeight.SemiBold,

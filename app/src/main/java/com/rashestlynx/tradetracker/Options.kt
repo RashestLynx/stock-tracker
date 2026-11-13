@@ -36,7 +36,9 @@ data class CallIdea(
     val wideSpread: Boolean,     // bid and ask far apart: you may not get a fair price
 )
 
-data class StockEvents(val earnings: LocalDate?, val exDiv: LocalDate?, val dividend: Double?, val exDivGuessed: Boolean)
+/** checkedEarnings / checkedDividends: the lookup answered (so a null date really means none is coming up). */
+data class StockEvents(val earnings: LocalDate?, val exDiv: LocalDate?, val dividend: Double?, val exDivGuessed: Boolean,
+                       val checkedEarnings: Boolean = false, val checkedDividends: Boolean = false)
 
 /**
  * Covered calls: sell someone the right to buy your shares at a set price (the strike) by a set date,
@@ -150,10 +152,12 @@ object Options {
         val t = URLEncoder.encode(ticker.uppercase(Locale.US), "UTF-8")
         val today = LocalDate.now()
         var earnings: LocalDate? = null
+        var gotEarnings = false; var gotDividends = false
         val fk = Live.key(store)
         if (fk.isNotBlank()) runCatching {
             val b = http("https://finnhub.io/api/v1/calendar/earnings?symbol=$t&from=$today&to=${today.plusDays(120)}&token=$fk")
             val a = JSONObject(b ?: "{}").optJSONArray("earningsCalendar")
+            if (a != null) gotEarnings = true
             if (a != null) earnings = (0 until a.length()).mapNotNull { runCatching { LocalDate.parse(a.getJSONObject(it).optString("date")) }.getOrNull() }
                 .filter { !it.isBefore(today) }.minOrNull()
         }
@@ -162,6 +166,7 @@ object Options {
         if (mk.isNotBlank()) runCatching {
             val b = http("https://api.massive.com/v3/reference/dividends?ticker=$t&order=desc&sort=ex_dividend_date&limit=6&apiKey=$mk")
             val a = JSONObject(b ?: "{}").optJSONArray("results")
+            if (a != null) gotDividends = true
             if (a != null && a.length() > 0) {
                 val list = (0 until a.length()).mapNotNull { i ->
                     val x = a.getJSONObject(i)
@@ -178,7 +183,7 @@ object Options {
                 }
             }
         }
-        return StockEvents(earnings, exDiv, amount, guessed)
+        return StockEvents(earnings, exDiv, amount, guessed, gotEarnings, gotDividends)
     }
 
     // ---------------- ideas ----------------
@@ -236,8 +241,10 @@ object Options {
                     "take your shares the day before to get the dividend."
             }
         }
-        if (ev == null || (ev.earnings == null && ev.exDiv == null))
-            w += "Couldn't check earnings and dividend dates (add Finnhub and Massive keys in Settings). Look them up before selling."
+        val missing = listOfNotNull(
+            if (ev?.checkedEarnings != true) "earnings date (needs a Finnhub key in Settings)" else null,
+            if (ev?.checkedDividends != true) "ex-dividend date (needs a Massive key in Settings)" else null)
+        if (missing.isNotEmpty()) w += "Couldn't check the ${missing.joinToString(" or the ")}. Look it up before selling."
         grade?.let { g ->
             if (g.growth.startsWith("A")) w += "Your Growth grade for this stock is ${g.growth}. Covered calls cap your gain at the " +
                 "strike, which costs the most on strong growers. A higher strike (\"Safer\") gives up less."

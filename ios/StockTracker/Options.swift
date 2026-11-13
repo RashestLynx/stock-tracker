@@ -18,7 +18,8 @@ struct CallIdea: Hashable {
     let income: Double, yieldPct: Double, annualPct: Double, ifCalledPct: Double, chanceCalled: Double, breakeven: Double, wideSpread: Bool
 }
 
-struct StockEvents { let earnings: Date?, exDiv: Date?, dividend: Double?, exDivGuessed: Bool }
+/// checkedEarnings / checkedDividends: the lookup answered (so a nil date really means none is coming up).
+struct StockEvents { let earnings: Date?, exDiv: Date?, dividend: Double?, exDivGuessed: Bool; var checkedEarnings = false, checkedDividends = false }
 
 /// Covered calls: sell someone the right to buy your shares at the strike by a set date, and get paid now.
 /// Free option prices from CBOE's delayed quotes (15 minutes old), Nasdaq as a backup. Nothing here places a trade.
@@ -120,13 +121,16 @@ enum Options {
         let now = today()
         let iso = { (d: Date) -> String in let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = cal.timeZone; f.dateFormat = "yyyy-MM-dd"; return f.string(from: d) }
         var earnings: Date?
+        var gotEarnings = false, gotDividends = false
         if !Live.key.isEmpty, let d = await http("https://finnhub.io/api/v1/calendar/earnings?symbol=\(t)&from=\(iso(now))&to=\(iso(now.addingTimeInterval(120 * 86400)))&token=\(Live.key)"),
            let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let a = o["earningsCalendar"] as? [[String: Any]] {
+            gotEarnings = true
             earnings = a.compactMap { ($0["date"] as? String).flatMap { ymd($0, "yyyy-MM-dd") } }.filter { $0 >= now }.min()
         }
         var exDiv: Date?, amount: Double?, guessed = false
         if !massiveKey.isEmpty, let d = await http("https://api.massive.com/v3/reference/dividends?ticker=\(t)&order=desc&sort=ex_dividend_date&limit=6&apiKey=\(massiveKey)"),
            let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let a = o["results"] as? [[String: Any]] {
+            gotDividends = true
             let list = a.compactMap { x -> (Date, Double)? in (x["ex_dividend_date"] as? String).flatMap { ymd($0, "yyyy-MM-dd") }.map { ($0, x["cash_amount"] as? Double ?? 0) } }
                 .sorted { $0.0 < $1.0 }
             if let next = list.first(where: { $0.0 >= now }) { exDiv = next.0; amount = next.1 }
@@ -137,7 +141,7 @@ enum Options {
                 exDiv = g; amount = list.last!.1; guessed = true
             }
         }
-        return StockEvents(earnings: earnings, exDiv: exDiv, dividend: amount, exDivGuessed: guessed)
+        return StockEvents(earnings: earnings, exDiv: exDiv, dividend: amount, exDivGuessed: guessed, checkedEarnings: gotEarnings, checkedDividends: gotDividends)
     }
 
     // ---------------- ideas ----------------
@@ -186,9 +190,9 @@ enum Options {
             let amt = ev.dividend.map { " (\(money($0)) a share)" } ?? ""
             w.append("Ex-dividend day \(ev.exDivGuessed ? "is usually around" : "is") \(f.string(from: x))\(amt), before expiry. You keep the dividend if you still own the shares that morning, but if the stock is above the strike by then, the buyer may take your shares the day before to get the dividend.")
         }
-        if ev == nil || (ev?.earnings == nil && ev?.exDiv == nil) {
-            w.append("Couldn't check earnings and dividend dates (add Finnhub and Massive keys in Settings). Look them up before selling.")
-        }
+        let missing = [ev?.checkedEarnings == true ? nil : "earnings date (needs a Finnhub key in Settings)",
+                       ev?.checkedDividends == true ? nil : "ex-dividend date (needs a Massive key in Settings)"].compactMap { $0 }
+        if !missing.isEmpty { w.append("Couldn't check the \(missing.joined(separator: " or the ")). Look it up before selling.") }
         if let g = grade, g.growth.hasPrefix("A") {
             w.append("Your Growth grade for this stock is \(g.growth). Covered calls cap your gain at the strike, which costs the most on strong growers. A higher strike (\"Safer\") gives up less.")
         }
