@@ -46,6 +46,8 @@ object Following {
         "Jaspreet Singh" to KnownInfo(
             owns = listOf(
                 Holding("Vanguard S&P 500 ETF", "VOO", "Briefs says he personally invests in VOO", "Briefs", BRIEFS_ETF),
+                Holding("Schwab U.S. Dividend Equity ETF", "SCHD", "Said he owns it in his own Minority Mindset video; his podcast also lists it among dividend ETFs to hold",
+                    "Minority Mindset", "https://theminoritymindset.podbean.com/page/3/"),
                 Holding("Vanguard international high-dividend ETF", "", "Briefs says he personally invests in it (ticker not named)", "Briefs", BRIEFS_ETF),
                 Holding("Bitcoin", "", "Bought since 2017; later sold a large portion to reinvest in real estate", "Yahoo Finance",
                     "https://finance.yahoo.com/news/jaspreet-singh-cuts-bitcoin-why-120039231.html"),

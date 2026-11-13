@@ -27,6 +27,8 @@ enum Known {
         "Jaspreet Singh": KnownInfo(
             owns: [
                 Holding(name: "Vanguard S&P 500 ETF", ticker: "VOO", note: "Briefs says he personally invests in VOO", source: "Briefs", sourceURL: briefsETF),
+                Holding(name: "Schwab U.S. Dividend Equity ETF", ticker: "SCHD", note: "Said he owns it in his own Minority Mindset video; his podcast also lists it among dividend ETFs to hold",
+                        source: "Minority Mindset", sourceURL: "https://theminoritymindset.podbean.com/page/3/"),
                 Holding(name: "Vanguard international high-dividend ETF", ticker: "", note: "Briefs says he personally invests in it (ticker not named)", source: "Briefs", sourceURL: briefsETF),
                 Holding(name: "Bitcoin", ticker: "", note: "Bought since 2017; later sold a large portion to reinvest in real estate", source: "Yahoo Finance",
                         sourceURL: "https://finance.yahoo.com/news/jaspreet-singh-cuts-bitcoin-why-120039231.html"),
