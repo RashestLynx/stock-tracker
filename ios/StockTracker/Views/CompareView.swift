@@ -79,6 +79,14 @@ struct CompareView: View {
                 let fb = u.fighters[b.name] ?? Array(u.fighters.values).dropFirst().first
                 let mv: (Int?) -> String = { c in guard let c else { return "–" }; return c > 0 ? "Up" : c < 0 ? "Down" : "Same" }
                 let n0: (Double?) -> String = { v in v.map { String(format: "%.0f", $0) } ?? "–" }
+                let n1: (Double?) -> String = { v in v.map { String(format: "%.1f", $0) } ?? "–" }
+                let pc: (Double?) -> String = { v in v.map { "\(Int(($0 * 100).rounded()))%" } ?? "–" }
+                let card: [String] = [(a.name, fa), (b.name, fb)].flatMap { n, f -> [String] in
+                    var out: [String] = []
+                    if let d = f?.bookedDays { out.append("\(n): fight booked only \(d) days out (short notice: less time to prepare and cut weight)") }
+                    if let w = f?.newOpponentWas { out.append("\(n): opponent changed (was \(w))") }
+                    return out
+                }
                 let news = [(a.name, fa), (b.name, fb)].flatMap { n, f in (f?.news ?? []).map { (n, $0) } }
                 Section {
                     row("Age", fa?.age.map { String($0) } ?? "–", fb?.age.map { String($0) } ?? "–", header: false)
@@ -88,21 +96,45 @@ struct CompareView: View {
                     row("UFC record (7 yrs)", fa?.record ?? "–", fb?.record ?? "–", header: false)
                     row("Days since last fight", fa?.layoffDays.map { String($0) } ?? "–", fb?.layoffDays.map { String($0) } ?? "–", header: false)
                     row("Weight class move", mv(fa?.classChange), mv(fb?.classChange), header: false)
+                    row("Country", fa.map { $0.country.isEmpty ? "–" : $0.country } ?? "–", fb.map { $0.country.isEmpty ? "–" : $0.country } ?? "–", header: false)
+                    row("Home crowd", fa?.home == true ? "Yes" : "No", fb?.home == true ? "Yes" : "No", header: false)
+                    row("Time zones traveled", n0(fa?.timeZones), n0(fb?.timeZones), header: false)
+                    row("Strikes landed / min", n1(fa?.slpm), n1(fb?.slpm), header: false)
+                    row("Strikes absorbed / min", n1(fa?.sapm), n1(fb?.sapm), header: false)
+                    row("Striking accuracy", pc(fa?.acc), pc(fb?.acc), header: false)
+                    row("Strikes avoided", pc(fa?.def), pc(fb?.def), header: false)
+                    row("Takedowns / 15 min", n1(fa?.td15), n1(fb?.td15), header: false)
+                    row("Takedowns stopped", pc(fa?.tdDef), pc(fb?.tdDef), header: false)
+                    row("Submission tries / 15 min", n1(fa?.sub15), n1(fb?.sub15), header: false)
+                    row("Career KO losses", fa.map { String($0.koLosses) } ?? "–", fb.map { String($0.koLosses) } ?? "–", header: false)
+                    row("Fights, last 2 years", fa.map { String($0.active2y) } ?? "–", fb.map { String($0.active2y) } ?? "–", header: false)
                     ForEach([(a.name, fa), (b.name, fb)], id: \.0) { n, f in
                         if let f, !f.last.isEmpty { Text("\(n) last fight: \(f.last)").font(.footnote) }
+                        if let f, !f.gym.isEmpty { Text("\(n) trains at \(f.gym)").font(.footnote).foregroundStyle(.secondary) }
+                    }
+                    if [fa, fb].contains(where: { ($0?.statsFights ?? 3) < 3 }) {
+                        Text("One of them has fewer than 3 UFC fights with stats, so their numbers lean toward a typical fighter.").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if !u.reasons.isEmpty {
+                        Text("What moved the chance").font(.subheadline.bold())
+                        ForEach(u.reasons, id: \.self) { r in Text("• Favors \(r.favors): \(r.why)").font(.footnote) }
+                    }
+                    if !card.isEmpty {
+                        Text("Card changes").font(.subheadline.bold()).foregroundStyle(.red)
+                        ForEach(card, id: \.self) { Text("• \($0)").font(.footnote) }
                     }
                     if news.isEmpty {
-                        Text("No injury, pull-out or weight-cut headlines in the last 3 weeks.").font(.footnote).foregroundStyle(.secondary)
+                        Text("No injury, illness, pull-out, weight, visa, suspension or camp-change headlines in the last 3 weeks.").font(.footnote).foregroundStyle(.secondary)
                     } else {
                         Text("Red flags in the news (last 3 weeks)").font(.subheadline.bold()).foregroundStyle(.red)
                         ForEach(news, id: \.1) { n, x in
                             if let url = URL(string: x.link) {
-                                Link("• \(x.kinds.joined(separator: "/")): \(x.title) (\(x.date))", destination: url).font(.footnote)
+                                Link("• \(x.kinds.joined(separator: "/")): \(x.title) (\(x.date)\(x.source == "news" ? "" : ", " + x.source))", destination: url).font(.footnote)
                             } else { Text("• \(x.kinds.joined(separator: "/")): \(x.title) (\(x.date))").font(.footnote) }
                         }
                     }
-                } header: { Text("Fight check" + (u.weightClass.isEmpty ? "" : " (\(u.weightClass))")) } footer: {
-                    Text("Age, reach, layoffs, knockout losses and weight-class moves are tested on past fights and used in the chance above only if they helped. News can't be tested the same way, so it's shown as flags for you to weigh, not in the percentage.")
+                } header: { Text("Fight check" + (u.weightClass.isEmpty ? "" : " (\(u.weightClass), \(u.rounds) rounds)")) } footer: {
+                    Text("Everything in the table is tested on past fights (age, size, layoffs, striking and grappling stats, damage taken, home country, travel, 5 rounds, the small Apex cage) and used in the chance above only if it made predictions better. News and card changes can't be tested the same way, so they're flags for you to weigh, not in the percentage.")
                 }
             }
             if !a.weather.isEmpty || !b.weather.isEmpty {

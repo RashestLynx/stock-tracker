@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.text.format.DateUtils
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlin.math.abs
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
@@ -5172,7 +5173,7 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                     // UFC: fight check
                     if (up != null && up.fighters.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Fight check" + if (up.weightClass.isNotEmpty()) " (${up.weightClass})" else "", fontWeight = FontWeight.Bold)
+                            Text("Fight check" + if (up.weightClass.isNotEmpty()) " (${up.weightClass}, ${up.rounds} rounds)" else "", fontWeight = FontWeight.Bold)
                             val fa = up.fighters[a.name] ?: up.fighters.values.firstOrNull()
                             val fb = up.fighters[b.name] ?: up.fighters.values.drop(1).firstOrNull()
                             listOf(
@@ -5184,6 +5185,18 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                                 Triple("Days since last fight", fa?.layoffDays?.toString() ?: "–", fb?.layoffDays?.toString() ?: "–"),
                                 Triple("Weight class move", fa?.classChange?.let { if (it > 0) "Up" else if (it < 0) "Down" else "Same" } ?: "–",
                                     fb?.classChange?.let { if (it > 0) "Up" else if (it < 0) "Down" else "Same" } ?: "–"),
+                                Triple("Country", fa?.country?.ifEmpty { "–" } ?: "–", fb?.country?.ifEmpty { "–" } ?: "–"),
+                                Triple("Home crowd", if (fa?.home == true) "Yes" else "No", if (fb?.home == true) "Yes" else "No"),
+                                Triple("Time zones traveled", fa?.timeZones?.let { String.format(Locale.US, "%.0f", it) } ?: "–", fb?.timeZones?.let { String.format(Locale.US, "%.0f", it) } ?: "–"),
+                                Triple("Strikes landed / min", fa?.slpm?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.slpm?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
+                                Triple("Strikes absorbed / min", fa?.sapm?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.sapm?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
+                                Triple("Striking accuracy", fa?.acc?.let { "${(it * 100).roundToInt()}%" } ?: "–", fb?.acc?.let { "${(it * 100).roundToInt()}%" } ?: "–"),
+                                Triple("Strikes avoided", fa?.def?.let { "${(it * 100).roundToInt()}%" } ?: "–", fb?.def?.let { "${(it * 100).roundToInt()}%" } ?: "–"),
+                                Triple("Takedowns / 15 min", fa?.td15?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.td15?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
+                                Triple("Takedowns stopped", fa?.tdDef?.let { "${(it * 100).roundToInt()}%" } ?: "–", fb?.tdDef?.let { "${(it * 100).roundToInt()}%" } ?: "–"),
+                                Triple("Submission tries / 15 min", fa?.sub15?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.sub15?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
+                                Triple("Career KO losses", fa?.koLosses?.toString() ?: "–", fb?.koLosses?.toString() ?: "–"),
+                                Triple("Fights, last 2 years", fa?.active2y?.toString() ?: "–", fb?.active2y?.toString() ?: "–"),
                             ).forEach { (label, x, y) ->
                                 Row { Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                                     Text(x, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End)
@@ -5192,18 +5205,38 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                             listOf(a.name to fa, b.name to fb).forEach { (n, f) ->
                                 if (f != null && f.last.isNotEmpty()) Text("$n last fight: ${f.last}", style = MaterialTheme.typography.bodySmall)
                             }
+                            listOf(a.name to fa, b.name to fb).forEach { (n, f) ->
+                                if (f != null && f.gym.isNotEmpty()) Text("$n trains at ${f.gym}", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (listOf(fa, fb).any { it != null && it.statsFights < 3 })
+                                Text("One of them has fewer than 3 UFC fights with stats, so their numbers lean toward a typical fighter.",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (up.reasons.isNotEmpty()) {
+                                Text("What moved the chance", fontWeight = FontWeight.SemiBold)
+                                up.reasons.forEach { r -> Text("• Favors ${r.favors}: ${r.why}", style = MaterialTheme.typography.bodySmall) }
+                            }
+                            val card = listOf(a.name to fa, b.name to fb).flatMap { (n, f) ->
+                                listOfNotNull(f?.bookedDays?.let { "$n: fight booked only $it days out (short notice: less time to prepare and cut weight)" },
+                                    f?.newOpponentWas?.let { "$n: opponent changed (was $it)" })
+                            }
+                            if (card.isNotEmpty()) {
+                                Text("Card changes", fontWeight = FontWeight.SemiBold, color = TradeColors.sell())
+                                card.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                            }
                             val news = listOf(a.name to fa, b.name to fb).flatMap { (n, f) -> f?.news.orEmpty().map { n to it } }
-                            if (news.isEmpty()) Text("No injury, pull-out or weight-cut headlines in the last 3 weeks.",
+                            if (news.isEmpty()) Text("No injury, illness, pull-out, weight, visa, suspension or camp-change headlines in the last 3 weeks.",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             else {
                                 Text("Red flags in the news (last 3 weeks)", fontWeight = FontWeight.SemiBold, color = TradeColors.sell())
                                 news.forEach { (n, x) ->
-                                    Text("• ${x.kinds.joinToString("/")}: ${x.title} (${x.date})", style = MaterialTheme.typography.bodySmall,
+                                    Text("• ${x.kinds.joinToString("/")}: ${x.title} (${x.date}${if (x.source != "news") ", " + x.source else ""})", style = MaterialTheme.typography.bodySmall,
                                         modifier = Modifier.clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(x.link))) } })
                                 }
                             }
-                            Text("Age, reach, layoffs, knockout losses and weight-class moves are tested on past fights and used in the chance above " +
-                                "only if they helped. News can't be tested the same way, so it's shown as flags for you to weigh, not in the percentage.",
+                            Text("Everything in the table is tested on past fights (age, size, layoffs, striking and grappling stats, damage taken, " +
+                                "home country, travel, 5 rounds, the small Apex cage) and used in the chance above only if it made predictions better. " +
+                                "News and card changes can't be tested the same way, so they're flags for you to weigh, not in the percentage.",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

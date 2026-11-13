@@ -13,11 +13,16 @@ struct RecentGame { let date: String, opp: String, pf: Int, pa: Int, home: Bool 
 struct Injury: Hashable { let name: String, pos: String, status: String }
 struct CalBin { let from: Int, to: Int, n: Int, said: Double, won: Double }
 struct Upcoming { let home: String, away: String, venue: String, indoor: Bool, elo: Double, full: Double?, temp: Int?, wind: Int?, rain: Double?
-    var weightClass: String = "", fighters: [String: Fighter] = [:] }
+    var weightClass: String = "", fighters: [String: Fighter] = [:], rounds: Int = 3, reasons: [FightReason] = [] }
+/// One factor behind a UFC chance, in plain words: who it favors.
+struct FightReason: Hashable { let favors: String, why: String, size: Double }
 /// UFC: one fighter's profile going into a fight, plus recent injury / pull-out / weight-cut headlines.
 struct Fighter { let age: Int?, reach: Double?, height: Double?, stance: String, ufcFights: Int, record: String,
-                 layoffDays: Int?, last: String, classChange: Int, news: [FightNews] }
-struct FightNews: Hashable { let title: String, link: String, date: String, kinds: [String] }
+                 layoffDays: Int?, last: String, classChange: Int, news: [FightNews]
+                 var country = "", gym = "", home = false, timeZones: Double? = nil, statsFights = 0
+                 var slpm: Double? = nil, sapm: Double? = nil, acc: Double? = nil, def: Double? = nil, td15: Double? = nil, tdDef: Double? = nil
+                 var sub15: Double? = nil, kdTaken15: Double? = nil, koLosses = 0, active2y = 0, bookedDays: Int? = nil, newOpponentWas: String? = nil }
+struct FightNews: Hashable { let title: String, link: String, date: String, kinds: [String]; var source = "news" }
 struct MatchupTest { let version: String, logloss: Double, acc: Double }
 
 struct TeamRow {
@@ -129,14 +134,25 @@ enum SportsModels {
                                 indoor: u["indoor"] as? Bool ?? false, elo: num(u["elo"]) ?? 0.5, full: num(u["full"]),
                                 temp: int(wx?["temp"]), wind: int(wx?["wind"]), rain: num(wx?["rain"]),
                                 weightClass: u["class"] as? String ?? "",
-                                fighters: ((u["fighters"] as? [String: [String: Any]]) ?? [:]).mapValues { f in
-                                    Fighter(age: int(f["age"]), reach: num(f["reach"]), height: num(f["height"]), stance: f["stance"] as? String ?? "",
+                                fighters: ((u["fighters"] as? [String: [String: Any]]) ?? [:]).mapValues { f -> Fighter in
+                                    var fr = Fighter(age: int(f["age"]), reach: num(f["reach"]), height: num(f["height"]), stance: f["stance"] as? String ?? "",
                                             ufcFights: int(f["ufc_fights"]) ?? 0, record: f["record"] as? String ?? "", layoffDays: int(f["layoff_days"]),
                                             last: f["last"] as? String ?? "", classChange: int(f["class_change"]) ?? 0,
                                             news: ((f["news"] as? [[String: Any]]) ?? []).map { x in
                                                 FightNews(title: x["title"] as? String ?? "", link: x["link"] as? String ?? "",
-                                                          date: x["date"] as? String ?? "", kinds: x["kinds"] as? [String] ?? []) })
-                                })
+                                                          date: x["date"] as? String ?? "", kinds: x["kinds"] as? [String] ?? [],
+                                                          source: x["source"] as? String ?? "news") })
+                                    fr.country = f["country"] as? String ?? ""; fr.gym = f["gym"] as? String ?? ""
+                                    fr.home = f["home"] as? Bool ?? false; fr.timeZones = num(f["time_zones"]); fr.statsFights = int(f["stats_fights"]) ?? 0
+                                    fr.slpm = num(f["slpm"]); fr.sapm = num(f["sapm"]); fr.acc = num(f["acc"]); fr.def = num(f["def"])
+                                    fr.td15 = num(f["td15"]); fr.tdDef = num(f["tddef"]); fr.sub15 = num(f["sub15"]); fr.kdTaken15 = num(f["kd_taken15"])
+                                    fr.koLosses = int(f["ko_losses"]) ?? 0; fr.active2y = int(f["active_2y"]) ?? 0
+                                    fr.bookedDays = int(f["booked_days"]); fr.newOpponentWas = f["new_opponent_was"] as? String
+                                    return fr
+                                },
+                                rounds: int(u["rounds"]) ?? 3,
+                                reasons: ((u["reasons"] as? [[String: Any]]) ?? []).map { r in
+                                    FightReason(favors: r["favors"] as? String ?? "", why: r["why"] as? String ?? "", size: num(r["size"]) ?? 0) })
             }
             let mj = rec["matchup"] as? [String: Any]
             var tests: [String: MatchupTest] = [:]

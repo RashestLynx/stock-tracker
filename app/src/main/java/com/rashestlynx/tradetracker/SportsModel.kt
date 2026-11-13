@@ -41,12 +41,20 @@ data class CalBin(val from: Int, val to: Int, val n: Int, val said: Double, val 
 data class Upcoming(val date: String, val home: String, val away: String, val venue: String, val indoor: Boolean,
                     val elo: Double, val full: Double?, val temp: Int?, val wind: Int?, val rain: Double?,
                     val rest: Double?, val form: Double?, val season: Double?, val h2h: Double?,
-                    val weightClass: String = "", val fighters: Map<String, Fighter> = emptyMap())
+                    val weightClass: String = "", val fighters: Map<String, Fighter> = emptyMap(),
+                    val rounds: Int = 3, val reasons: List<FightReason> = emptyList())
+
+/** One factor behind a UFC chance, in plain words: who it favors and how much it moved the odds. */
+data class FightReason(val favors: String, val why: String, val size: Double)
 
 /** UFC: one fighter's profile going into a fight, and recent headlines about injuries or weight trouble. */
 data class Fighter(val age: Int?, val reach: Double?, val height: Double?, val stance: String, val ufcFights: Int, val record: String,
-                   val layoffDays: Int?, val last: String, val classChange: Int, val news: List<FightNews>)
-data class FightNews(val title: String, val link: String, val date: String, val kinds: List<String>)
+                   val layoffDays: Int?, val last: String, val classChange: Int, val news: List<FightNews>,
+                   val country: String = "", val gym: String = "", val home: Boolean = false, val timeZones: Double? = null,
+                   val statsFights: Int = 0, val slpm: Double? = null, val sapm: Double? = null, val acc: Double? = null, val def: Double? = null,
+                   val td15: Double? = null, val tdDef: Double? = null, val sub15: Double? = null, val kdTaken15: Double? = null,
+                   val koLosses: Int = 0, val active2y: Int = 0, val bookedDays: Int? = null, val newOpponentWas: String? = null)
+data class FightNews(val title: String, val link: String, val date: String, val kinds: List<String>, val source: String = "news")
 
 /** How the matchup layer did on unseen seasons: log loss (lower is better) and favorite-win rate for each version. */
 data class MatchupTest(val version: String, val logloss: Double, val acc: Double)
@@ -159,11 +167,18 @@ object SportsModels {
                 f.optInt("ufc_fights"), f.optString("record"), if (f.isNull("layoff_days")) null else f.optInt("layoff_days"),
                 f.optString("last"), f.optInt("class_change"),
                 List(nj.length()) { k -> nj.getJSONObject(k).let { x -> FightNews(x.optString("title"), x.optString("link"), x.optString("date"),
-                    x.optJSONArray("kinds")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList()) } })
+                    x.optJSONArray("kinds")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList(), x.optString("source", "news")) } },
+                f.optString("country"), f.optString("gym"), f.optBoolean("home"), d(f, "time_zones"),
+                f.optInt("stats_fights"), d(f, "slpm"), d(f, "sapm"), d(f, "acc"), d(f, "def"), d(f, "td15"), d(f, "tddef"), d(f, "sub15"),
+                d(f, "kd_taken15"), f.optInt("ko_losses"), f.optInt("active_2y"),
+                if (f.isNull("booked_days") || !f.has("booked_days")) null else f.optInt("booked_days"),
+                f.optString("new_opponent_was").takeIf { it.isNotEmpty() && it != "null" })
         } ?: emptyMap()
         Upcoming(u.optString("date"), u.optString("home"), u.optString("away"), u.optString("venue"), u.optBoolean("indoor"),
             u.optDouble("elo"), d(u, "full"), wx?.optInt("temp"), wx?.optInt("wind"), d(wx, "rain"),
-            d(why, "rest"), d(why, "form"), d(why, "season"), d(why, "h2h"), u.optString("class"), fighters)
+            d(why, "rest"), d(why, "form"), d(why, "season"), d(why, "h2h"), u.optString("class"), fighters,
+            u.optInt("rounds", 3), u.optJSONArray("reasons")?.let { r -> List(r.length()) { k -> r.getJSONObject(k).let {
+                FightReason(it.optString("favors"), it.optString("why"), it.optDouble("size")) } } } ?: emptyList())
     }
 
     fun pct(x: Double) = String.format(Locale.US, "%.0f%%", x * 100)
