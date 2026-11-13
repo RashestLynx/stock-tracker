@@ -12,7 +12,12 @@ struct WeatherSplit: Hashable {
 struct RecentGame { let date: String, opp: String, pf: Int, pa: Int, home: Bool }
 struct Injury: Hashable { let name: String, pos: String, status: String }
 struct CalBin { let from: Int, to: Int, n: Int, said: Double, won: Double }
-struct Upcoming { let home: String, away: String, venue: String, indoor: Bool, elo: Double, full: Double?, temp: Int?, wind: Int?, rain: Double? }
+struct Upcoming { let home: String, away: String, venue: String, indoor: Bool, elo: Double, full: Double?, temp: Int?, wind: Int?, rain: Double?
+    var weightClass: String = "", fighters: [String: Fighter] = [:] }
+/// UFC: one fighter's profile going into a fight, plus recent injury / pull-out / weight-cut headlines.
+struct Fighter { let age: Int?, reach: Double?, height: Double?, stance: String, ufcFights: Int, record: String,
+                 layoffDays: Int?, last: String, classChange: Int, news: [FightNews] }
+struct FightNews: Hashable { let title: String, link: String, date: String, kinds: [String] }
 struct MatchupTest { let version: String, logloss: Double, acc: Double }
 
 struct TeamRow {
@@ -122,7 +127,16 @@ enum SportsModels {
                 let wx = u["wx"] as? [String: Any]
                 return Upcoming(home: u["home"] as? String ?? "", away: u["away"] as? String ?? "", venue: u["venue"] as? String ?? "",
                                 indoor: u["indoor"] as? Bool ?? false, elo: num(u["elo"]) ?? 0.5, full: num(u["full"]),
-                                temp: int(wx?["temp"]), wind: int(wx?["wind"]), rain: num(wx?["rain"]))
+                                temp: int(wx?["temp"]), wind: int(wx?["wind"]), rain: num(wx?["rain"]),
+                                weightClass: u["class"] as? String ?? "",
+                                fighters: ((u["fighters"] as? [String: [String: Any]]) ?? [:]).mapValues { f in
+                                    Fighter(age: int(f["age"]), reach: num(f["reach"]), height: num(f["height"]), stance: f["stance"] as? String ?? "",
+                                            ufcFights: int(f["ufc_fights"]) ?? 0, record: f["record"] as? String ?? "", layoffDays: int(f["layoff_days"]),
+                                            last: f["last"] as? String ?? "", classChange: int(f["class_change"]) ?? 0,
+                                            news: ((f["news"] as? [[String: Any]]) ?? []).map { x in
+                                                FightNews(title: x["title"] as? String ?? "", link: x["link"] as? String ?? "",
+                                                          date: x["date"] as? String ?? "", kinds: x["kinds"] as? [String] ?? []) })
+                                })
             }
             let mj = rec["matchup"] as? [String: Any]
             var tests: [String: MatchupTest] = [:]

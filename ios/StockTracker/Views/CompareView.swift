@@ -74,6 +74,37 @@ struct CompareView: View {
                     }
                 }
             }
+            if let u = up, !u.fighters.isEmpty {
+                let fa = u.fighters[a.name] ?? u.fighters.values.first
+                let fb = u.fighters[b.name] ?? Array(u.fighters.values).dropFirst().first
+                let mv: (Int?) -> String = { c in guard let c else { return "–" }; return c > 0 ? "Up" : c < 0 ? "Down" : "Same" }
+                let n0: (Double?) -> String = { v in v.map { String(format: "%.0f", $0) } ?? "–" }
+                let news = [(a.name, fa), (b.name, fb)].flatMap { n, f in (f?.news ?? []).map { (n, $0) } }
+                Section {
+                    row("Age", fa?.age.map { String($0) } ?? "–", fb?.age.map { String($0) } ?? "–", header: false)
+                    row("Reach (in)", n0(fa?.reach), n0(fb?.reach), header: false)
+                    row("Height (in)", n0(fa?.height), n0(fb?.height), header: false)
+                    row("Stance", fa?.stance ?? "–", fb?.stance ?? "–", header: false)
+                    row("UFC record (7 yrs)", fa?.record ?? "–", fb?.record ?? "–", header: false)
+                    row("Days since last fight", fa?.layoffDays.map { String($0) } ?? "–", fb?.layoffDays.map { String($0) } ?? "–", header: false)
+                    row("Weight class move", mv(fa?.classChange), mv(fb?.classChange), header: false)
+                    ForEach([(a.name, fa), (b.name, fb)], id: \.0) { n, f in
+                        if let f, !f.last.isEmpty { Text("\(n) last fight: \(f.last)").font(.footnote) }
+                    }
+                    if news.isEmpty {
+                        Text("No injury, pull-out or weight-cut headlines in the last 3 weeks.").font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text("Red flags in the news (last 3 weeks)").font(.subheadline.bold()).foregroundStyle(.red)
+                        ForEach(news, id: \.1) { n, x in
+                            if let url = URL(string: x.link) {
+                                Link("• \(x.kinds.joined(separator: "/")): \(x.title) (\(x.date))", destination: url).font(.footnote)
+                            } else { Text("• \(x.kinds.joined(separator: "/")): \(x.title) (\(x.date))").font(.footnote) }
+                        }
+                    }
+                } header: { Text("Fight check" + (u.weightClass.isEmpty ? "" : " (\(u.weightClass))")) } footer: {
+                    Text("Age, reach, layoffs, knockout losses and weight-class moves are tested on past fights and used in the chance above only if they helped. News can't be tested the same way, so it's shown as flags for you to weigh, not in the percentage.")
+                }
+            }
             if !a.weather.isEmpty || !b.weather.isEmpty {
                 Section {
                     ForEach([a, b], id: \.name) { t in

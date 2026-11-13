@@ -40,7 +40,13 @@ data class CalBin(val from: Int, val to: Int, val n: Int, val said: Double, val 
 /** A game in the next week: the plain rating chance, the matchup-and-weather chance (if it earned a place), and the forecast. */
 data class Upcoming(val date: String, val home: String, val away: String, val venue: String, val indoor: Boolean,
                     val elo: Double, val full: Double?, val temp: Int?, val wind: Int?, val rain: Double?,
-                    val rest: Double?, val form: Double?, val season: Double?, val h2h: Double?)
+                    val rest: Double?, val form: Double?, val season: Double?, val h2h: Double?,
+                    val weightClass: String = "", val fighters: Map<String, Fighter> = emptyMap())
+
+/** UFC: one fighter's profile going into a fight, and recent headlines about injuries or weight trouble. */
+data class Fighter(val age: Int?, val reach: Double?, val height: Double?, val stance: String, val ufcFights: Int, val record: String,
+                   val layoffDays: Int?, val last: String, val classChange: Int, val news: List<FightNews>)
+data class FightNews(val title: String, val link: String, val date: String, val kinds: List<String>)
 
 /** How the matchup layer did on unseen seasons: log loss (lower is better) and favorite-win rate for each version. */
 data class MatchupTest(val version: String, val logloss: Double, val acc: Double)
@@ -145,9 +151,19 @@ object SportsModels {
         val wx = u.optJSONObject("wx")
         val why = u.optJSONObject("why")
         fun d(j: JSONObject?, k: String) = if (j != null && j.has(k) && !j.isNull(k)) j.optDouble(k) else null
+        val fj = u.optJSONObject("fighters")
+        val fighters = fj?.keys()?.asSequence()?.associate { n ->
+            val f = fj.getJSONObject(n)
+            val nj = f.optJSONArray("news") ?: JSONArray()
+            n to Fighter(if (f.isNull("age")) null else f.optInt("age"), d(f, "reach"), d(f, "height"), f.optString("stance").takeIf { it != "null" } ?: "",
+                f.optInt("ufc_fights"), f.optString("record"), if (f.isNull("layoff_days")) null else f.optInt("layoff_days"),
+                f.optString("last"), f.optInt("class_change"),
+                List(nj.length()) { k -> nj.getJSONObject(k).let { x -> FightNews(x.optString("title"), x.optString("link"), x.optString("date"),
+                    x.optJSONArray("kinds")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList()) } })
+        } ?: emptyMap()
         Upcoming(u.optString("date"), u.optString("home"), u.optString("away"), u.optString("venue"), u.optBoolean("indoor"),
             u.optDouble("elo"), d(u, "full"), wx?.optInt("temp"), wx?.optInt("wind"), d(wx, "rain"),
-            d(why, "rest"), d(why, "form"), d(why, "season"), d(why, "h2h"))
+            d(why, "rest"), d(why, "form"), d(why, "season"), d(why, "h2h"), u.optString("class"), fighters)
     }
 
     fun pct(x: Double) = String.format(Locale.US, "%.0f%%", x * 100)

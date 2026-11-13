@@ -5169,6 +5169,44 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                             }
                         }
                     }
+                    // UFC: fight check
+                    if (up != null && up.fighters.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Fight check" + if (up.weightClass.isNotEmpty()) " (${up.weightClass})" else "", fontWeight = FontWeight.Bold)
+                            val fa = up.fighters[a.name] ?: up.fighters.values.firstOrNull()
+                            val fb = up.fighters[b.name] ?: up.fighters.values.drop(1).firstOrNull()
+                            listOf(
+                                Triple("Age", fa?.age?.toString() ?: "–", fb?.age?.toString() ?: "–"),
+                                Triple("Reach (in)", fa?.reach?.let { String.format(Locale.US, "%.0f", it) } ?: "–", fb?.reach?.let { String.format(Locale.US, "%.0f", it) } ?: "–"),
+                                Triple("Height (in)", fa?.height?.let { String.format(Locale.US, "%.0f", it) } ?: "–", fb?.height?.let { String.format(Locale.US, "%.0f", it) } ?: "–"),
+                                Triple("Stance", fa?.stance ?: "–", fb?.stance ?: "–"),
+                                Triple("UFC record (7 yrs)", fa?.record ?: "–", fb?.record ?: "–"),
+                                Triple("Days since last fight", fa?.layoffDays?.toString() ?: "–", fb?.layoffDays?.toString() ?: "–"),
+                                Triple("Weight class move", fa?.classChange?.let { if (it > 0) "Up" else if (it < 0) "Down" else "Same" } ?: "–",
+                                    fb?.classChange?.let { if (it > 0) "Up" else if (it < 0) "Down" else "Same" } ?: "–"),
+                            ).forEach { (label, x, y) ->
+                                Row { Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                    Text(x, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End)
+                                    Text(y, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End) }
+                            }
+                            listOf(a.name to fa, b.name to fb).forEach { (n, f) ->
+                                if (f != null && f.last.isNotEmpty()) Text("$n last fight: ${f.last}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            val news = listOf(a.name to fa, b.name to fb).flatMap { (n, f) -> f?.news.orEmpty().map { n to it } }
+                            if (news.isEmpty()) Text("No injury, pull-out or weight-cut headlines in the last 3 weeks.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            else {
+                                Text("Red flags in the news (last 3 weeks)", fontWeight = FontWeight.SemiBold, color = TradeColors.sell())
+                                news.forEach { (n, x) ->
+                                    Text("• ${x.kinds.joinToString("/")}: ${x.title} (${x.date})", style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(x.link))) } })
+                                }
+                            }
+                            Text("Age, reach, layoffs, knockout losses and weight-class moves are tested on past fights and used in the chance above " +
+                                "only if they helped. News can't be tested the same way, so it's shown as flags for you to weigh, not in the percentage.",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     // weather record
                     if (a.weather.isNotEmpty() || b.weather.isNotEmpty()) ModernCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
