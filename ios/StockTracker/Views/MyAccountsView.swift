@@ -5,11 +5,12 @@ struct WatchlistTabView: View {
     @State private var view = 0
     var body: some View {
         VStack(spacing: 0) {
-            PillTabs(options: [(0, "Watchlist"), (1, "My accounts"), (2, "Track record")], selection: $view)
+            PillTabs(options: [(0, "Watchlist"), (1, "My accounts"), (2, "Covered calls"), (3, "Track record")], selection: $view)
                 .padding(.horizontal).padding(.vertical, 8)
             switch view {
             case 0: WatchlistView()
             case 1: MyAccountsView()
+            case 2: CoveredCallsView()
             default: TrackRecordView()
             }
         }

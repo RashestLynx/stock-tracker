@@ -34,6 +34,9 @@ struct GradeBucket: Identifiable {
     var id: String { letter }
 }
 
+/// How selling a call every month would have done on one stock over its history, vs. just holding (yearly rates).
+struct CoveredHistory { let years, hold, safer, balanced, calledSafer, calledBalanced, premium, dropHold, dropBalanced: Double }
+
 struct GradesResult {
     let date: String, fiscalYear: Int, graded: Int
     let grades: [String: StockGrade], stars: [RisingStar], record: [String: [GradeBucket]]
@@ -41,6 +44,8 @@ struct GradesResult {
     var months: Int = 12
     var note: String = ""
     var learned: Bool = false
+    var covered: [String: CoveredHistory] = [:]
+    var coveredSummary: [String: Double] = [:]
 
     func ranked(_ goal: Int) -> [StockGrade] {
         grades.values.filter { !$0.grade(goal).isEmpty && (goal != 1 || $0.incomePct >= 0) }.sorted { $0.pct(goal) > $1.pct(goal) }
@@ -120,7 +125,11 @@ enum Grades {
                             grades: grades, stars: stars, record: record, spy: num(rj["spy"]), spyDrop: num(rj["spy_dd"]),
                             recordFrom: rj["from"] as? String ?? "", starsRet: num(st?["ret"]), starsBeat: num(st?["beat"]),
                             months: int(rj["months"], 12), note: rj["note"] as? String ?? "",
-                            learned: (rj["method"] as? String) == "model")
+                            learned: (rj["method"] as? String) == "model",
+                            covered: ((o["covered"] as? [String: Any])?["rows"] as? [String: [Double]] ?? [:]).compactMapValues { a in
+                                a.count >= 9 ? CoveredHistory(years: a[0], hold: a[1], safer: a[2], balanced: a[3], calledSafer: a[4],
+                                                              calledBalanced: a[5], premium: a[6], dropHold: a[7], dropBalanced: a[8]) : nil },
+                            coveredSummary: ((o["covered"] as? [String: Any])?["summary"] as? [String: Any] ?? [:]).compactMapValues { ($0 as? NSNumber)?.doubleValue })
     }
 
     static func money(_ capM: Int) -> String {

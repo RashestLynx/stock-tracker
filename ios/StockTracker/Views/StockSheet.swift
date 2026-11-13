@@ -44,6 +44,7 @@ struct StockSheet: View {
                     PriceChartView(ticker: target.ticker, live: live)
                     AnalystCard(ticker: target.ticker, price: live?.price)
                     GradeCard(ticker: target.ticker)
+                    OptionsCard(ticker: target.ticker, shares: Accounts.owned()[target.ticker.uppercased()]?.units ?? 0)
                     NewsCard(ticker: target.ticker)
                     NightlyCard(ticker: target.ticker)
                     PatternsCard(ticker: target.ticker)

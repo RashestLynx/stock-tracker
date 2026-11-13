@@ -1406,6 +1406,8 @@ private fun StockSheet(t: StockTarget, store: Store, onDismiss: () -> Unit) {
             PriceChartBlock(t.ticker, store, liveQ)
             AnalystCard(t.ticker, liveQ?.price, store)
             GradeCard(t.ticker)
+            val ownedShares = remember(t.ticker) { runCatching { Accounts.owned(context)[t.ticker.uppercase(Locale.US)]?.first }.getOrNull() ?: 0.0 }
+            OptionsCard(t.ticker, ownedShares, store)
             NewsCard(t.ticker, store)
             NightlyBlock(t.ticker)
             PatternsBlock(t.ticker, store)
@@ -3803,11 +3805,12 @@ private fun WatchlistTab(store: Store, tick: Int, onOpen: (StockTarget) -> Unit)
     var view by rememberSaveable { mutableIntStateOf(0) }
     var accountsTick by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Watchlist", "My accounts", "Track record"), view, { view = it },
+        PillTabs(listOf("Watchlist", "My accounts", "Covered calls", "Track record"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> WatchlistScreen(store, tick + accountsTick, onOpen)
             1 -> MyAccountsScreen(store, onOpen, onChanged = { accountsTick++ })
+            2 -> CoveredCallsScreen(store)
             else -> TrackRecordScreen(store, onOpen)
         }
     }
@@ -5390,5 +5393,182 @@ private fun PredGuideScreen() {
                 }
             }
         }
+    }
+}
+
+// ---------------- covered calls ----------------
+
+/** Covered calls on one stock: three calls to consider, every strike, what to watch out for, and the 10-year history test. */
+@Composable
+private fun OptionsCard(ticker: String, shares: Double, store: Store, startOpen: Boolean = false) {
+    val context = LocalContext.current
+    val t = ticker.uppercase(Locale.US)
+    var open by remember(t) { mutableStateOf(startOpen) }
+    var chain by remember(t) { mutableStateOf<OptChain?>(null) }
+    var events by remember(t) { mutableStateOf<StockEvents?>(null) }
+    var grade by remember(t) { mutableStateOf<StockGrade?>(null) }
+    var history by remember(t) { mutableStateOf<CoveredHistory?>(null) }
+    var failed by remember(t) { mutableStateOf(false) }
+    var loading by remember(t) { mutableStateOf(false) }
+    var expiry by remember(t) { mutableStateOf<java.time.LocalDate?>(null) }
+    var chosen by remember(t) { mutableStateOf<CallIdea?>(null) }
+    var showAll by remember(t) { mutableStateOf(false) }
+    LaunchedEffect(t, open) {
+        if (!open || chain != null || loading) return@LaunchedEffect
+        loading = true
+        withContext(Dispatchers.IO) {
+            val g = runCatching { Grades.cached(context) ?: Grades.load(context) }.getOrNull()
+            grade = g?.grades?.get(t); history = g?.covered?.get(t)
+            val c = runCatching { Options.chain(t) }.getOrNull()
+            chain = c; failed = c == null
+            expiry = c?.let { Options.defaultExpiry(it) }
+            events = runCatching { Options.events(t, store) }.getOrNull()
+        }
+        loading = false
+    }
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Covered calls on $t", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(if (shares >= 100) "You can sell ${(shares / 100).toInt()} call${if (shares >= 200) "s" else ""} (${shares.toInt()} shares)"
+                         else "Extra income from shares you own. Tap to see live prices.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(if (open) "Hide" else "Show", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
+            if (!open) return@Column
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            history?.let { h ->
+                val beat = h.balanced > h.hold
+                Text("History test (${h.years.roundToInt()} years, a call every month): just holding ${Options.pct(h.hold)}/yr vs. " +
+                    "balanced calls ${Options.pct(h.balanced)}/yr (safer ${Options.pct(h.safer)}/yr). Called away " +
+                    "${(h.calledBalanced * 100).roundToInt()}% of months. Worst drop ${Options.pct(h.dropBalanced)} vs ${Options.pct(h.dropHold)} holding. " +
+                    if (beat) "On this stock, calls added return." else "On this stock, capping the upside cost more than the premiums paid.",
+                    style = MaterialTheme.typography.bodySmall, color = if (beat) TradeColors.buy() else TradeColors.sell())
+            }
+            if (failed && !loading) { Text("No option prices found for $t. It may not have options.", style = MaterialTheme.typography.bodySmall); return@Column }
+            val c = chain ?: return@Column
+            Text("Price ${Options.money(c.price)} · ${c.source} ${c.asOf}", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val exps = Options.goodExpiries(c)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                exps.forEach { e ->
+                    val d = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), e)
+                    FilterChip(selected = e == expiry, onClick = { expiry = e; chosen = null },
+                        label = { Text("${e.format(java.time.format.DateTimeFormatter.ofPattern("MMM d", Locale.US))} ($d days)") })
+                }
+            }
+            val e = expiry ?: return@Column
+            val all = remember(c, e, shares) { Options.calls(c, e, shares) }
+            val picks = remember(all) { Options.picks(all) }
+            if (all.isEmpty()) { Text("No calls above today's price with a real bid for this date.", style = MaterialTheme.typography.bodySmall); return@Column }
+            val n = (shares / 100).toInt().coerceAtLeast(1)
+            Text("Three to consider (tap one for details):", fontWeight = FontWeight.SemiBold)
+            picks.forEach { p ->
+                val sel = chosen?.q == p.q
+                Surface(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().clickable { chosen = if (sel) null else p },
+                    color = if (sel) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(p.label, fontWeight = FontWeight.SemiBold)
+                        Text("Sell the ${Options.money(p.q.strike)} call → collect ${Options.money(p.q.bid * 100 * n)} " +
+                            (if (shares >= 100) "for your $n" else "per") + " contract${if (n > 1) "s" else ""} now",
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text("${Options.pct(p.yieldPct)} in ${p.days} days (${Options.pct(p.annualPct)} a year if repeated) · " +
+                            "about ${(p.chanceCalled * 100).roundToInt()}% chance your shares are called away · " +
+                            "if called: +${Options.pct(p.ifCalledPct)}",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            chosen?.let { p ->
+                Text("Before you sell the ${Options.money(p.q.strike)} call", fontWeight = FontWeight.SemiBold)
+                Text("Bid ${Options.money(p.q.bid)} · ask ${Options.money(p.q.ask)} · break-even ${Options.money(p.breakeven)} · " +
+                    "open contracts ${p.q.openInterest}", style = MaterialTheme.typography.bodySmall)
+                Options.warnings(c, p, events, grade, shares).forEach {
+                    Text("• $it", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            TextButton(onClick = { showAll = !showAll }) { Text(if (showAll) "Hide all strikes" else "See every strike (${all.size})") }
+            if (showAll) {
+                Row { listOf("Strike" to 1f, "Bid" to 1f, "Chance called" to 1.3f, "Yearly rate" to 1.2f).forEach { (h, w) ->
+                    Text(h, Modifier.weight(w), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) } }
+                all.forEach { p ->
+                    Row(Modifier.fillMaxWidth().clickable { chosen = p }) {
+                        Text(Options.money(p.q.strike), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Text(Options.money(p.q.bid), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Text("${(p.chanceCalled * 100).roundToInt()}%", Modifier.weight(1.3f), style = MaterialTheme.typography.bodySmall)
+                        Text(Options.pct(p.annualPct), Modifier.weight(1.2f), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Text("Prices are 15 minutes old. \"Chance called\" is the options market's own estimate (delta). Not advice: you place " +
+                "any trade yourself in your brokerage.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Portfolio → Covered calls: the beginner guide, your positions with 100+ shares, and a checker for any stock. */
+@Composable
+private fun CoveredCallsScreen(store: Store) {
+    val context = LocalContext.current
+    val owned = remember { runCatching { Accounts.owned(context) }.getOrDefault(emptyMap()) }
+    val positions = owned.mapNotNull { (t, v) -> v.first?.let { t to it } }.filter { it.second >= 100 }.sortedByDescending { it.second }
+    var summary by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    LaunchedEffect(Unit) { summary = withContext(Dispatchers.IO) { runCatching { (Grades.cached(context) ?: Grades.load(context)).coveredSummary }.getOrDefault(emptyMap()) } }
+    var tick by rememberSaveable { mutableStateOf("") }
+    var sh by rememberSaveable { mutableStateOf("100") }
+    var checking by rememberSaveable { mutableStateOf("") }
+    var openGuide by rememberSaveable { mutableIntStateOf(-1) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Options & covered calls, start here", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("A covered call pays you cash now for agreeing to sell 100 of your shares at a higher price if the stock gets " +
+                        "there. Tap a topic.", style = MaterialTheme.typography.bodySmall)
+                    Options.GUIDE.forEachIndexed { i, (title, body) ->
+                        Text((if (openGuide == i) "▾ " else "▸ ") + title, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.fillMaxWidth().clickable { openGuide = if (openGuide == i) -1 else i }.padding(vertical = 4.dp))
+                        if (openGuide == i) Text(body, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        if (summary.isNotEmpty()) item {
+            ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Does it pay? The 10-year history test", fontWeight = FontWeight.Bold)
+                    fun p(k: String) = summary[k]?.let { "${(it * 100).roundToInt()}%" } ?: "–"
+                    Text("Across ${summary["stocks"]?.toInt() ?: 0} stocks, selling a balanced call every month beat just holding on " +
+                        "${p("balanced_beat_hold")} of them. On slow, steady stocks it won on ${p("beat_hold_slow_stocks")}; on fast " +
+                        "growers (15%+ a year) on only ${p("beat_hold_fast_growers")}. Shares were called away in about " +
+                        "${p("median_called_balanced")} of months, and the worst drop was smaller on ${p("smaller_drop_balanced")} of stocks.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("Simulated with estimated option prices; dividends left out of both sides.", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
+            ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Check any stock", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(tick, { tick = it.uppercase(Locale.US).take(6) }, Modifier.weight(1f), label = { Text("Ticker") }, singleLine = true)
+                        OutlinedTextField(sh, { sh = it.filter(Char::isDigit).take(7) }, Modifier.weight(1f), label = { Text("Shares you own") },
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                    }
+                    Button(onClick = { checking = tick.trim() }, enabled = tick.isNotBlank()) { Text("Show covered calls") }
+                }
+            }
+        }
+        if (checking.isNotBlank()) item(key = "check-$checking-$sh") { OptionsCard(checking, sh.toDoubleOrNull() ?: 0.0, store, startOpen = true) }
+        item {
+            Text(if (positions.isEmpty()) "Your positions with 100+ shares show here once your brokerage is linked in My accounts."
+                 else "Your positions with 100+ shares", fontWeight = FontWeight.SemiBold,
+                color = if (positions.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+        }
+        items(positions, key = { "pos-" + it.first }) { (t, n) -> OptionsCard(t, n, store) }
     }
 }

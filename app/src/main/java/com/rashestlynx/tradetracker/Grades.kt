@@ -24,6 +24,10 @@ data class StockGrade(
     fun slot(goal: Int) = if (goal == 5) 4 else goal
 }
 
+/** How selling a call every month would have done on one stock over its history, vs. just holding (yearly rates). */
+data class CoveredHistory(val years: Double, val hold: Double, val safer: Double, val balanced: Double, val calledSafer: Double,
+                          val calledBalanced: Double, val premium: Double, val dropHold: Double, val dropBalanced: Double)
+
 data class RisingStar(val ticker: String, val name: String, val capM: Long, val industry: String, val why: String, val growth: String)
 
 /** How stocks with each grade did over the following year, when graded by the same rules a year ago. */
@@ -34,6 +38,7 @@ data class GradesResult(
     val record: Map<String, List<GradeBucket>>, val spy: Double?, val spyDrop: Double?, val recordFrom: String,
     val starsRet: Double?, val starsBeat: Double?, val months: Int = 12,
     val note: String = "", val learned: Boolean = false,
+    val covered: Map<String, CoveredHistory> = emptyMap(), val coveredSummary: Map<String, Double> = emptyMap(),
 ) {
     fun ranked(goal: Int): List<StockGrade> =
         grades.values.filter { it.grade(goal).isNotEmpty() && (goal != 1 || it.incomePct >= 0) }.sortedByDescending { it.pct(goal) }
@@ -102,7 +107,12 @@ object Grades {
             if (rj.has("spy")) rj.optDouble("spy") else null, if (rj.has("spy_dd")) rj.optDouble("spy_dd") else null,
             rj.optString("from"),
             st?.let { if (it.isNull("ret")) null else it.optDouble("ret") }, st?.let { if (it.isNull("beat")) null else it.optDouble("beat") },
-            rj.optInt("months", 12), rj.optString("note"), rj.optString("method") == "model")
+            rj.optInt("months", 12), rj.optString("note"), rj.optString("method") == "model",
+            o.optJSONObject("covered")?.optJSONObject("rows")?.let { r ->
+                r.keys().asSequence().associateWith { k -> r.getJSONArray(k).let { a -> CoveredHistory(a.getDouble(0), a.getDouble(1),
+                    a.getDouble(2), a.getDouble(3), a.getDouble(4), a.getDouble(5), a.getDouble(6), a.getDouble(7), a.getDouble(8)) } }
+            } ?: emptyMap(),
+            o.optJSONObject("covered")?.optJSONObject("summary")?.let { sm -> sm.keys().asSequence().associateWith { sm.optDouble(it) } } ?: emptyMap())
     }
 
     fun money(capM: Long): String = when {
