@@ -26,7 +26,11 @@ final class SmokeTests: XCTestCase {
         let tabs = ["Home", "Markets", "Predictions", "Feed", "Portfolio"]
         for t in tabs {
             let b = app.tabBars.buttons[t]
-            guard b.waitForExistence(timeout: 30) else { XCTFail("Tab \(t) didn't appear"); continue }
+            guard b.waitForExistence(timeout: 30) else {
+                XCTFail("Tab \(t) didn't appear")
+                print("SMOKE TREE BEGIN\n" + app.debugDescription + "\nSMOKE TREE END")
+                break
+            }
             b.tap()
             sleep(4)
             guard alive(t) else { app.launch(); continue }

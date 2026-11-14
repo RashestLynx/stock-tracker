@@ -49,7 +49,8 @@ jobs:
               CODE_SIGNING_ALLOWED=NO -resultBundlePath smoke.xcresult \
               test > test.log 2>&1; then
             grep -E "error:|failed|crashed|XCTAssert|Fail" test.log | sort -u | head -40 | sed 's/^/::error::/'
-            tail -60 test.log
+            sed -n '/SMOKE TREE BEGIN/,/SMOKE TREE END/p' test.log | head -120
+            tail -40 test.log
             exit 1
           fi
           grep -E "Test Case|Executed" test.log | tail -5
