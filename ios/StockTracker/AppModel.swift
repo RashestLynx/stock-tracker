@@ -81,7 +81,7 @@ final class AppModel: ObservableObject {
         newsAlerts = d.object(forKey: "newsAlerts") as? Bool ?? true
         appNotify = d.object(forKey: "appNotify") as? Bool ?? true
         appearance = d.string(forKey: "appearance") ?? "system"
-        appLock = d.object(forKey: "appLock") as? Bool ?? true
+        appLock = d.object(forKey: "appLock") == nil ? true : d.bool(forKey: "appLock")
         priceAlertsOn = d.object(forKey: "priceAlertsOn") as? Bool ?? true
         priceAlertLog = Self.load("price_alerts.json") ?? []
         marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
