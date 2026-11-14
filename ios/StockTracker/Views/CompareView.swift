@@ -26,7 +26,8 @@ struct CompareView: View {
     @ViewBuilder
     private func content(_ lm: LeagueModel, _ m: SportsModel) -> some View {
         let sides = game.sides.filter { !SportsData.isDraw($0.label) }
-        if sides.count >= 2, let a = lm.find(sides[0].label), let b = lm.find(sides[1].label) {
+        if sides.count >= 2, let pair = lm.findPair(sides[0].label, sides[1].label) {
+            let a = pair.0, b = pair.1
             let aHome = homeSide(sides)
             let up = lm.upcomingFor(a, b)
             let p = adjusted(lm.chance(a, b, aHome: aHome), up, a)

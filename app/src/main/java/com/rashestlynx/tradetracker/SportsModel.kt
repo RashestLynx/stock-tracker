@@ -67,6 +67,20 @@ data class LeagueModel(
     val upcoming: List<Upcoming> = emptyList(), val matchupUsed: String = "elo", val weatherHelped: Boolean = false,
     val matchupTests: List<MatchupTest> = emptyList(),
 ) {
+    /** Both sides of a game. A school name that fits several teams ("Colorado": Buffaloes, State, Mesa...) is settled
+     *  by the schedule: the team that's actually playing the other side. */
+    fun findPair(la: String, lb: String): Pair<TeamRow?, TeamRow?> {
+        val a = find(la); val b = find(lb)
+        if (a != null && b != null) return a to b
+        for (u in upcoming) for ((x, y) in listOf(u.home to u.away, u.away to u.home)) {
+            if ((a == null || a.name == x) && (b == null || b.name == y) && SportsData.same(la, x) && SportsData.same(lb, y)) {
+                val tx = teams[x]; val ty = teams[y]
+                if (tx != null && ty != null) return tx to ty
+            }
+        }
+        return a to b
+    }
+
     fun upcomingFor(a: TeamRow, b: TeamRow): Upcoming? =
         upcoming.firstOrNull { (it.home == a.name && it.away == b.name) || (it.home == b.name && it.away == a.name) }
 

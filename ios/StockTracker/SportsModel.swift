@@ -43,6 +43,20 @@ struct LeagueModel {
     var weatherHelped = false
     var matchupTests: [String: MatchupTest] = [:]
 
+    /// Both sides of a game. A school name that fits several teams ("Colorado": Buffaloes, State, Mesa...) is settled
+    /// by the schedule: the team that's actually playing the other side.
+    func findPair(_ la: String, _ lb: String) -> (TeamRow, TeamRow)? {
+        let a = find(la), b = find(lb)
+        if let a, let b { return (a, b) }
+        for u in upcoming {
+            for (x, y) in [(u.home, u.away), (u.away, u.home)] {
+                if (a == nil || a!.name == x), (b == nil || b!.name == y), SportsData.same(la, x), SportsData.same(lb, y),
+                   let tx = teams[x], let ty = teams[y] { return (tx, ty) }
+            }
+        }
+        return nil
+    }
+
     func upcomingFor(_ a: TeamRow, _ b: TeamRow) -> Upcoming? {
         upcoming.first { ($0.home == a.name && $0.away == b.name) || ($0.home == b.name && $0.away == a.name) }
     }

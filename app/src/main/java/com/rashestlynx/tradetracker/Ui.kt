@@ -5078,8 +5078,9 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
             if (model != null && lm == null) Text("No ratings for ${league.name} yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (lm != null) {
                 val sides = game.sides.filterNot { SportsData.isDraw(it.label) }
-                val a = sides.getOrNull(0)?.let { lm.find(it.label) }
-                val b = sides.getOrNull(1)?.let { lm.find(it.label) }
+                val pair = if (sides.size >= 2) lm.findPair(sides[0].label, sides[1].label) else null to null
+                val a = pair.first
+                val b = pair.second
                 if (a == null || b == null) {
                     Text("Couldn't match ${sides.joinToString(" and ") { it.label }} to the ratings.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
