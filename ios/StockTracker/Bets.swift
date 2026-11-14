@@ -26,9 +26,9 @@ enum Bets {
 
     static func feeRate(_ source: String, _ category: String) -> Double {
         if source == "Kalshi" { return 0.07 }
-        if category == "Politics" { return 0.04 }
-        if category == "Crypto" { return 0.07 }
-        return 0.05
+        // Polymarket US since Nov 6, 2026: one rate for every category, set by 30-day volume
+        // (0.095 under $10,000 down to 0.0695 above $250,000). The highest tier, so the fee is never understated.
+        return 0.095
     }
 
     static func fee(_ source: String, _ category: String, contracts: Int, price: Double) -> Double {

@@ -19,9 +19,9 @@ struct MyPredPicksView: View {
                             stat(String(format: "%.1f", r.expected), "Market expected")
                             stat(money(r.profit * 10), "$10 on each")
                         }
-                        Text(n < 20 ? "Too early to judge: \(n) settled. You need about 20 or more before luck stops dominating."
-                             : Double(r.wins) > r.expected + 2 ? "You're winning more than the market's odds predicted. That's what an edge looks like. Keep logging to see if it holds."
-                             : Double(r.wins) < r.expected - 2 ? "You're winning fewer than the market's odds predicted, so the market has been the better forecaster so far."
+                        Text(n < 50 ? "Too early to judge: \(n) settled. You need about 50 or more before luck stops dominating."
+                             : Double(r.wins) > r.expected + Double(n).squareRoot() ? "You're winning more than the market's odds predicted. That's what an edge looks like. Keep logging to see if it holds."
+                             : Double(r.wins) < r.expected - Double(n).squareRoot() ? "You're winning fewer than the market's odds predicted, so the market has been the better forecaster so far."
                              : "You're winning about as often as the market's odds predicted, which means no edge yet. Most people land here.")
                             .font(.footnote).foregroundStyle(.secondary)
                     } else if loading {

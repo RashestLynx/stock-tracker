@@ -30,7 +30,7 @@ struct PredictionsView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 } footer: {
-                    Text("Live odds from Kalshi and Polymarket, both open in Illinois. A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke. FanDuel and DraftKings don't share their odds, so they can't be shown here.")
+                    Text("Live odds from Kalshi and Polymarket, both open in Illinois. A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke. FanDuel and DraftKings odds are on the Sports tab; their event markets aren't included here.")
                 }
 
                 if let e = error {

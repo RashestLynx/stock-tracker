@@ -3186,9 +3186,9 @@ private fun MyPredPicksScreen() {
                                 }
                             }
                             Text(when {
-                                n < 20 -> "Too early to judge: $n settled. You need about 20 or more before luck stops dominating."
-                                r.wins > r.expected + 2 -> "You're winning more than the market's odds predicted. That's what an edge looks like. Keep logging to see if it holds."
-                                r.wins < r.expected - 2 -> "You're winning fewer than the market's odds predicted, so the market has been the better forecaster so far."
+                                n < 50 -> "Too early to judge: $n settled. You need about 50 or more before luck stops dominating."
+                                r.wins > r.expected + kotlin.math.sqrt(n.toDouble()) -> "You're winning more than the market's odds predicted. That's what an edge looks like. Keep logging to see if it holds."
+                                r.wins < r.expected - kotlin.math.sqrt(n.toDouble()) -> "You're winning fewer than the market's odds predicted, so the market has been the better forecaster so far."
                                 else -> "You're winning about as often as the market's odds predicted, which means no edge yet. Most people land here."
                             }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -3558,7 +3558,7 @@ private fun PredictionsScreen() {
             item {
                 Text("Live odds from Kalshi and Polymarket, both open in Illinois. " +
                     "A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke. " +
-                    "FanDuel and DraftKings don't share their odds, so they can't be shown here.",
+                    "FanDuel and DraftKings odds are on the Sports tab; their event markets aren't included here.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

@@ -32,12 +32,12 @@ enum Coach {
     static let sports: [(String, String)] = [
         ("NFL (pro football)", "Two teams of 11 try to move the ball into the other's end zone: touchdown 6 points (+1 or 2 after), field goal 3. Four 15-minute quarters. Each team plays only 17 regular-season games, so every game matters and injuries to the quarterback (the player who throws) change a lot. In testing, the favorite won about 2 of 3 games."),
         ("College football", "Same rules as the NFL, but 130+ teams of very uneven strength, so big favorites are common. In testing, the favorite won about 3 of 4 games. Upsets happen most between teams of similar strength."),
-        ("NBA (pro basketball)", "Five players a side; 2 points per basket, 3 from far out. Four 12-minute quarters, 82 games a season. One star player can swing a game, so check injuries and rest days (teams often rest stars on back-to-back nights). Favorites won about 2 of 3."),
+        ("NBA (pro basketball)", "Five players a side; 2 points per basket, 3 from far out, 1 per free throw. Four 12-minute quarters, 82 games a season. One star player can swing a game, so check injuries and rest days (teams often rest stars on back-to-back nights). Favorites won about 2 of 3."),
         ("College basketball", "Like the NBA with two 20-minute halves and hundreds of teams. Home court matters a lot. Favorites won about 3 of 4 in testing. March Madness is the playoff tournament, famous for upsets."),
-        ("NHL (hockey)", "Six skaters a side shoot a puck into a net; low scoring (often 3-2). Ties go to overtime, then a shootout. The goalie matters most, and luck is big: favorites won only about 57% in testing, so even 'sure things' lose often."),
+        ("NHL (hockey)", "Five skaters and a goalie per side shoot a puck into a net; low scoring (often 3-2). Regular-season ties go to overtime, then a shootout (playoff games keep playing overtime until someone scores). The goalie matters most, and luck is big: favorites won only about 57% in testing, so even 'sure things' lose often."),
         ("MLB (baseball)", "Nine innings; each team bats until 3 outs. The starting pitcher is the biggest factor, and it changes every game. 162 games a season and lots of randomness: favorites won about 56%, close to a coin flip."),
         ("Soccer (Premier League, MLS, Champions League)", "11 players, two 45-minute halves, very low scoring. Games can end in a draw, so there are three outcomes and the favorite wins only about half the time. A bet on a team to win loses if it's a draw."),
-        ("UFC (mixed martial arts)", "Two fighters, 3 rounds (5 for title fights) of 5 minutes. Wins come by knockout, submission or the judges' decision. Fighters fight only 2-3 times a year, so ratings are less certain; favorites won about 60%."),
+        ("UFC (mixed martial arts)", "Two fighters, 3 rounds (5 for title fights and main events) of 5 minutes. Wins come by knockout, submission or the judges' decision. Fighters fight only 2-3 times a year, so ratings are less certain; favorites won about 60%."),
     ]
 
     static let guide: [(String, String)] = [
@@ -46,7 +46,7 @@ enum Coach {
         ("Why most bets have no edge", "In this app's tests, the sportsbooks and Kalshi were more accurate than any rating model. So the price is usually right. The app only says 'possible value' when one site is clearly cheaper than the average of all of them, after fees."),
         ("Where edges come from", "1) Different sites disagreeing (shop for the best price; that's what 'pays most' shows). 2) News the price hasn't caught up to yet (injuries, lineups). 3) Kalshi longshots: research found contracts under about 15¢ win less often than their price, so cheap underdogs are usually a bad buy."),
         ("How much to bet", "Set a betting budget you can lose completely, and keep it separate. The 'How much?' screen suggests at most 5% of it per bet, using a quarter of the Kelly formula, and $0 when there's no edge. Never chase losses."),
-        ("Fees and payouts", "Kalshi charges up to about 1.75¢ per contract (most near 50¢). Polymarket's US fee is a few percent of the win. Sportsbooks build their cut into the odds (about 4-5%). The app subtracts all of these before calling anything value."),
+        ("Fees and payouts", "Kalshi charges up to about 1.75¢ per contract (most near 50¢). Polymarket US charges up to about 2.4¢ per contract if you trade under $10,000 a month (less above that, and less in your first week), also highest near 50¢. Sportsbooks build their cut into the odds (about 4-5%). The app subtracts all of these before calling anything value."),
         ("Keep score", "Log every pick under 'My picks'. After 50+ picks, your record tells you whether you actually have an edge. Most people don't, and that's useful to know."),
         ("Getting help", "If betting stops being fun or you're betting more than you planned, call or text 1-800-GAMBLER (free, 24/7)."),
     ]

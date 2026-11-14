@@ -20,8 +20,9 @@ data class BetSuggestion(val amount: Double, val edgePoints: Double, val why: St
  * Bet sizing for prediction-market contracts (each pays $1 if it happens).
  *
  * Fees: Kalshi charges 0.07 × contracts × price × (1 − price), rounded up to the cent. Polymarket US uses the same
- * shape with a rate by category (4% politics, finance; 5% sports, economics, other; 7% crypto; geopolitics free).
- * Sources disagree on Polymarket US's exact rate, so the app uses these higher rates to stay on the safe side.
+ * shape; since Nov 6, 2026 its rate is the same for every category and set by your 30-day trading volume:
+ * 0.095 under $10,000, 0.085 to $50,000, 0.075 to $250,000, 0.0695 above (and 0.0695 for a new account's first week).
+ * The app uses 0.095, the rate most people pay, so it never understates the fee.
  *
  * Size: a quarter of the "Kelly" amount (the standard formula for sizing a bet you have an edge on), never more
  * than 5% of your budget. With no edge after fees, the suggestion is $0.
@@ -32,10 +33,11 @@ object Bets {
 
     fun feeRate(source: String, category: String): Double = when {
         source == "Kalshi" -> 0.07
-        category == "Politics" -> 0.04
-        category == "Crypto" -> 0.07
-        else -> 0.05
+        else -> POLY_US_RATE
     }
+
+    /** Polymarket US taker rate for accounts under $10,000 of 30-day volume (their highest tier, from Nov 6, 2026). */
+    const val POLY_US_RATE = 0.095
 
     /** Fee for [contracts] at [price], rounded up to the cent. */
     fun fee(source: String, category: String, contracts: Int, price: Double): Double =
