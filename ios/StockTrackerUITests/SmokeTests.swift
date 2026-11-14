@@ -7,8 +7,8 @@ final class SmokeTests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = true
-        // Pre-fill the SEC contact so the first-run settings sheet doesn't cover the tabs.
-        app.launchArguments = ["-ua", "StockTracker smoke test stocktracker-ci@users.noreply.github.com"]
+        // Pre-fill the SEC contact (so the first-run settings sheet stays closed) and turn off the Face ID lock (the simulator has none).
+        app.launchArguments = ["-ua", "StockTracker smoke test stocktracker-ci@users.noreply.github.com", "-appLock", "NO"]
     }
 
     private func alive(_ step: String, file: StaticString = #filePath, line: UInt = #line) -> Bool {
