@@ -300,7 +300,9 @@ def check_covered_calls(label):
         note(f"{label}: problem: Covered calls screen didn't show its guide")
         return
     pos = find_prefix(s, "Ticker")
-    if pos is None:
+    for _ in range(4):   # the guide and the history card sit above the box
+        if pos is not None:
+            break
         scroll_down(); time.sleep(1); pos = find_prefix(screen(), "Ticker")
     if pos is None:
         note(f"{label}: Covered calls: couldn't find the ticker box")
