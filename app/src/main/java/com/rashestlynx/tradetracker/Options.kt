@@ -108,6 +108,8 @@ object Options {
             val x = a.getJSONObject(i)
             val sym = x.optString("option")
             if (sym.length < 15) continue
+            // standard contracts only: an adjusted contract ("KO1...", left over from a split or merger) covers other than 100 shares
+            if (sym.dropLast(15).trim() != t.replace(".", "")) continue
             val tail = sym.takeLast(15)   // YYMMDD + C/P + strike x 1000 (8 digits)
             val exp = runCatching { LocalDate.parse("20" + tail.substring(0, 6), DateTimeFormatter.BASIC_ISO_DATE) }.getOrNull() ?: continue
             val call = tail[6] == 'C'

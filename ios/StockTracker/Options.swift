@@ -80,6 +80,8 @@ enum Options {
         var out: [OptQuote] = []
         for x in opts {
             guard let sym = x["option"] as? String, sym.count >= 15 else { continue }
+            // standard contracts only: an adjusted contract ("KO1...", left over from a split or merger) covers other than 100 shares
+            guard sym.dropLast(15).trimmingCharacters(in: .whitespaces) == t.replacingOccurrences(of: ".", with: "") else { continue }
             let tail = String(sym.suffix(15))
             guard let exp = ymd("20" + tail.prefix(6), "yyyyMMdd"), let k = Double(tail.suffix(8)) else { continue }
             let iv = x["iv"] as? Double ?? 0
