@@ -81,7 +81,7 @@ struct CompareView: View {
                 let mv: (Int?) -> String = { c in guard let c else { return "–" }; return c > 0 ? "Up" : c < 0 ? "Down" : "Same" }
                 let n0: (Double?) -> String = { v in v.map { String(format: "%.0f", $0) } ?? "–" }
                 let n1: (Double?) -> String = { v in v.map { String(format: "%.1f", $0) } ?? "–" }
-                let pc: (Double?) -> String = { v in v.map { "\(Int(($0 * 100).rounded()))%" } ?? "–" }
+                let pc: (Double?) -> String = { v in v.map { "\(safeInt(($0 * 100).rounded()))%" } ?? "–" }
                 let card: [String] = [(a.name, fa), (b.name, fb)].flatMap { n, f -> [String] in
                     var out: [String] = []
                     if let d = f?.bookedDays { out.append("\(n): fight booked only \(d) days out (short notice: less time to prepare and cut weight)") }

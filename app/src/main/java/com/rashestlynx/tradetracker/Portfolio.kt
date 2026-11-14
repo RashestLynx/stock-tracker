@@ -123,3 +123,7 @@ object Portfolio {
         picks.filter { it.ticker !in tickers && it.ticker.isNotBlank() }.groupBy { it.ticker }
             .entries.sortedByDescending { e -> e.value.map { it.who }.distinct().size }.take(12).map { it.key }
 }
+
+/** roundToInt() crashes the app on NaN (e.g. 0/0 from missing data). This returns 0 instead. */
+fun Double.safeRound(): Int = if (isNaN()) 0 else kotlin.math.round(this).coerceIn(Int.MIN_VALUE.toDouble(), Int.MAX_VALUE.toDouble()).toInt()
+fun Float.safeRound(): Int = toDouble().safeRound()

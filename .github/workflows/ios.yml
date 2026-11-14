@@ -36,6 +36,32 @@ jobs:
             exit 1
           fi
 
+      # Before publishing: run the app on an iPhone simulator and tap through every tab and view.
+      # If it crashes, the download link keeps the previous working version.
+      - name: Test on an iPhone simulator
+        working-directory: ios
+        run: |
+          set -o pipefail
+          SIM=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r in sorted(d, reverse=True) if 'iOS' in r for x in d[r] if x['name'].startswith('iPhone')))")
+          echo "Simulator: $SIM"
+          if ! xcodebuild -project StockTracker.xcodeproj -scheme StockTracker \
+              -destination "id=$SIM" -derivedDataPath simbuild \
+              CODE_SIGNING_ALLOWED=NO -resultBundlePath smoke.xcresult \
+              test > test.log 2>&1; then
+            grep -E "error:|failed|crashed|XCTAssert|Fail" test.log | sort -u | head -40 | sed 's/^/::error::/'
+            tail -60 test.log
+            exit 1
+          fi
+          grep -E "Test Case|Executed" test.log | tail -5
+
+      - name: Upload simulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-smoke-test
+          path: ios/smoke.xcresult
+          if-no-files-found: ignore
+
       - name: Package IPA
         working-directory: ios
         run: |

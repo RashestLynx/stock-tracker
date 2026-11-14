@@ -660,7 +660,7 @@ struct GroupCheckupView: View {
                         HStack {
                             Text(s.0).font(.caption).lineLimit(1).frame(width: 140, alignment: .leading)
                             ProgressView(value: frac).tint(.green)
-                            Text("\(Int(frac * 100))%").font(.caption2).frame(width: 36, alignment: .trailing)
+                            Text("\(safeInt(frac * 100))%").font(.caption2).frame(width: 36, alignment: .trailing)
                         }
                     }
                     Text("Counted by number of stocks, not dollars.").font(.caption2).foregroundStyle(.secondary)

@@ -369,7 +369,7 @@ enum ScoreEngine {
                 if group > 0 && (perGroup[group] ?? 0) >= 3 { continue }
                 perGroup[group] = (perGroup[group] ?? 0) + 1
                 taken.insert(c.company.cik)
-                let score = min(max(Int(c.score.rounded()), 0), 100)
+                let score = min(max(safeInt(c.score.rounded()), 0), 100)
                 out.append(ScoredStock(ticker: c.company.ticker, name: c.company.name, sector: sic?.name ?? "",
                                        score: score, price: c.price, facts: c.facts))
             }

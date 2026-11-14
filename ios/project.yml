@@ -28,3 +28,24 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [com.rashestlynx.stocktracker.refresh]
+  # Simulator smoke test: opens every tab and every view and fails if the app crashes.
+  StockTrackerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [StockTrackerUITests]
+    dependencies:
+      - target: StockTracker
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: StockTracker
+        PRODUCT_BUNDLE_IDENTIFIER: com.rashestlynx.stocktracker.uitests
+        CODE_SIGNING_ALLOWED: "NO"
+schemes:
+  StockTracker:
+    build:
+      targets:
+        StockTracker: all
+        StockTrackerUITests: [test]
+    test:
+      targets: [StockTrackerUITests]

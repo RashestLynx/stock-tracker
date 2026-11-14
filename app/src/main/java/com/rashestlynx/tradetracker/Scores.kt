@@ -372,7 +372,7 @@ object ScoreEngine {
                 perGroup[group] = (perGroup[group] ?: 0) + 1
                 taken.add(c.company.cik)
                 out.add(ScoredStock(c.company.ticker, c.company.name, sic?.second ?: "",
-                    c.score.roundToInt().coerceIn(0, 100), c.price, c.facts))
+                    c.score.safeRound().coerceIn(0, 100), c.price, c.facts))
             }
             return out
         }

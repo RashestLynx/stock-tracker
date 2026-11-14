@@ -154,3 +154,10 @@ enum Format {
         return f.localizedString(for: d, relativeTo: Date())
     }
 }
+
+
+/// Int(x) crashes the app when x is not a number or infinite (e.g. 0/0 from missing data). This returns 0 instead.
+func safeInt(_ x: Double) -> Int {
+    guard x.isFinite else { return 0 }
+    return x >= Double(Int.max) ? Int.max : x <= Double(Int.min) ? Int.min : Int(x)
+}

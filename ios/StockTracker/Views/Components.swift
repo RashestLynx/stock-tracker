@@ -88,6 +88,7 @@ struct PillTabs<T: Hashable>: View {
                             .background(selection == o.0 ? Color.primary : Color(.secondarySystemFill), in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("pill-" + o.1)
                 }
             }
         }

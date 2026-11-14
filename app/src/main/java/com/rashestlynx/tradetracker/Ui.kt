@@ -5194,10 +5194,10 @@ private fun CompareSheet(league: League, game: SportGame, onDismiss: () -> Unit)
                                 Triple("Time zones traveled", fa?.timeZones?.let { String.format(Locale.US, "%.0f", it) } ?: "–", fb?.timeZones?.let { String.format(Locale.US, "%.0f", it) } ?: "–"),
                                 Triple("Strikes landed / min", fa?.slpm?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.slpm?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
                                 Triple("Strikes absorbed / min", fa?.sapm?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.sapm?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
-                                Triple("Striking accuracy", fa?.acc?.let { "${(it * 100).roundToInt()}%" } ?: "–", fb?.acc?.let { "${(it * 100).roundToInt()}%" } ?: "–"),
-                                Triple("Strikes avoided", fa?.def?.let { "${(it * 100).roundToInt()}%" } ?: "–", fb?.def?.let { "${(it * 100).roundToInt()}%" } ?: "–"),
+                                Triple("Striking accuracy", fa?.acc?.let { "${(it * 100).safeRound()}%" } ?: "–", fb?.acc?.let { "${(it * 100).safeRound()}%" } ?: "–"),
+                                Triple("Strikes avoided", fa?.def?.let { "${(it * 100).safeRound()}%" } ?: "–", fb?.def?.let { "${(it * 100).safeRound()}%" } ?: "–"),
                                 Triple("Takedowns / 15 min", fa?.td15?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.td15?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
-                                Triple("Takedowns stopped", fa?.tdDef?.let { "${(it * 100).roundToInt()}%" } ?: "–", fb?.tdDef?.let { "${(it * 100).roundToInt()}%" } ?: "–"),
+                                Triple("Takedowns stopped", fa?.tdDef?.let { "${(it * 100).safeRound()}%" } ?: "–", fb?.tdDef?.let { "${(it * 100).safeRound()}%" } ?: "–"),
                                 Triple("Submission tries / 15 min", fa?.sub15?.let { String.format(Locale.US, "%.1f", it) } ?: "–", fb?.sub15?.let { String.format(Locale.US, "%.1f", it) } ?: "–"),
                                 Triple("Career KO losses", fa?.koLosses?.toString() ?: "–", fb?.koLosses?.toString() ?: "–"),
                                 Triple("Fights, last 2 years", fa?.active2y?.toString() ?: "–", fb?.active2y?.toString() ?: "–"),
@@ -5442,9 +5442,9 @@ private fun OptionsCard(ticker: String, shares: Double, store: Store, startOpen:
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             history?.let { h ->
                 val beat = h.balanced > h.hold
-                Text("History test (${h.years.roundToInt()} years, a call every month): just holding ${Options.pct(h.hold)}/yr vs. " +
+                Text("History test (${h.years.safeRound()} years, a call every month): just holding ${Options.pct(h.hold)}/yr vs. " +
                     "balanced calls ${Options.pct(h.balanced)}/yr (safer ${Options.pct(h.safer)}/yr). Called away " +
-                    "${(h.calledBalanced * 100).roundToInt()}% of months. Worst drop ${Options.pct(h.dropBalanced)} vs ${Options.pct(h.dropHold)} holding. " +
+                    "${(h.calledBalanced * 100).safeRound()}% of months. Worst drop ${Options.pct(h.dropBalanced)} vs ${Options.pct(h.dropHold)} holding. " +
                     if (beat) "On this stock, calls added return." else "On this stock, capping the upside cost more than the premiums paid.",
                     style = MaterialTheme.typography.bodySmall, color = if (beat) TradeColors.buy() else TradeColors.sell())
             }
@@ -5476,7 +5476,7 @@ private fun OptionsCard(ticker: String, shares: Double, store: Store, startOpen:
                             (if (shares >= 100) "for your $n" else "per") + " contract${if (n > 1) "s" else ""} now",
                             style = MaterialTheme.typography.bodyMedium)
                         Text("${Options.pct(p.yieldPct)} in ${p.days} days (${Options.pct(p.annualPct)} a year if repeated) · " +
-                            "about ${(p.chanceCalled * 100).roundToInt()}% chance your shares are called away · " +
+                            "about ${(p.chanceCalled * 100).safeRound()}% chance your shares are called away · " +
                             "if called: +${Options.pct(p.ifCalledPct)}",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -5498,7 +5498,7 @@ private fun OptionsCard(ticker: String, shares: Double, store: Store, startOpen:
                     Row(Modifier.fillMaxWidth().clickable { chosen = p }) {
                         Text(Options.money(p.q.strike), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                         Text(Options.money(p.q.bid), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        Text("${(p.chanceCalled * 100).roundToInt()}%", Modifier.weight(1.3f), style = MaterialTheme.typography.bodySmall)
+                        Text("${(p.chanceCalled * 100).safeRound()}%", Modifier.weight(1.3f), style = MaterialTheme.typography.bodySmall)
                         Text(Options.pct(p.annualPct), Modifier.weight(1.2f), style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -5541,7 +5541,7 @@ private fun CoveredCallsScreen(store: Store) {
             ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Does it pay? The 10-year history test", fontWeight = FontWeight.Bold)
-                    fun p(k: String) = summary[k]?.let { "${(it * 100).roundToInt()}%" } ?: "–"
+                    fun p(k: String) = summary[k]?.let { "${(it * 100).safeRound()}%" } ?: "–"
                     Text("Across ${summary["stocks"]?.toInt() ?: 0} stocks, selling a balanced call every month beat just holding on " +
                         "${p("balanced_beat_hold")} of them. On slow, steady stocks it won on ${p("beat_hold_slow_stocks")}; on fast " +
                         "growers (15%+ a year) on only ${p("beat_hold_fast_growers")}. Shares were called away in about " +

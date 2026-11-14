@@ -157,7 +157,7 @@ enum Options {
 
     static func calls(_ c: OptChain, expiry: Date, shares: Double) -> [CallIdea] {
         let d = max(1, days(Date(), expiry))
-        let contracts = max(0, Int(shares / 100))
+        let contracts = max(0, safeInt(shares / 100))
         return c.quotes.filter { $0.call && $0.expiry == expiry && $0.strike > c.price && $0.bid >= 0.05 }
             .sorted { $0.strike < $1.strike }
             .map { q in
@@ -184,7 +184,7 @@ enum Options {
     static func warnings(_ c: OptChain, _ idea: CallIdea, _ ev: StockEvents?, _ grade: StockGrade?, shares: Double) -> [String] {
         var w: [String] = []
         let f = DateFormatter(); f.dateFormat = "MMM d"; f.timeZone = cal.timeZone
-        if shares < 100 { w.append("You need 100 shares for each call. You have \(Int(shares)); 100 shares cost about \(money(c.price * 100)) today.") }
+        if shares < 100 { w.append("You need 100 shares for each call. You have \(safeInt(shares)); 100 shares cost about \(money(c.price * 100)) today.") }
         if let e = ev?.earnings, e <= idea.q.expiry {
             w.append("Earnings come out \(f.string(from: e)), before this call expires. Big jumps often happen on earnings day; a jump above the strike means your shares get sold at the strike.")
         }
@@ -204,7 +204,7 @@ enum Options {
         return w
     }
 
-    static func money(_ v: Double) -> String { abs(v) >= 1000 ? "$" + Int(v.rounded()).formatted() : String(format: "$%.2f", v) }
+    static func money(_ v: Double) -> String { abs(v) >= 1000 ? "$" + safeInt(v.rounded()).formatted() : String(format: "$%.2f", v) }
     static func pct(_ v: Double) -> String { String(format: "%.1f%%", v * 100) }
 
     static let guide: [(String, String)] = [

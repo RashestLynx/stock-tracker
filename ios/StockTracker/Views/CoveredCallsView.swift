@@ -26,7 +26,7 @@ struct OptionsCard: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Covered calls on \(t)").font(.headline)
-                        Text(shares >= 100 ? "You can sell \(Int(shares / 100)) call\(shares >= 200 ? "s" : "") (\(Int(shares)) shares)"
+                        Text(shares >= 100 ? "You can sell \(safeInt(shares / 100)) call\(shares >= 200 ? "s" : "") (\(safeInt(shares)) shares)"
                                            : "Extra income from shares you own. Tap to see live prices.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -60,7 +60,7 @@ struct OptionsCard: View {
         if loading { ProgressView().frame(maxWidth: .infinity) }
         if let h = history {
             let beat = h.balanced > h.hold
-            Text("History test (\(Int(h.years.rounded())) years, a call every month): just holding \(Options.pct(h.hold))/yr vs. balanced calls \(Options.pct(h.balanced))/yr (safer \(Options.pct(h.safer))/yr). Called away \(Int((h.calledBalanced * 100).rounded()))% of months. Worst drop \(Options.pct(h.dropBalanced)) vs \(Options.pct(h.dropHold)) holding. " + (beat ? "On this stock, calls added return." : "On this stock, capping the upside cost more than the premiums paid."))
+            Text("History test (\(safeInt(h.years.rounded())) years, a call every month): just holding \(Options.pct(h.hold))/yr vs. balanced calls \(Options.pct(h.balanced))/yr (safer \(Options.pct(h.safer))/yr). Called away \(safeInt((h.calledBalanced * 100).rounded()))% of months. Worst drop \(Options.pct(h.dropBalanced)) vs \(Options.pct(h.dropHold)) holding. " + (beat ? "On this stock, calls added return." : "On this stock, capping the upside cost more than the premiums paid."))
                 .font(.footnote).foregroundStyle(beat ? .green : .red)
         }
         if failed && !loading {
@@ -82,7 +82,7 @@ struct OptionsCard: View {
     @ViewBuilder private func ideas(_ c: OptChain, _ e: Date) -> some View {
         let all = Options.calls(c, expiry: e, shares: shares)
         let picks = Options.picks(all)
-        let n = max(1, Int(shares / 100))
+        let n = max(1, safeInt(shares / 100))
         if all.isEmpty {
             Text("No calls above today's price with a real bid for this date.").font(.footnote)
         } else {
@@ -94,7 +94,7 @@ struct OptionsCard: View {
                         Text(p.label).fontWeight(.semibold)
                         Text("Sell the \(Options.money(p.q.strike)) call → collect \(Options.money(p.q.bid * 100 * Double(n))) " +
                              (shares >= 100 ? "for your \(n)" : "per") + " contract\(n > 1 ? "s" : "") now").font(.subheadline)
-                        Text("\(Options.pct(p.yieldPct)) in \(p.days) days (\(Options.pct(p.annualPct)) a year if repeated) · about \(Int((p.chanceCalled * 100).rounded()))% chance your shares are called away · if called: +\(Options.pct(p.ifCalledPct))")
+                        Text("\(Options.pct(p.yieldPct)) in \(p.days) days (\(Options.pct(p.annualPct)) a year if repeated) · about \(safeInt((p.chanceCalled * 100).rounded()))% chance your shares are called away · if called: +\(Options.pct(p.ifCalledPct))")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     .padding(10).frame(maxWidth: .infinity, alignment: .leading)
@@ -113,7 +113,7 @@ struct OptionsCard: View {
                     ForEach(all, id: \.self) { p in
                         GridRow {
                             Text(Options.money(p.q.strike)); Text(Options.money(p.q.bid))
-                            Text("\(Int((p.chanceCalled * 100).rounded()))%"); Text(Options.pct(p.annualPct))
+                            Text("\(safeInt((p.chanceCalled * 100).rounded()))%"); Text(Options.pct(p.annualPct))
                         }.font(.caption).onTapGesture { chosen = p }
                     }
                 }
@@ -135,7 +135,7 @@ struct CoveredCallsView: View {
     private var positions: [(String, Double)] {
         Accounts.owned().compactMap { t, v in v.units.map { (t, $0) } }.filter { $0.1 >= 100 }.sorted { $0.1 > $1.1 }
     }
-    private func p(_ k: String) -> String { summary[k].map { "\(Int(($0 * 100).rounded()))%" } ?? "–" }
+    private func p(_ k: String) -> String { summary[k].map { "\(safeInt(($0 * 100).rounded()))%" } ?? "–" }
 
     var body: some View {
         ScrollView {
