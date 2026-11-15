@@ -192,6 +192,14 @@ class Store(context: Context) {
         get() = prefs.getString("movers_cache", "") ?: ""
         set(v) = prefs.edit().putString("movers_cache", v).apply()
 
+    var specialDividendsCache: String
+        get() = prefs.getString("special_dividends_cache", "") ?: ""
+        set(v) = prefs.edit().putString("special_dividends_cache", v).apply()
+
+    var highYieldCache: String
+        get() = prefs.getString("high_yield_cache", "") ?: ""
+        set(v) = prefs.edit().putString("high_yield_cache", v).apply()
+
     var lastCongressCheck: Long
         get() = prefs.getLong("last_congress", 0L)
         set(v) = prefs.edit().putLong("last_congress", v).apply()

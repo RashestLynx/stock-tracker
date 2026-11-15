@@ -5,7 +5,7 @@
 Five tabs, each with one row of views at most:
 
 - **Home**: today's biggest buy and sale, and the latest filings
-- **Markets**: Top 30, Movers, Common picks, WSB, Crypto
+- **Markets**: Top 30, Movers, Special dividends, High dividends, Common picks, WSB, Crypto
 - **Predictions**: All markets, Sports, My picks
 - **Feed**: Filings (each group in its own section) and News
 - **Portfolio**: Watchlist, My accounts, Track record
@@ -33,6 +33,8 @@ Android and iPhone apps that watch public trade disclosures and alert you, with 
 - **My accounts** (in the Portfolio tab): Robinhood linked read-only through SnapTrade Personal (free; your key stays encrypted on your phone), plus T. Rowe Price or any other funds typed in by hand. Shows your total, each holding's share of it and gain or loss, and a checkup that flags too much money in one stock, idle cash, big losses, insiders selling what you own, and holdings on the Top 30. Watchlist rows show how many shares you own
 - **Before you buy / Track record**: tapping "Open in Robinhood" first shows a quick check (how much you already own, Top 30 score, what insiders did lately) and lets you log the buy with your reason. Track record (in the Portfolio tab) grades every logged buy against the S&P 500 over the same days, so you can see whether your picks actually beat an index fund
 - **Patterns** (on every stock's page): trend (50- and 200-day averages), golden and death crosses, 52-week highs and lows, overbought or oversold (RSI), volume spikes, gaps, breakouts, double tops and bottoms, and support and resistance levels. Each signal also shows how it actually worked for that stock over the last 2 years
+- **Special dividends**: one-time cash payouts companies announced, split into **Coming up** (buy before the ex-dividend day to get it) and **Recently paid** (last 4 months), with the amount a share, what that is as a share of the price, and the ex-dividend and pay days. Uses your Massive key
+- **High dividends**: U.S. stocks over $5 with the highest regular dividend yield (a year of the latest dividend divided by the price, at least 4%). Shows up to 10% by default; **All high yields** adds the ones above 10%, flagged because a yield that high often means a cut is expected. Uses your Massive key; the first load takes a minute or two because of the free plan's 5-requests-a-minute limit, then it's kept for 12 hours
 - **Movers**: the week's 10 best and 10 worst performing stocks, across the whole market or only stocks the people you track are in
 - **Stock summaries**: tap any stock for what the company does, its industry and HQ, the latest price and change since the trade, and who else bought, sold or holds it
 - **United States**: companies the U.S. government owns a stake in (Intel, MP Materials, Lithium Americas, USA Rare Earth, quantum and chip companies and more), shown on each stock's summary and kept in the Following list

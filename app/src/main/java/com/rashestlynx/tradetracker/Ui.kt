@@ -259,7 +259,7 @@ fun StockTrackerApp(store: Store) {
         },
         bottomBar = {
             // Five tabs, each with one row of views at most:
-            // Markets (Top 30, Movers, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
+            // Markets (Top 30, Movers, dividends, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
             // Portfolio (Watchlist, My accounts, Track record). Sources is in Settings.
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_HOME, onClick = { tab = TAB_HOME },
@@ -1105,6 +1105,8 @@ private fun SettingsScreen(store: Store, onMessage: (String) -> Unit, onSources:
                 Button(onClick = {
                     store.massiveKey = massiveKey
                     store.moversCache = ""
+                    store.specialDividendsCache = ""
+                    store.highYieldCache = ""
                     onMessage("Saved")
                 }) { Text("Save key") }
                 OutlinedButton(onClick = {
@@ -1675,6 +1677,236 @@ private fun MoversList(title: String, list: List<Mover>, up: Boolean, onOpen: (S
                     }
                 }
             }
+        }
+    }
+}
+
+
+// ============================================================ Dividends (special and high)
+
+/** The "paste your Massive key" card, for screens that need one. */
+@Composable
+private fun MassiveKeyCard(store: Store, what: String, onSaved: () -> Unit, onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    var keyInput by rememberSaveable { mutableStateOf("") }
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("One-time setup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("$what come from Massive (formerly Polygon.io). Their free plan works: sign up, copy your API key, and paste it here.",
+                style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MASSIVE_SIGNUP)))
+            }) { Text("Get a free key") }
+            OutlinedTextField(value = keyInput, onValueChange = { keyInput = it },
+                label = { Text("Paste API key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(onClick = {
+                store.massiveKey = keyInput
+                if (store.massiveKey.isNotBlank()) { onMessage("Key saved"); onSaved() }
+            }, enabled = keyInput.isNotBlank()) { Text("Save key") }
+        }
+    }
+}
+
+private fun prettyDay(d: String): String = runCatching {
+    java.time.LocalDate.parse(d).format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.US))
+}.getOrDefault(d)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SpecialDividendsScreen(store: Store, onOpen: (StockTarget) -> Unit, onMessage: (String) -> Unit) {
+    var result by remember { mutableStateOf(Dividends.cachedSpecials(store)) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var hasKey by remember { mutableStateOf(store.massiveKey.isNotBlank()) }
+    var reload by remember { mutableIntStateOf(0) }
+    var force by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hasKey, reload) {
+        if (!hasKey) return@LaunchedEffect
+        loading = true; error = null
+        withContext(Dispatchers.IO) { runCatching { Dividends.specials(store, force) } }
+            .onSuccess { result = it }.onFailure { error = it.message ?: "Couldn't load dividends" }
+        force = false; loading = false
+    }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { force = true; reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (!hasKey) {
+                item { MassiveKeyCard(store, "Dividend announcements", { hasKey = true }, onMessage) }
+                return@LazyColumn
+            }
+            item {
+                Text("One-time cash payouts on top of a company's usual dividend, often from a big sale, a strong year " +
+                    "or extra cash. To get one you must own the stock before its ex-dividend day.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
+            val all = result?.items?.filterIsInstance<SpecialDividend>()
+            if (all == null) {
+                if (loading) item { Text("Loading special dividends…", style = MaterialTheme.typography.bodyMedium) }
+            } else {
+                val today = java.time.LocalDate.now().toString()
+                val (coming, past) = all.partition { it.exDate >= today }
+                item { SpecialList("Coming up", "Buy before the ex-dividend day to get it", coming.sortedBy { it.exDate }, true, onOpen) }
+                item { SpecialList("Recently paid", "Ex-dividend day in the last 4 months", past, false, onOpen) }
+            }
+            item {
+                Text("Data from Massive. A special dividend is usually one-time and doesn't mean the company will pay it again. " +
+                    "The share price normally drops by about the dividend on the ex-dividend day. Not financial advice.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpecialList(title: String, sub: String, list: List<SpecialDividend>, upcoming: Boolean, onOpen: (StockTarget) -> Unit) {
+    val accent = if (upcoming) TradeColors.buy() else MaterialTheme.colorScheme.onSurface
+    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = accent,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp))
+            if (list.isEmpty()) {
+                Text(if (upcoming) "No special dividends announced right now." else "Nothing in the last 4 months.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp))
+            }
+            list.forEach { d ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable { onOpen(StockTarget(d.ticker, d.name, "", "", emptyList(), "", 0.0)) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(d.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(d.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Ex-dividend ${prettyDay(d.exDate)}" + if (d.payDate.isNotBlank()) " · paid ${prettyDay(d.payDate)}" else "",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Surface(color = TradeColors.buyContainer(), shape = RoundedCornerShape(50)) {
+                            Text(String.format(java.util.Locale.US, "\$%,.2f", d.amount), color = TradeColors.buy(),
+                                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                        }
+                        if (d.price > 0) Text(String.format(java.util.Locale.US, "%.1f%% of the \$%,.2f price", d.amount / d.price * 100, d.price),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HighDividendsScreen(store: Store, onOpen: (StockTarget) -> Unit, onMessage: (String) -> Unit) {
+    var result by remember { mutableStateOf(Dividends.cachedHighYield(store)) }
+    var loading by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var hasKey by remember { mutableStateOf(store.massiveKey.isNotBlank()) }
+    var reload by remember { mutableIntStateOf(0) }
+    var force by remember { mutableStateOf(false) }
+    var showRisky by rememberSaveable { mutableIntStateOf(0) } // 0 = up to 10%, 1 = all
+
+    LaunchedEffect(hasKey, reload) {
+        if (!hasKey) return@LaunchedEffect
+        loading = true; error = null
+        withContext(Dispatchers.IO) {
+            runCatching { Dividends.highYield(store, force) { p -> progress = p } }
+        }.onSuccess { result = it }.onFailure { error = it.message ?: "Couldn't load dividends" }
+        force = false; loading = false
+    }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { force = true; reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (!hasKey) {
+                item { MassiveKeyCard(store, "Dividends and prices for every U.S. stock", { hasKey = true }, onMessage) }
+                return@LazyColumn
+            }
+            item { PillTabs(listOf("Up to ${Dividends.RISKY_YIELD.toInt()}%", "All high yields"), showRisky, { showRisky = it }) }
+            item {
+                Text("Yield is a year of the latest regular dividend divided by the share price: how much cash you'd get " +
+                    "each year for every \$100 invested. U.S. stocks over \$5 paying at least ${Dividends.MIN_YIELD.toInt()}%." +
+                    (result?.priceDate?.takeIf { it.isNotBlank() }?.let { " Prices from $it." } ?: ""),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
+            if (loading && result == null) item {
+                Text((progress.ifBlank { "Loading…" }) + " This takes a minute or two the first time (free plan limits).",
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            val all = result?.items?.filterIsInstance<HighYield>()
+            if (all != null) {
+                val list = (if (showRisky == 0) all.filter { it.yieldPct <= Dividends.RISKY_YIELD } else all).take(30)
+                item {
+                    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 12.dp)) {
+                            Text("Highest dividend yields", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                                color = TradeColors.buy(), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                            if (list.isEmpty()) Text("Nothing to show yet.", style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                            list.forEachIndexed { i, h -> HighYieldRow(i, h, onOpen) }
+                        }
+                    }
+                }
+            }
+            item {
+                Text("Data from Massive. A very high yield (over ${Dividends.RISKY_YIELD.toInt()}%) often means the price fell because " +
+                    "investors expect the dividend to be cut. For dividends that are covered by cash and growing, see Top 30 → Income. " +
+                    "Not financial advice.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HighYieldRow(i: Int, h: HighYield, onOpen: (StockTarget) -> Unit) {
+    val risky = h.yieldPct > Dividends.RISKY_YIELD
+    val accent = if (risky) MaterialTheme.colorScheme.error else TradeColors.buy()
+    val container = if (risky) MaterialTheme.colorScheme.errorContainer else TradeColors.buyContainer()
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable { onOpen(StockTarget(h.ticker, h.name, "", "", emptyList(), "", 0.0)) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${i + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(28.dp))
+        Column(Modifier.weight(1f)) {
+            Text(h.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(h.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(String.format(java.util.Locale.US, "\$%,.2f a year, paid %s", h.perYear, Dividends.frequencyLabel(h.frequency)) +
+                if (risky) " · may be cut" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (risky) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Surface(color = container, shape = RoundedCornerShape(50)) {
+                Text(String.format(java.util.Locale.US, "%.1f%%", h.yieldPct), color = accent, fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+            }
+            Text(String.format(java.util.Locale.US, "\$%,.2f", h.price), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -2975,15 +3207,17 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Top 30", "Grades", "Patterns", "Movers", "Common picks", "WSB", "Crypto"), view, { view = it },
+        PillTabs(listOf("Top 30", "Grades", "Patterns", "Movers", "Special dividends", "High dividends", "Common picks", "WSB", "Crypto"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> ScoresScreen(store, onOpen = onOpen)
             1 -> GradesScreen(onOpen = onOpen)
             2 -> NightlyPatternsScreen(store, onOpen = onOpen)
             3 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            4 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
-            5 -> WsbScreen(store, onOpen = onOpen)
+            4 -> SpecialDividendsScreen(store, onOpen = onOpen, onMessage = onMessage)
+            5 -> HighDividendsScreen(store, onOpen = onOpen, onMessage = onMessage)
+            6 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            7 -> WsbScreen(store, onOpen = onOpen)
             else -> CryptoScreen(store, onOpen = onOpen)
         }
     }
