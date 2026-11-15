@@ -36,6 +36,9 @@ object Movers {
     /** Starts a fresh count for the 5-requests-a-minute limit. */
     fun resetCalls() { calls = 0 }
 
+    /** Requests made since the last reset. */
+    val callCount: Int get() = calls
+
     fun parseDay(date: String): java.util.Date = dayFmt.parse(date)!!
 
     /** Blocking: call from a background thread. */

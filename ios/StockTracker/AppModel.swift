@@ -20,8 +20,11 @@ final class AppModel: ObservableObject {
     @Published var watching: [String: Bool] { didSet { d.set(watching, forKey: "watching") } }
     @Published var backgroundOn: Bool { didSet { d.set(backgroundOn, forKey: "backgroundOn") } }
     @Published var bargoKey: String { didSet { d.set(bargoKey, forKey: "bargoKey") } }
-    @Published var massiveKey: String { didSet { d.set(massiveKey, forKey: "massiveKey"); movers = nil } }
+    @Published var massiveKey: String { didSet { d.set(massiveKey, forKey: "massiveKey"); movers = nil; specialDividends = nil; highYield = nil } }
     @Published var movers: MoversResult?
+    @Published var specialDividends: SpecialDividendsResult?
+    @Published var highYield: HighYieldResult?
+    @Published var highYieldProgress = ""
     @Published var scores: ScoresResult?
     @Published var scoresProgress = ""
     @Published var status: String { didSet { d.set(status, forKey: "status") } }
@@ -86,6 +89,8 @@ final class AppModel: ObservableObject {
         priceAlertLog = Self.load("price_alerts.json") ?? []
         marketBackground = d.object(forKey: "marketBackground") as? Bool ?? true
         movers = Self.load("movers.json")
+        specialDividends = Self.load("special_dividends.json")
+        highYield = Self.load("high_yield.json")
         scores = Self.load("scores.json")
         status = d.string(forKey: "status") ?? "Not checked yet"
         lastCongressCheck = d.object(forKey: "lastCongress") as? Date ?? .distantPast
@@ -498,6 +503,25 @@ final class AppModel: ObservableObject {
         let r = try await Movers.load(key: massiveKey, names: names, tracked: tracked)
         movers = r
         Self.save(r, "movers.json")
+    }
+
+    /// Loads special dividends from the last 4 months and coming up (cached for 12 hours unless forced).
+    func loadSpecialDividends(force: Bool) async throws {
+        if !force, let s = specialDividends, Date().timeIntervalSince(s.fetchedAt) < 12 * 3600 { return }
+        let r = try await Dividends.specials(key: massiveKey, names: await tickerNames())
+        specialDividends = r
+        Self.save(r, "special_dividends.json")
+    }
+
+    /// Loads the highest regular dividend yields (cached for 12 hours unless forced).
+    func loadHighYield(force: Bool) async throws {
+        if !force, let s = highYield, Date().timeIntervalSince(s.fetchedAt) < 12 * 3600 { return }
+        highYieldProgress = ""
+        let r = try await Dividends.highYield(key: massiveKey, names: await tickerNames()) { message in
+            Task { @MainActor in self.highYieldProgress = message }
+        }
+        highYield = r
+        Self.save(r, "high_yield.json")
     }
 
     /// Loads the Top 30 scores (growth, income, wealth), cached for 12 hours unless forced.

@@ -267,7 +267,7 @@ def launch():
 def tour(label):
     """Taps every bottom tab and every view button inside it."""
     views = {
-        "Markets": ["Top 30", "Grades", "Patterns", "Movers", "Common picks", "WSB", "Crypto"],
+        "Markets": ["Top 30", "Grades", "Patterns", "Movers", "Special dividends", "High dividends", "Common picks", "WSB", "Crypto"],
         "Predictions": ["Start here", "All markets", "Sports", "My picks"],
         "Feed": ["Filings", "News"],
         "Portfolio": ["Watchlist", "My accounts", "Covered calls", "Track record"],

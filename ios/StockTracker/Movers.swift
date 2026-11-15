@@ -30,6 +30,9 @@ enum Movers {
     /// Starts a fresh count for the 5-requests-a-minute limit.
     static func resetCalls() { calls = 0 }
 
+    /// Requests made since the last reset.
+    static var callCount: Int { calls }
+
     static func load(key: String, names: [String: String], tracked: Set<String>) async throws -> MoversResult {
         guard !key.isEmpty else { throw AppError("Add a free Massive key first") }
         calls = 0
