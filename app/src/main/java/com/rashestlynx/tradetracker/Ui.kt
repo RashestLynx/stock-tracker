@@ -259,7 +259,7 @@ fun StockTrackerApp(store: Store) {
         },
         bottomBar = {
             // Five tabs, each with one row of views at most:
-            // Markets (Top 30, Movers, dividends, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
+            // Markets (Top 30, Movers, IPOs, dividends, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
             // Portfolio (Watchlist, My accounts, Track record). Sources is in Settings.
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_HOME, onClick = { tab = TAB_HOME },
@@ -1912,6 +1912,243 @@ private fun HighYieldRow(i: Int, h: HighYield, onOpen: (StockTarget) -> Unit) {
 }
 
 
+// ============================================================ IPOs
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IposScreen(store: Store, onOpen: (StockTarget) -> Unit, onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    var result by remember { mutableStateOf(Ipos.cached(store)) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var hasKey by remember { mutableStateOf(Live.key(store).isNotBlank()) }
+    var keyInput by rememberSaveable { mutableStateOf("") }
+    var alertsOn by remember { mutableStateOf(store.ipoAlerts) }
+    var filingAlerts by remember { mutableStateOf(store.ipoFilingAlerts) }
+    var log by remember { mutableStateOf(Ipos.log(store)) }
+
+    LaunchedEffect(reload, hasKey) {
+        loading = true; error = null
+        withContext(Dispatchers.IO) { runCatching { Ipos.load(store) } }
+            .onSuccess { result = it }.onFailure { error = it.message ?: "Couldn't load IPOs" }
+        log = Ipos.log(store)
+        loading = false
+    }
+
+    PullToRefreshBox(isRefreshing = loading, onRefresh = { reload++ }, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Alert me about big IPOs", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text("Deals over ${Ipos.money(Ipos.BIG_DEAL)}: price range set, raised or cut, more shares, priced, " +
+                                    "first trade, and big investors lined up.", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = alertsOn, onCheckedChange = { alertsOn = it; store.ipoAlerts = it })
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Every new IPO filing", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text("The earliest sign (S-1 or F-1 with the SEC), weeks before a price. Includes small companies.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = filingAlerts, enabled = alertsOn,
+                                onCheckedChange = { filingAlerts = it; store.ipoFilingAlerts = it })
+                        }
+                    }
+                }
+            }
+            if (!hasKey) item {
+                Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Add a free Finnhub key", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("The IPO calendar (dates, price ranges, deal sizes, priced or not) comes from Finnhub. " +
+                            "Without it you only see new SEC filings.", style = MaterialTheme.typography.bodyMedium)
+                        OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Live.SIGNUP))) }) { Text("Get a free key") }
+                        OutlinedTextField(value = keyInput, onValueChange = { keyInput = it }, label = { Text("Paste Finnhub key") },
+                            singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = { Live.setKey(store, keyInput); hasKey = Live.key(store).isNotBlank(); onMessage("Key saved") },
+                            enabled = keyInput.isNotBlank()) { Text("Save key") }
+                    }
+                }
+            }
+            error?.let { e -> item { Text(e, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) } }
+            if (result == null && loading) item { Text("Loading IPOs…", style = MaterialTheme.typography.bodyMedium) }
+            if (log.isNotEmpty()) item {
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(vertical = 12.dp)) {
+                        IpoHeader("Latest IPO alerts", "What changed since you last looked")
+                        log.take(6).forEach { e ->
+                            Column(Modifier.fillMaxWidth()
+                                .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(e.link))) }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                Text(e.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text(e.body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                                    .format(java.util.Date(e.time)), style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+            result?.let { r ->
+                item {
+                    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 12.dp)) {
+                            IpoHeader("Coming up", "Biggest first within each day. Request shares before it prices.")
+                            if (r.upcoming.isEmpty()) IpoEmpty(if (hasKey) "No IPOs on the calendar right now." else "Needs the Finnhub key.")
+                            r.upcoming.take(40).forEach { IpoRow(it, store, onOpen) }
+                        }
+                    }
+                }
+                item {
+                    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 12.dp)) {
+                            IpoHeader("Just priced", "IPO price, first trade and where it is now")
+                            if (r.priced.isEmpty()) IpoEmpty("Nothing priced in the last 3 weeks.")
+                            r.priced.forEach { IpoRow(it, store, onOpen) }
+                        }
+                    }
+                }
+                item {
+                    ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 12.dp)) {
+                            IpoHeader("Just filed to go public", "New S-1 / F-1 filings with the SEC. No price or date yet.")
+                            if (r.filings.isEmpty()) IpoEmpty("No new filings in the SEC's latest list.")
+                            r.filings.take(25).forEach { f ->
+                                Column(Modifier.fillMaxWidth()
+                                    .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(f.link))) }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    Text(f.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text("${f.form} · ${prettyDay(f.date)}" + if (f.cornerstone.isNotBlank()) " · big investors lined up" else "",
+                                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                ModernCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("How buying an IPO really works", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        listOf(
+                            "The IPO price mostly goes to big funds. Everyone else buys when it opens, often far above that price, so the first-day \"pop\" usually isn't yours.",
+                            "To get the IPO price, request shares through your broker's IPO access (Robinhood IPO Access, SoFi, Public) after the price range is set and before it prices. Hot deals get cut back or you get none.",
+                            "Robinhood may limit your future IPO access if you sell IPO shares within 30 days.",
+                            "A raised range or more shares means strong demand; a cut range means weak demand.",
+                            "If you buy at the open, use a limit order. New IPOs can swing 20–50% in a day.",
+                            "On average, buying at the opening price and flipping doesn't make money. Not financial advice.",
+                        ).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
+            item {
+                Text("Calendar from Finnhub, filings and investor lists from SEC EDGAR, Reddit mentions from ApeWisdom.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun IpoHeader(title: String, sub: String) {
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+    Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+@Composable
+private fun IpoEmpty(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(16.dp))
+}
+
+@Composable
+private fun IpoBadge(text: String, good: Boolean) {
+    Surface(color = if (good) TradeColors.buyContainer() else MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(50)) {
+        Text(text, color = if (good) TradeColors.buy() else MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IpoRow(i: Ipo, store: Store, onOpen: (StockTarget) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var who by remember { mutableStateOf<String?>(null) }
+    var whoLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(expanded) {
+        if (expanded && who == null && i.cornerstone.isNotBlank()) {
+            whoLoading = true
+            who = withContext(Dispatchers.IO) { runCatching { Ipos.whoIsBuying(i.cornerstone, store.userAgent) }.getOrNull() }
+                ?: "Couldn't read the investor list. Tap the filing link to read it."
+            whoLoading = false
+        }
+    }
+    Column(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(if (i.symbol.isNotBlank()) i.symbol else i.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                if (i.symbol.isNotBlank()) Text(i.name, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(listOfNotNull(i.date.takeIf { it.isNotBlank() }?.let { prettyDay(it) }, i.exchange.takeIf { it.isNotBlank() })
+                    .joinToString(" · ").ifBlank { "Date not set" },
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(Ipos.rangeText(i.low, i.high).ifBlank { "No price yet" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(Ipos.money(i.value), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (i.open > 0 && i.ipoPrice > 0) {
+                    val up = i.open >= i.ipoPrice
+                    Text(String.format(java.util.Locale.US, "Opened \$%s (%+.0f%%)", Ipos.fmt(i.open), (i.open / i.ipoPrice - 1) * 100),
+                        style = MaterialTheme.typography.labelSmall, color = if (up) TradeColors.buy() else TradeColors.sell())
+                }
+                if (i.now > 0 && i.ipoPrice > 0) {
+                    val up = i.now >= i.ipoPrice
+                    Text(String.format(java.util.Locale.US, "Now \$%s (%+.0f%%)", Ipos.fmt(i.now), (i.now / i.ipoPrice - 1) * 100),
+                        style = MaterialTheme.typography.labelSmall, color = if (up) TradeColors.buy() else TradeColors.sell())
+                }
+            }
+        }
+        val badges = listOfNotNull(
+            if (i.big) "Big deal" to true else null,
+            if (i.cornerstone.isNotBlank()) "Big investors lined up" to true else null,
+            if (i.mentions > 0) "Reddit: ${i.mentions} mentions" to (i.mentions >= 50) else null,
+        )
+        if (badges.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            badges.forEach { (t, g) -> IpoBadge(t, g) }
+        }
+        if (expanded) {
+            if (i.cornerstone.isNotBlank()) {
+                Text("Who's lined up to buy", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(if (whoLoading) "Reading the filing…" else who ?: "", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(i.cornerstone))) }) { Text("Open the filing") }
+            } else {
+                Text("No investors named in its filings yet. Big funds lined up before an IPO are listed in the prospectus when there are any.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (i.symbol.isNotBlank()) TextButton(onClick = { onOpen(StockTarget(i.symbol, i.name, "", "", emptyList(), "", 0.0)) }) {
+                Text("Open ${i.symbol}")
+            }
+        }
+    }
+}
+
 // ============================================================ WallStreetBets
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3207,17 +3444,18 @@ private fun MarketsScreen(
 ) {
     var view by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize()) {
-        PillTabs(listOf("Top 30", "Grades", "Patterns", "Movers", "Special dividends", "High dividends", "Common picks", "WSB", "Crypto"), view, { view = it },
+        PillTabs(listOf("Top 30", "Grades", "Patterns", "Movers", "IPOs", "Special dividends", "High dividends", "Common picks", "WSB", "Crypto"), view, { view = it },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp))
         when (view) {
             0 -> ScoresScreen(store, onOpen = onOpen)
             1 -> GradesScreen(onOpen = onOpen)
             2 -> NightlyPatternsScreen(store, onOpen = onOpen)
             3 -> MoversScreen(store, onOpen = onOpen, onMessage = onMessage)
-            4 -> SpecialDividendsScreen(store, onOpen = onOpen, onMessage = onMessage)
-            5 -> HighDividendsScreen(store, onOpen = onOpen, onMessage = onMessage)
-            6 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
-            7 -> WsbScreen(store, onOpen = onOpen)
+            4 -> IposScreen(store, onOpen = onOpen, onMessage = onMessage)
+            5 -> SpecialDividendsScreen(store, onOpen = onOpen, onMessage = onMessage)
+            6 -> HighDividendsScreen(store, onOpen = onOpen, onMessage = onMessage)
+            7 -> PicksScreen(store, tick, refreshing, onRefresh = onRefresh, onOpen = onOpen)
+            8 -> WsbScreen(store, onOpen = onOpen)
             else -> CryptoScreen(store, onOpen = onOpen)
         }
     }

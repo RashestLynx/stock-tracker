@@ -10,7 +10,7 @@ struct ContentView: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
             // Five tabs, each with one row of views at most:
-            // Markets (Top 30, Movers, dividends, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
+            // Markets (Top 30, Movers, IPOs, dividends, Common picks, WSB, Crypto), Predictions, Feed (Filings, News),
             // Portfolio (Watchlist, My accounts, Track record). Sources is in Settings.
             MarketsView()
                 .tabItem { Label("Markets", systemImage: "chart.line.uptrend.xyaxis") }

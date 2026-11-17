@@ -74,6 +74,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
         // Live price alerts, after filings so those aren't held up (only while the market is open).
         if (!fast) runCatching { PriceWatch.check(applicationContext, store) }
 
+        // IPO stages (filed, range set or changed, priced, first trade), at most every 20 minutes.
+        if (!fast && store.appNotify) runCatching { notifyIpos(Ipos.check(store).take(4)) }
+
         // A quick check with nothing new leaves the status line alone.
         if (fast && newAlerts.isEmpty() && errors.isEmpty()) return Result.success()
 
@@ -488,6 +491,28 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
                     .setStyle(NotificationCompat.BigTextStyle().bigText(v.title))
                     .setContentIntent(open).setAutoCancel(true).build())
             }
+        }
+    }
+
+    private fun notifyIpos(events: List<IpoEvent>) {
+        if (events.isEmpty()) return
+        val ctx = applicationContext
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) return
+        val nm = NotificationManagerCompat.from(ctx)
+        for (e in events) {
+            val open = PendingIntent.getActivity(ctx, e.id.hashCode(), Intent(Intent.ACTION_VIEW, Uri.parse(e.link)),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            nm.notify(e.id.hashCode(), NotificationCompat.Builder(ctx, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle(e.title)
+                .setContentText(e.body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(e.body))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build())
         }
     }
 

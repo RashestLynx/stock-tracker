@@ -192,6 +192,16 @@ class Store(context: Context) {
         get() = prefs.getString("movers_cache", "") ?: ""
         set(v) = prefs.edit().putString("movers_cache", v).apply()
 
+    /** Alerts for big IPOs: range set, raised or cut, upsized, priced, first trade, big investors lined up. */
+    var ipoAlerts: Boolean
+        get() = prefs.getBoolean("ipo_alerts", true)
+        set(v) = prefs.edit().putBoolean("ipo_alerts", v).apply()
+
+    /** Also alert for every new S-1 / F-1 filing (the earliest sign, before size or price is known). */
+    var ipoFilingAlerts: Boolean
+        get() = prefs.getBoolean("ipo_filing_alerts", true)
+        set(v) = prefs.edit().putBoolean("ipo_filing_alerts", v).apply()
+
     var specialDividendsCache: String
         get() = prefs.getString("special_dividends_cache", "") ?: ""
         set(v) = prefs.edit().putString("special_dividends_cache", v).apply()

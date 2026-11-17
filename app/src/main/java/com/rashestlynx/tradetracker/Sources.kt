@@ -46,7 +46,7 @@ object Sources {
         Source("congress-legislators (unitedstates.github.io)", "Members of Congress: party, state, photo", "https://unitedstates.github.io/congress-legislators/"),
         Source("Congressional Bioguide", "Members' official biographies", "https://bioguide.congress.gov"),
         Source("ApeWisdom", "WSB section: most-discussed stocks on Reddit", Wsb.SOURCE_URL),
-        Source("Finnhub", "Live stock prices", "https://finnhub.io"),
+        Source("Finnhub", "Live stock prices and the IPO calendar", "https://finnhub.io"),
         Source("Massive (formerly Polygon.io)", "Movers and price charts", "https://massive.com"),
         Source("Stooq", "Delayed latest price in stock summaries", "https://stooq.com"),
         Source("Wikipedia", "Company descriptions in stock summaries", "https://en.wikipedia.org"),

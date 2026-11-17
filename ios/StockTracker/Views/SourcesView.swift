@@ -24,7 +24,7 @@ enum Sources {
         Source(name: "congress-legislators (unitedstates.github.io)", usedFor: "Members of Congress: party, state, photo", url: "https://unitedstates.github.io/congress-legislators/"),
         Source(name: "Congressional Bioguide", usedFor: "Members' official biographies", url: "https://bioguide.congress.gov"),
         Source(name: "ApeWisdom", usedFor: "WSB section: most-discussed stocks on Reddit", url: "https://apewisdom.io"),
-        Source(name: "Finnhub", usedFor: "Live stock prices", url: "https://finnhub.io"),
+        Source(name: "Finnhub", usedFor: "Live stock prices and the IPO calendar", url: "https://finnhub.io"),
         Source(name: "Massive (formerly Polygon.io)", usedFor: "Movers and price charts", url: "https://massive.com"),
         Source(name: "Stooq", usedFor: "Delayed latest price in stock summaries", url: "https://stooq.com"),
         Source(name: "Wikipedia", usedFor: "Company descriptions in stock summaries", url: "https://en.wikipedia.org"),

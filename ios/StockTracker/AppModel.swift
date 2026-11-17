@@ -462,6 +462,19 @@ final class AppModel: ObservableObject {
             }
         }
 
+        // ----- IPO stages (filed, range set or changed, priced, first trade), at most every 20 minutes -----
+        let ipoEvents = await Ipos.check(ua: ua, publicCiks: Set(await cikMap().values))
+        if notify && appNotify {
+            for e in ipoEvents.prefix(4) {
+                let c = UNMutableNotificationContent()
+                c.title = e.title
+                c.body = e.body
+                c.sound = .default
+                c.userInfo = ["link": e.link]
+                try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: e.id, content: c, trigger: nil))
+            }
+        }
+
         let time = Date().formatted(date: .omitted, time: .shortened)
         if !errors.isEmpty && newAlerts.isEmpty { status = "Error at \(time): \(errors[0])" }
         else if firstRun { status = "Loaded \(newAlerts.count) recent filings · \(time)" }
