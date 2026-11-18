@@ -18,7 +18,7 @@ struct BetSuggestion {
 
 /// Bet sizing for prediction-market contracts (each pays $1 if it happens).
 /// Fees: Kalshi 0.07 × contracts × price × (1 − price), rounded up to the cent; Polymarket US the same shape at
-/// 4% (politics), 5% (sports, economics, other) or 7% (crypto). Size: a quarter of the Kelly amount, at most 5% of
+/// 0.095 for accounts under $10,000 of 30-day volume (tiered down to 0.0695 since Nov 6, 2026). Size: a quarter of the Kelly amount, at most 5% of
 /// your budget, and $0 with no edge after fees.
 enum Bets {
     static let maxShare = 0.05

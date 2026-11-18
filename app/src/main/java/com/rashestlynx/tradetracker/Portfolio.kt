@@ -28,7 +28,7 @@ fun Store.saveGroups(groups: List<WatchGroup>) {
 object Portfolio {
     /** Funds that already spread money across many companies. */
     val BROAD = mapOf(
-        "VOO" to "S&P 500 index fund", "SPY" to "S&P 500 index fund", "IVV" to "S&P 500 index fund", "SPLG" to "S&P 500 index fund",
+        "VOO" to "S&P 500 index fund", "SPY" to "S&P 500 index fund", "IVV" to "S&P 500 index fund", "SPYM" to "S&P 500 index fund", "SPLG" to "S&P 500 index fund (now SPYM)",
         "RSP" to "Equal-weight S&P 500 fund", "VTI" to "Total US market fund", "ITOT" to "Total US market fund", "SCHB" to "Total US market fund",
         "QQQ" to "Nasdaq-100 fund", "QQQM" to "Nasdaq-100 fund", "DIA" to "Dow 30 fund", "IWM" to "Small-company fund (Russell 2000)",
         "VT" to "Whole-world stock fund", "VXUS" to "International stock fund", "VEA" to "Developed-markets fund", "VWO" to "Emerging-markets fund",
@@ -39,6 +39,12 @@ object Portfolio {
         "SHY" to "Short-term Treasury fund", "SGOV" to "Treasury bill fund", "BIL" to "Treasury bill fund", "VGIT" to "Treasury fund")
     val CRYPTO = mapOf("IBIT" to "Bitcoin fund", "FBTC" to "Bitcoin fund", "GBTC" to "Bitcoin fund", "BITO" to "Bitcoin futures fund",
         "ETHA" to "Ethereum fund", "ETHE" to "Ethereum fund", "COIN" to "Crypto exchange", "MSTR" to "Bitcoin treasury company")
+    /** Funds that own mostly the same companies. US funds and international funds (VXUS, VEA, VWO) don't overlap. */
+    val OVERLAP_GROUPS = listOf(
+        listOf("VOO", "SPY", "IVV", "SPYM", "SPLG", "RSP", "VTI", "ITOT", "SCHB", "QQQ", "QQQM", "DIA", "VUG", "VT", "FXAIX", "SWPPX", "VFIAX", "VTSAX"),
+        listOf("VXUS", "VEA", "VT"), listOf("VXUS", "VWO", "VT"),
+        listOf("SCHD", "VYM"), listOf("VTV", "VYM", "SCHD"),
+    )
     val GOLD = mapOf("GLD" to "Gold fund", "IAU" to "Gold fund", "SLV" to "Silver fund")
 
     fun sector(ticker: String, industry: String): String {
@@ -90,12 +96,13 @@ object Portfolio {
             notes += "⚠ Concentrated: ${top.second} of $n are in ${top.first}. If that area has a bad stretch, this whole group drops together."
         if (!hasBroad && singles in 1..9)
             notes += "⚠ Only $singles individual ${if (singles == 1) "stock" else "stocks"} and no broad index fund. One bad earnings report can swing the whole group. Many investors anchor with a fund like VOO or VTI."
-        if (hasBroad && singles >= 1) notes += "✓ Has a broad index fund, which already spreads money across hundreds of companies."
+        if (hasBroad && singles >= 1) notes += "✓ Has a broad index fund, which already spreads money across many companies at once."
         if (counts.size >= 5) notes += "✓ Spread across ${counts.size} different areas."
         if (sec.values.count { it == "Crypto" } * 3 > n && n >= 2) notes += "⚠ A big share is crypto, which can move 5-10% in a day."
         if (sec.values.none { it == "Bonds" } && n >= 5) notes += "• No bonds. Bonds usually move less than stocks and soften big drops; whether you need them depends on your timeline."
-        val overlap = BROAD.keys.intersect(tickers.map { it.uppercase() }.toSet())
-        if (overlap.size >= 2) notes += "• ${overlap.joinToString(" and ")} hold many of the same companies, so owning both adds less spread than it looks."
+        val held = tickers.map { it.uppercase() }.toSet()
+        val overlap = OVERLAP_GROUPS.map { g -> g.filter { it in held } }.filter { it.size >= 2 }.maxByOrNull { it.size }
+        if (overlap != null) notes += "• ${overlap.joinToString(" and ")} hold many of the same companies, so owning both adds less spread than it looks."
         val covered = tickers.filter { t -> picks.any { it.ticker == t } }
         if (covered.isNotEmpty()) notes += "• People you track also hold or bought: ${covered.joinToString(", ")}."
 

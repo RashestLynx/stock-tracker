@@ -3790,7 +3790,7 @@ private fun PredictionsScreen() {
             item { PillTabs(cats, category, { category = it }) }
             item { PillTabs(listOf("Biggest moves today", "Most traded"), sort, { sort = it }) }
             item {
-                Text("Live odds from Kalshi and Polymarket, both open in Illinois. " +
+                Text("Live odds from Kalshi and Polymarket, both open in Illinois for now (a federal court blocked Illinois's new prediction-market law in fall 2026; the state is appealing, so this could change). " +
                     "A price of 62¢ means traders put the chance at about 62%. Big moves often mean news just broke. " +
                     "FanDuel and DraftKings odds are on the Sports tab; their event markets aren't included here.",
                     style = MaterialTheme.typography.bodySmall,

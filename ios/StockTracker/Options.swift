@@ -186,7 +186,7 @@ enum Options {
         let f = DateFormatter(); f.dateFormat = "MMM d"; f.timeZone = cal.timeZone
         if shares < 100 { w.append("You need 100 shares for each call. You have \(safeInt(shares)); 100 shares cost about \(money(c.price * 100)) today.") }
         if let e = ev?.earnings, e <= idea.q.expiry {
-            w.append("Earnings come out \(f.string(from: e)), before this call expires. Big jumps often happen on earnings day; a jump above the strike means your shares get sold at the strike.")
+            w.append("Earnings come out \(f.string(from: e)), before this call expires. Big jumps often happen on earnings day; if the stock is still above the strike when the call expires (or the buyer exercises early), your shares get sold at the strike.")
         }
         if let ev, let x = ev.exDiv, x <= idea.q.expiry {
             let amt = ev.dividend.map { " (\(money($0)) a share)" } ?? ""

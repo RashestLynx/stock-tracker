@@ -233,7 +233,7 @@ object Options {
             money(c.price * 100) + " today."
         ev?.earnings?.let { e ->
             if (!e.isAfter(idea.q.expiry)) w += "Earnings come out ${e.format(f)}, before this call expires. Big jumps often happen on " +
-                "earnings day; a jump above the strike means your shares get sold at the strike."
+                "earnings day; if the stock is still above the strike when the call expires (or the buyer exercises early), your shares get sold at the strike."
         }
         ev?.exDiv?.let { x ->
             if (!x.isAfter(idea.q.expiry)) {

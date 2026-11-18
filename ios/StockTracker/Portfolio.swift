@@ -12,7 +12,7 @@ struct WatchGroup: Codable, Hashable, Identifiable {
 /// Built from SEC industry codes and what the people you track hold. General info, not advice.
 enum Portfolio {
     static let broad: [String: String] = [
-        "VOO": "S&P 500 index fund", "SPY": "S&P 500 index fund", "IVV": "S&P 500 index fund", "SPLG": "S&P 500 index fund",
+        "VOO": "S&P 500 index fund", "SPY": "S&P 500 index fund", "IVV": "S&P 500 index fund", "SPYM": "S&P 500 index fund", "SPLG": "S&P 500 index fund (now SPYM)",
         "RSP": "Equal-weight S&P 500 fund", "VTI": "Total US market fund", "ITOT": "Total US market fund", "SCHB": "Total US market fund",
         "QQQ": "Nasdaq-100 fund", "QQQM": "Nasdaq-100 fund", "DIA": "Dow 30 fund", "IWM": "Small-company fund (Russell 2000)",
         "VT": "Whole-world stock fund", "VXUS": "International stock fund", "VEA": "Developed-markets fund", "VWO": "Emerging-markets fund",
@@ -23,6 +23,12 @@ enum Portfolio {
         "SHY": "Short-term Treasury fund", "SGOV": "Treasury bill fund", "BIL": "Treasury bill fund", "VGIT": "Treasury fund"]
     static let crypto: [String: String] = ["IBIT": "Bitcoin fund", "FBTC": "Bitcoin fund", "GBTC": "Bitcoin fund", "BITO": "Bitcoin futures fund",
         "ETHA": "Ethereum fund", "ETHE": "Ethereum fund", "COIN": "Crypto exchange", "MSTR": "Bitcoin treasury company"]
+    /// Funds that own mostly the same companies. US funds and international funds (VXUS, VEA, VWO) don't overlap.
+    static let overlapGroups: [[String]] = [
+        ["VOO", "SPY", "IVV", "SPYM", "SPLG", "RSP", "VTI", "ITOT", "SCHB", "QQQ", "QQQM", "DIA", "VUG", "VT", "FXAIX", "SWPPX", "VFIAX", "VTSAX"],
+        ["VXUS", "VEA", "VT"], ["VXUS", "VWO", "VT"],
+        ["SCHD", "VYM"], ["VTV", "VYM", "SCHD"],
+    ]
     static let gold: [String: String] = ["GLD": "Gold fund", "IAU": "Gold fund", "SLV": "Silver fund"]
 
     static func sector(_ ticker: String, _ industry: String) -> String {
@@ -79,13 +85,14 @@ enum Portfolio {
         if !hasBroad && (1...9).contains(singles) {
             notes.append("⚠ Only \(singles) individual \(singles == 1 ? "stock" : "stocks") and no broad index fund. One bad earnings report can swing the whole group. Many investors anchor with a fund like VOO or VTI.")
         }
-        if hasBroad && singles >= 1 { notes.append("✓ Has a broad index fund, which already spreads money across hundreds of companies.") }
+        if hasBroad && singles >= 1 { notes.append("✓ Has a broad index fund, which already spreads money across many companies at once.") }
         if counts.count >= 5 { notes.append("✓ Spread across \(counts.count) different areas.") }
         if n >= 2 && sec.values.filter({ $0 == "Crypto" }).count * 3 > n { notes.append("⚠ A big share is crypto, which can move 5-10% in a day.") }
         if n >= 5 && !sec.values.contains("Bonds") {
             notes.append("• No bonds. Bonds usually move less than stocks and soften big drops; whether you need them depends on your timeline.")
         }
-        let overlap = Set(broad.keys).intersection(tickers.map { $0.uppercased() }).sorted()
+        let held = Set(tickers.map { $0.uppercased() })
+        let overlap = overlapGroups.map { $0.filter { held.contains($0) } }.filter { $0.count >= 2 }.max { $0.count < $1.count } ?? []
         if overlap.count >= 2 { notes.append("• \(overlap.joined(separator: " and ")) hold many of the same companies, so owning both adds less spread than it looks.") }
         let covered = tickers.filter { t in picks.contains { $0.ticker == t } }
         if !covered.isEmpty { notes.append("• People you track also hold or bought: \(covered.joined(separator: ", ")).") }

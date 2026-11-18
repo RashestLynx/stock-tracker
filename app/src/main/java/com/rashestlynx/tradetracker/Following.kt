@@ -62,9 +62,9 @@ object Following {
         ),
         "Elon Musk" to KnownInfo(
             owns = listOf(
-                Holding("Tesla", "TSLA", "Largest individual shareholder. In June 2026 he exercised 303,960,630 Tesla options from his 2018 pay package; no shares were sold",
+                Holding("Tesla", "TSLA", "Largest individual shareholder. In June 2026 he exercised 303,960,630 Tesla options from his 2018 pay package; none were sold on the market. Tesla held back 17,531,857 shares to cover the cost, and the new shares can't be sold until January 2028",
                     "Teslarati", "https://www.teslarati.com/?p=302443"),
-                Holding("SpaceX", "", "CEO and largest shareholder; SpaceX went public in June 2026", "Teslarati", "https://www.teslarati.com/?p=302443"),
+                Holding("SpaceX", "SPCX", "CEO and largest shareholder; SpaceX went public on Nasdaq on June 12, 2026", "Teslarati", "https://www.teslarati.com/?p=302443"),
             ), recommends = emptyList(), recommendsSource = ""),
         "Sam Altman" to KnownInfo(
             owns = listOf(
@@ -76,7 +76,7 @@ object Following {
             ), recommends = emptyList(), recommendsSource = ""),
         "Donald Trump" to KnownInfo(
             owns = listOf(
-                Holding("Stock trades on his behalf", "", "Ethics filings show 3,642 trades in Q1 2026 worth \$220M-\$750M; they don't say who directed them",
+                Holding("Stock trades on his behalf", "", "Ethics filings show 3,642 trades in Q1 2026 worth an estimated \$220M-\$730M (the form reports value ranges, so estimates vary). The Trump Organization says independent outside managers make the trading decisions",
                     "Moneywise", "https://moneywise.com/news/top-stories/trump-eric-trump-nvidia-palantir-stock-trades-insider-trading-accusations"),
                 Holding("Nvidia", "NVDA", "15 transactions in Q1 2026 (9 purchases, 6 sales)", "CBS News", "https://cbsnews.com/news/trump-stock-trades-2026"),
                 Holding("Trump Media & Technology Group", "DJT", "His media company, listed on Nasdaq", "SEC", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=trump+media"),
@@ -104,15 +104,15 @@ object Following {
                 Holding("USA Rare Earth", "USAR", "Commerce agreed to invest \$1.6 billion for about a 10% stake (January 2026); 8% to 16% depending on warrants", "Yahoo Finance", "https://finance.yahoo.com/news/trump-admin-invest-1-6bn-112926262.html"),
                 Holding("GlobalFoundries", "GFS", "Commerce stakes tied to CHIPS awards: quantum foundry (May 2026) and up to \$300 million for co-packaged optics (July 2026)", "NIST", "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
                 Holding("IBM", "IBM", "Quantum foundry CHIPS award with a minority, non-controlling government stake (May 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
-                Holding("D-Wave Quantum", "QBTS", "\$100 million CHIPS award, paid as equity: a minority, non-controlling government stake (non-binding letter of intent, May 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
-                Holding("Rigetti Computing", "RGTI", "About $100 million CHIPS award for a minority, non-controlling government stake (non-binding letter of intent, May 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("D-Wave Quantum", "QBTS", "\$100 million CHIPS award, paid as equity: a minority, non-controlling government stake (final agreement signed Sept 8, 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("Rigetti Computing", "RGTI", "\$100 million CHIPS award for a minority, non-controlling government stake (final agreement signed Sept 8, 2026)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
                 Holding("Aeluma", "ALMU", "Letter of intent for up to \$30 million in CHIPS funding for a minority stake (July 2026)", "NIST", "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
                 Holding("U.S. Steel (owned by Nippon Steel)", "", "Government holds a \"golden share\" with veto rights from the Nippon Steel deal (June 2025)", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
                 Holding("Westinghouse (private)", "", "Participation interest from the \$80 billion nuclear deal (October 2025); can require an IPO", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
                 Holding("Vulcan Elements (private)", "", "Commerce \$50 million equity stake plus Pentagon warrants (November 2025)", "Cato Institute", "https://www.cato.org/blog/rare-earths-vulcan-government-equity-stakes"),
                 Holding("xLight (private)", "", "Commerce \$150 million equity stake (December 2025)", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
                 Holding("Korea Zinc (Tennessee smelter)", "", "Pentagon-backed smelter project with a conditional stake (December 2025)", "CNBC", "https://www.cnbc.com/2026/02/07/trump-administration-equity-portfolio-grows-these-are-investments-so-far.html"),
-                Holding("Quantinuum, PsiQuantum, Atom Computing, Infleqtion, Diraq", "", "Quantum computing companies in the May 2026 CHIPS letters of intent, each with a minority government stake", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
+                Holding("Quantinuum, PsiQuantum, Atom Computing, Infleqtion, Diraq", "", "Quantum computing companies in the May 2026 CHIPS awards, each with a minority government stake (Quantinuum's \$100 million deal was finalized Sept 8, 2026; the others were still letters of intent when last checked)", "DCD", "https://www.datacenterdynamics.com/en/news/us-dept-of-commerce-awards-nine-quantum-computing-companies-2bn-in-exchange-for-non-controlling-equity-stakes/"),
                 Holding("Kepler, Multibeam, Extropic, Thintronics, OBSIDIA", "", "Chip startups in the July 2026 CHIPS letters of intent, each with a minority stake", "NIST", "https://www.nist.gov/system/files/documents/2026/07/29/CHIPS%20Compute%20Supply%20Chain%20Press%20Release%202026-07-29_Final.pdf"),
             ),
             recommends = emptyList(), recommendsSource = "",
