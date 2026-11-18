@@ -130,7 +130,7 @@ enum Options {
             earnings = a.compactMap { ($0["date"] as? String).flatMap { ymd($0, "yyyy-MM-dd") } }.filter { $0 >= now }.min()
         }
         var exDiv: Date?, amount: Double?, guessed = false
-        if !massiveKey.isEmpty, let d = await http("https://api.massive.com/v3/reference/dividends?ticker=\(t)&order=desc&sort=ex_dividend_date&limit=6&apiKey=\(massiveKey)"),
+        if !massiveKey.isEmpty, let d = await http("https://api.massive.com/v3/reference/dividends?ticker=\(t)&dividend_type=CD&order=desc&sort=ex_dividend_date&limit=6&apiKey=\(massiveKey)"),
            let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let a = o["results"] as? [[String: Any]] {
             gotDividends = true
             let list = a.compactMap { x -> (Date, Double)? in (x["ex_dividend_date"] as? String).flatMap { ymd($0, "yyyy-MM-dd") }.map { ($0, x["cash_amount"] as? Double ?? 0) } }
@@ -139,7 +139,7 @@ enum Options {
             else if list.count >= 2 {
                 let gap = max(28, days(list[list.count - 2].0, list.last!.0))
                 var g = list.last!.0
-                while g < now { g = g.addingTimeInterval(Double(gap) * 86400) }
+                while g < now { g = cal.date(byAdding: .day, value: gap, to: g) ?? g.addingTimeInterval(Double(gap) * 86400) }
                 exDiv = g; amount = list.last!.1; guessed = true
             }
         }

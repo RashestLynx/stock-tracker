@@ -57,7 +57,7 @@ object Dividends {
         val key = requireKey(store)
         val (priceDate, prices) = prices(key)
         val names = names(store)
-        val since = LocalDate.now().minusDays(120)
+        val since = LocalDate.now(java.time.ZoneId.of("America/New_York")).minusDays(120)
         val rows = pages("$BASE?dividend_type=SC&ex_dividend_date.gte=$since&order=desc&sort=ex_dividend_date&limit=1000", key, 3)
         val seen = HashSet<String>()
         val list = rows.mapNotNull { o ->
@@ -104,7 +104,7 @@ object Dividends {
         progress("Getting today's prices…")
         val (priceDate, prices) = prices(key)
         val names = names(store)
-        val since = LocalDate.now().minusDays(100)
+        val since = LocalDate.now(java.time.ZoneId.of("America/New_York")).minusDays(100)
         val rows = pages("$BASE?dividend_type=CD&ex_dividend_date.gte=$since&order=desc&sort=ex_dividend_date&limit=1000", key, 15) { n ->
             progress("Reading dividends (page $n)…")
         }

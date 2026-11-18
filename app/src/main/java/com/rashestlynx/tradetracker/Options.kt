@@ -48,6 +48,9 @@ data class StockEvents(val earnings: LocalDate?, val exDiv: LocalDate?, val divi
 object Options {
     private const val RATE = 0.04
 
+    /** Today in New York, where options trade, so every phone (and the iPhone app) counts days the same way. */
+    fun today(): LocalDate = LocalDate.now(java.time.ZoneId.of("America/New_York"))
+
     // ---------------- math ----------------
     private fun ncdf(x: Double): Double {
         // Abramowitz-Stegun approximation of the normal distribution
@@ -130,7 +133,7 @@ object Options {
         val rows = d.optJSONObject("table")?.optJSONArray("rows") ?: return null
         val fmt = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US)
         var exp: LocalDate? = null
-        val today = LocalDate.now()
+        val today = Options.today()
         val out = ArrayList<OptQuote>()
         fun num(s: String) = s.replace(",", "").toDoubleOrNull() ?: 0.0
         for (i in 0 until rows.length()) {
@@ -152,7 +155,7 @@ object Options {
     /** Next earnings report (Finnhub, with your key) and next ex-dividend day (Massive, with your key). */
     fun events(ticker: String, store: Store): StockEvents {
         val t = URLEncoder.encode(ticker.uppercase(Locale.US), "UTF-8")
-        val today = LocalDate.now()
+        val today = Options.today()
         var earnings: LocalDate? = null
         var gotEarnings = false; var gotDividends = false
         val fk = Live.key(store)
@@ -166,7 +169,7 @@ object Options {
         var exDiv: LocalDate? = null; var amount: Double? = null; var guessed = false
         val mk = store.massiveKey
         if (mk.isNotBlank()) runCatching {
-            val b = http("https://api.massive.com/v3/reference/dividends?ticker=$t&order=desc&sort=ex_dividend_date&limit=6&apiKey=$mk")
+            val b = http("https://api.massive.com/v3/reference/dividends?ticker=$t&dividend_type=CD&order=desc&sort=ex_dividend_date&limit=6&apiKey=$mk")
             val a = JSONObject(b ?: "{}").optJSONArray("results")
             if (a != null) gotDividends = true
             if (a != null && a.length() > 0) {
@@ -190,17 +193,17 @@ object Options {
 
     // ---------------- ideas ----------------
     /** Expirations worth looking at: about 3 to 8 weeks out (the usual sweet spot), else the nearest a week+ out. */
-    fun goodExpiries(c: OptChain, today: LocalDate = LocalDate.now()): List<LocalDate> {
+    fun goodExpiries(c: OptChain, today: LocalDate = Options.today()): List<LocalDate> {
         val all = c.expiries().filter { ChronoUnit.DAYS.between(today, it) >= 7 }
         val sweet = all.filter { ChronoUnit.DAYS.between(today, it) in 21..60 }
         return sweet.ifEmpty { all.take(3) }
     }
 
-    fun defaultExpiry(c: OptChain, today: LocalDate = LocalDate.now()): LocalDate? =
+    fun defaultExpiry(c: OptChain, today: LocalDate = Options.today()): LocalDate? =
         goodExpiries(c, today).minByOrNull { abs(ChronoUnit.DAYS.between(today, it) - 35) }
 
     /** Calls above today's price for one expiration, each worked out for your shares. */
-    fun calls(c: OptChain, expiry: LocalDate, shares: Double, today: LocalDate = LocalDate.now()): List<CallIdea> {
+    fun calls(c: OptChain, expiry: LocalDate, shares: Double, today: LocalDate = Options.today()): List<CallIdea> {
         val days = ChronoUnit.DAYS.between(today, expiry).toInt().coerceAtLeast(1)
         val contracts = floor(shares / 100).toInt().coerceAtLeast(0)
         return c.quotes.filter { it.call && it.expiry == expiry && it.strike > c.price && it.bid >= 0.05 }

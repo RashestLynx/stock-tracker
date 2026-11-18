@@ -297,7 +297,7 @@ def check_covered_calls(label):
     """Types a stock into the covered-call checker and reports whether live calls show up."""
     s = screen()
     if find_prefix(s, "Options & covered calls") is None:
-        note(f"{label}: problem: Covered calls screen didn't show its guide")
+        fail(f"{label}: Covered calls screen didn't show its guide")
         return
     pos = find_prefix(s, "Ticker")
     for _ in range(4):   # the guide and the history card sit above the box
@@ -305,14 +305,14 @@ def check_covered_calls(label):
             break
         scroll_down(); time.sleep(1); pos = find_prefix(screen(), "Ticker")
     if pos is None:
-        note(f"{label}: Covered calls: couldn't find the ticker box")
+        fail(f"{label}: Covered calls: couldn't find the ticker box")
         return
     adb("shell", "input", "tap", str(pos[0]), str(pos[1])); time.sleep(1)
     adb("shell", "input", "text", "KO"); time.sleep(1)
     adb("shell", "input", "keyevent", "4"); time.sleep(1)
     b = find_prefix(screen(), "Show covered calls")
     if b is None:
-        note(f"{label}: Covered calls: no Show button"); return
+        fail(f"{label}: Covered calls: no Show button"); return
     adb("shell", "input", "tap", str(b[0]), str(b[1]))
     seen = ""
     for _ in range(12):
@@ -324,7 +324,13 @@ def check_covered_calls(label):
                 seen = k
         if seen in ("Three to consider", "Sell the $"):
             break
-    note(f"{label}: Covered calls for KO: {'live calls shown' if seen.startswith(('Three', 'Sell')) else seen or 'nothing showed'}")
+    if seen.startswith(("Three", "Sell")):
+        note(f"{label}: Covered calls for KO: live calls shown")
+    elif seen == "No option prices":
+        # KO always has listed options, so this means the price lookup is broken (or CBOE and Nasdaq were both down)
+        fail(f"{label}: Covered calls for KO: no option prices came back")
+    else:
+        fail(f"{label}: Covered calls for KO: nothing showed")
     tap("Covered calls", label, wait=3)
 
 

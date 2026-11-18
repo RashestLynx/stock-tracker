@@ -52,10 +52,11 @@ struct SpecialDividendsView: View {
                     if let e = error { Section { Text(e).foregroundStyle(.red) } }
                     if let r = model.specialDividends {
                         let today = Movers.dayFormatter.string(from: Date())
-                        let coming = r.items.filter { $0.exDate >= today }.sorted { $0.exDate < $1.exDate }
-                        let past = r.items.filter { $0.exDate < today }
+                        // on the ex-dividend day itself it's already too late to buy and get the dividend
+                        let coming = r.items.filter { $0.exDate > today }.sorted { $0.exDate < $1.exDate }
+                        let past = r.items.filter { $0.exDate <= today }
                         section("Coming up", "Buy before the ex-dividend day to get it.", coming, upcoming: true)
-                        section("Recently paid", "Ex-dividend day in the last 4 months.", past, upcoming: false)
+                        section("Ex-dividend day passed", "Too late to get these: ex-dividend day in the last 4 months.", past, upcoming: false)
                     } else if loading {
                         Section { ProgressView().frame(maxWidth: .infinity) }
                     }
@@ -98,7 +99,7 @@ struct SpecialDividendsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(d.ticker).font(.headline)
                             Text(d.name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            Text("Ex-dividend \(prettyDay(d.exDate))" + (d.payDate.isEmpty ? "" : " · paid \(prettyDay(d.payDate))"))
+                            Text("Ex-dividend \(prettyDay(d.exDate))" + (d.payDate.isEmpty ? "" : (d.payDate > Movers.dayFormatter.string(from: Date()) ? " · pays " : " · paid ") + prettyDay(d.payDate)))
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                         Spacer()

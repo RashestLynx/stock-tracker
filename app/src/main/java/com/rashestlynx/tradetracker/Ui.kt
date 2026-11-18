@@ -1753,10 +1753,11 @@ private fun SpecialDividendsScreen(store: Store, onOpen: (StockTarget) -> Unit, 
             if (all == null) {
                 if (loading) item { Text("Loading special dividends…", style = MaterialTheme.typography.bodyMedium) }
             } else {
-                val today = java.time.LocalDate.now().toString()
-                val (coming, past) = all.partition { it.exDate >= today }
+                val today = java.time.LocalDate.now(java.time.ZoneId.of("America/New_York")).toString()
+                // on the ex-dividend day itself it's already too late to buy and get the dividend
+                val (coming, past) = all.partition { it.exDate > today }
                 item { SpecialList("Coming up", "Buy before the ex-dividend day to get it", coming.sortedBy { it.exDate }, true, onOpen) }
-                item { SpecialList("Recently paid", "Ex-dividend day in the last 4 months", past, false, onOpen) }
+                item { SpecialList("Ex-dividend day passed", "Too late to get these: ex-dividend day in the last 4 months", past, false, onOpen) }
             }
             item {
                 Text("Data from Massive. A special dividend is usually one-time and doesn't mean the company will pay it again. " +
@@ -1792,7 +1793,7 @@ private fun SpecialList(title: String, sub: String, list: List<SpecialDividend>,
                         Text(d.ticker, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                         Text(d.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("Ex-dividend ${prettyDay(d.exDate)}" + if (d.payDate.isNotBlank()) " · paid ${prettyDay(d.payDate)}" else "",
+                        Text("Ex-dividend ${prettyDay(d.exDate)}" + if (d.payDate.isNotBlank()) (if (d.payDate > java.time.LocalDate.now(java.time.ZoneId.of("America/New_York")).toString()) " · pays " else " · paid ") + prettyDay(d.payDate) else "",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(horizontalAlignment = Alignment.End) {
@@ -5689,7 +5690,7 @@ private fun OptionsCard(ticker: String, shares: Double, store: Store, startOpen:
             val exps = Options.goodExpiries(c)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 exps.forEach { e ->
-                    val d = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), e)
+                    val d = java.time.temporal.ChronoUnit.DAYS.between(Options.today(), e)
                     FilterChip(selected = e == expiry, onClick = { expiry = e; chosen = null },
                         label = { Text("${e.format(java.time.format.DateTimeFormatter.ofPattern("MMM d", Locale.US))} ($d days)") })
                 }
